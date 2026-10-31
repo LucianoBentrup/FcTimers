@@ -1,0 +1,10 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <Version>0.6.0</Version>
+    <Description>Timers de submarinos e da roda da FC.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="service/**" />
+  </ItemGroup>
+</Project>

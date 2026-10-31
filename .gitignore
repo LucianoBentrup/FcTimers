@@ -1,0 +1,6 @@
+bin/
+obj/
+tools/painel-teste.id
+service/node_modules/
+service/.wrangler/
+service/.dev.vars

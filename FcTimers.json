@@ -1,0 +1,8 @@
+{
+  "Author": "Luciano",
+  "Name": "FC Timers",
+  "Punchline": "Timers de submarinos e da roda da FC.",
+  "Description": "Mostra na barra do sistema quando os submarinos e a roda da FC ficam prontos. Apenas exibe informações.",
+  "ApplicableVersion": "any",
+  "Tags": [ "fc", "submarine", "timer" ]
+}

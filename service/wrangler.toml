@@ -1,0 +1,14 @@
+name = "fc-timers"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+ROLE_ID = "1566210740170399855"
+
+[[durable_objects.bindings]]
+name = "FC_STATE"
+class_name = "FcState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["FcState"]

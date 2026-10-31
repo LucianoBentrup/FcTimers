@@ -1,0 +1,23 @@
+# FC Timers
+
+Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda e dos buffs da FC, e o loot do dia. Ele só lê e exibe informações, sem automatizar nada no jogo.
+
+É uma ferramenta de terceiros: usar é uma escolha sua, e os termos do jogo valem para ela.
+
+## Instalar
+1. No jogo, digite `/xlsettings` e abra a aba **Experimental**.
+2. Em **Custom Plugin Repositories**, adicione o link abaixo, clique no **+** e salve:
+   ```
+   https://raw.githubusercontent.com/LucianoBentrup/FcTimers/main/repo.json
+   ```
+3. Digite `/xlplugins` e instale o **FC Timers**.
+
+## Configurar
+1. Digite `/fct` e marque o seu personagem.
+2. Para enviar ao painel da FC, abra a seção **Discord**, cole o endereço do serviço e a chave da FC e marque a opção de enviar. O endereço e a chave são passados pela FC.
+
+## Estrutura
+- Raiz: código do plugin.
+- `service/`: serviço no Cloudflare que publica o painel no Discord.
+- `REGRAS.md`: regras do painel e da sincronia.
+- `tools/gerar-repo.ps1`: gera `repo.json` e `dist/latest.zip`.
