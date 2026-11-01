@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
-  alertDeleteAt, alertPayload, applyUpdate, dayOf, isValidUpdate, mergeVoyage, newState, nextEvent, pendingReturns, renderPanel, voyageKey,
+  alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, mergeVoyage, newState, nextEvent, pendingReturns, renderPanel, voyageKey,
 } from './logic.js';
 
 const DEBOUNCE_MS = 2000;
@@ -51,7 +51,7 @@ export class FcState extends DurableObject {
     applyUpdate(state, body, nowSeconds());
 
     const changes = { state };
-    for (const incoming of body.voyages ?? []) {
+    for (const incoming of (body.voyages ?? []).filter((v) => isRealSlot(v.slot))) {
       const key = voyageKey(incoming);
       const merged = mergeVoyage(changes[key] ?? (await storage.get(key)), incoming);
       if (merged) changes[key] = merged;
@@ -72,7 +72,7 @@ export class FcState extends DurableObject {
   }
 
   async voyagesOn(day) {
-    return [...(await this.ctx.storage.list({ prefix: `voyage:${day}:` })).values()];
+    return [...(await this.ctx.storage.list({ prefix: `voyage:${day}:` })).values()].filter((v) => isRealSlot(v.slot));
   }
 
   async alarm() {

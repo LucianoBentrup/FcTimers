@@ -9,6 +9,15 @@ const voyage = (slot, returnTime, value, itemId = 1) => ({
   slot, subName: `Sub${slot}`, returnTime, items: [{ itemId, name: `Item${itemId}`, count: 1, value }],
 });
 
+test('a 5ª posição enviada por versões antigas é ignorada e sai do estado', () => {
+  const state = newState();
+  state.subs[4] = { name: 'Navi', returnTime: at(1, 8), observedAt: at(1, 7), notified: 0 };
+  const sub = (slot) => ({ slot, name: 'Navi', returnTime: at(1, 8), age: 0 });
+  applyUpdate(state, { subs: [sub(0), sub(4)] }, at(1, 7));
+  assert.deepEqual(Object.keys(state.subs), ['0']);
+  assert.ok(isValidUpdate({ subs: [sub(4)] }));
+});
+
 test('o dia vira à meia-noite de Brasília, que é meio-dia no Japão', () => {
   assert.equal(dayOf(at(1, 23, 59)), '2026-11-01');
   assert.equal(dayOf(at(2, 0)), '2026-11-02');

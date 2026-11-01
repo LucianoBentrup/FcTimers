@@ -28,7 +28,11 @@ public class VoyageRecord
 // - nenhum registro é apagado, e os dias anteriores continuam disponíveis.
 public static class LootLedger
 {
+    public const int MaxSubmarines = 4;
+
     public static string VoyageKey(string subKey, long returnTime) => $"{subKey}:{returnTime}";
+
+    public static bool IsRealSlot(string slot) => int.TryParse(slot, out var value) && value < MaxSubmarines;
 
     // Se a mesma viagem vier com dados diferentes, vale a leitura mais recente. Leitura sem itens é ignorada.
     public static bool Upsert(Dictionary<string, VoyageRecord> voyages, string key, VoyageRecord voyage)

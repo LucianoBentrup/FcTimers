@@ -11,6 +11,7 @@
 - Uma viagem vista pela primeira vez quando já tinha voltado não gera aviso.
 
 ## Loot do dia
+- Só valem as posições de 0 a 3. A 5ª posição da lista do jogo repete um dos 4 submarinos e é ignorada no plugin e no serviço.
 - Cada viagem é identificada pelo slot do submarino e pelo horário de retorno.
 - O total do dia é sempre recalculado somando todas as viagens daquele dia. Nada zera entre coletas.
 - Reler ou reenviar a mesma viagem nunca soma de novo.

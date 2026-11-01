@@ -5,6 +5,10 @@ const MAX_NAME_SHOWN = 60;
 const END_TIME_TOLERANCE = 120;
 const ALERT_FALLBACK_SECONDS = 86400;
 const DAY_STEP = 900;
+const MAX_SUBMARINES = 4;
+
+// Até a versão 0.6.0 o plugin enviava uma 5ª posição, que repete um dos 4 submarinos.
+export const isRealSlot = (slot) => Number(slot) < MAX_SUBMARINES;
 
 const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
 const gilFormat = new Intl.NumberFormat('pt-BR');
@@ -66,7 +70,11 @@ export function isValidUpdate(body) {
 
 // Aplica uma atualização ao estado. Vale a leitura feita por último, medida no relógio do servidor.
 export function applyUpdate(state, body, now) {
-  for (const sub of body.subs ?? []) {
+  for (const slot of Object.keys(state.subs)) {
+    if (!isRealSlot(slot)) delete state.subs[slot];
+  }
+
+  for (const sub of (body.subs ?? []).filter((s) => isRealSlot(s.slot))) {
     const observedAt = now - sub.age;
     const existing = state.subs[sub.slot];
     if (existing && existing.observedAt > observedAt) continue;

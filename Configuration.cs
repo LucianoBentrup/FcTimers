@@ -32,7 +32,7 @@ public class CharacterRecord
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 4;
+    public int Version { get; set; } = 5;
 
     // Chave: ID interno do personagem.
     public Dictionary<ulong, CharacterRecord> Characters { get; set; } = [];

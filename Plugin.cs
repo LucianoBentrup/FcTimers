@@ -59,6 +59,19 @@ public sealed class Plugin : IDalamudPlugin
             SaveConfig();
         }
 
+        // Até a versão 0.6.0 a 5ª posição era lida como um submarino, duplicando timer e loot.
+        if (Config.Version < 5)
+        {
+            foreach (var key in Config.Subs.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^1])).ToList())
+                Config.Subs.Remove(key);
+            foreach (var key in Config.Voyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
+                Config.Voyages.Remove(key);
+            foreach (var key in Config.SyncedVoyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
+                Config.SyncedVoyages.Remove(key);
+            Config.Version = 5;
+            SaveConfig();
+        }
+
         Sync = new SyncClient(Config, SaveConfig);
 
         // No jogo, cada ação da FC é um status com o mesmo nome-base, sem o nível.
@@ -170,7 +183,8 @@ public sealed class Plugin : IDalamudPlugin
         var pointers = workshop->Submersible.DataPointers;
         var changed = false;
 
-        for (var slot = 0; slot < pointers.Length; slot++)
+        // A lista tem 5 posições, mas a FC só tem 4 submarinos: a última repete um deles.
+        for (var slot = 0; slot < LootLedger.MaxSubmarines; slot++)
         {
             var sub = pointers[slot].Value;
             if (sub == null || sub->RankId == 0)
