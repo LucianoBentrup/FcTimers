@@ -1,6 +1,6 @@
 # FC Timers
 
-Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda e dos buffs da FC, e o loot do dia. Ele só lê e exibe informações, sem automatizar nada no jogo.
+Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda de buff e dos buffs da FC, e o loot do dia. Ele só lê e exibe informações, sem automatizar nada no jogo.
 
 É uma ferramenta de terceiros: usar é uma escolha sua, e os termos do jogo valem para ela.
 
