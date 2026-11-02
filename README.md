@@ -22,3 +22,10 @@ Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda e dos 
 - `service/`: serviço no Cloudflare que publica o painel no Discord.
 - `REGRAS.md`: regras do painel e da sincronia.
 - `tools/gerar-repo.ps1`: gera `repo.json` e `dist/latest.zip`.
+- `tools/reenviar-painel.ps1`: apaga o painel do Discord e manda outro no fim do canal. Pede a chave da FC.
+- `tools/baixar-logs.ps1`: baixa os logs de diagnóstico enviados pelos plugins para `tools/logs`, fora do git. Pede a chave da FC.
+
+## Log de diagnóstico
+- Na janela do `/fct`, seção **Diagnóstico**: **Copiar log** copia para colar no Discord, e **Enviar log** guarda no serviço da FC.
+- Se um loot de submarino se perder, o plugin envia o log sozinho, no máximo uma vez a cada 10 minutos.
+- O serviço guarda só o último log de cada personagem, até 10 personagens. O log não inclui a chave da FC.

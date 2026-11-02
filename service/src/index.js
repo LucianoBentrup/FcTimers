@@ -7,6 +7,8 @@ import {
 const DEBOUNCE_MS = 2000;
 const RETRY_MS = 60000;
 const MAX_BODY_BYTES = 256 * 1024;
+const MAX_LOGS = 10;
+const MAX_LOG_NAME = 40;
 
 const json = (body, status = 200) => Response.json(body, { status });
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -22,8 +24,8 @@ export default {
     if (!isAuthorized(request, env)) return json({ error: 'unauthorized' }, 401);
 
     const { pathname } = new URL(request.url);
-    const allowed = (request.method === 'POST' && (pathname === '/update' || pathname === '/repost'))
-      || (request.method === 'GET' && (pathname === '/history' || pathname === '/state'));
+    const allowed = (request.method === 'POST' && ['/update', '/repost', '/log'].includes(pathname))
+      || (request.method === 'GET' && ['/history', '/state', '/logs'].includes(pathname));
     if (!allowed) return json({ error: 'not found' }, 404);
 
     // Todo pedido passa pelo mesmo objeto, que é o único ponto de gravação.
@@ -33,10 +35,41 @@ export default {
 
 export class FcState extends DurableObject {
   async fetch(request) {
-    if (request.method === 'POST') {
-      return new URL(request.url).pathname === '/repost' ? this.handleRepost() : this.handleUpdate(request);
+    switch (`${request.method} ${new URL(request.url).pathname}`) {
+      case 'POST /update': return this.handleUpdate(request);
+      case 'POST /repost': return this.handleRepost();
+      case 'POST /log': return this.handleLog(request);
+      case 'GET /state': return this.handleState();
+      case 'GET /logs': return this.handleLogs();
+      default: return this.handleHistory(request);
     }
-    return new URL(request.url).pathname === '/state' ? this.handleState() : this.handleHistory(request);
+  }
+
+  // Guarda o último log de diagnóstico de cada personagem, só os mais recentes.
+  async handleLog(request) {
+    const text = await request.text();
+    if (text.length > MAX_BODY_BYTES) return json({ error: 'too large' }, 413);
+
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return json({ error: 'invalid json' }, 400);
+    }
+    const character = typeof body?.character === 'string' ? body.character.trim().slice(0, MAX_LOG_NAME) : '';
+    if (!character || typeof body.text !== 'string') return json({ error: 'invalid log' }, 400);
+
+    const storage = this.ctx.storage;
+    await storage.put(`log:${character}`, { character, uploadedAt: nowSeconds(), text: body.text });
+
+    const logs = [...(await storage.list({ prefix: 'log:' })).entries()].sort((a, b) => b[1].uploadedAt - a[1].uploadedAt);
+    if (logs.length > MAX_LOGS) await storage.delete(logs.slice(MAX_LOGS).map(([key]) => key));
+    return json({ ok: true });
+  }
+
+  async handleLogs() {
+    const logs = [...(await this.ctx.storage.list({ prefix: 'log:' })).values()].sort((a, b) => b.uploadedAt - a.uploadedAt);
+    return json({ logs });
   }
 
   // Leitura para o plugin: estado atual e viagens dos últimos dias.

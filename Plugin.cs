@@ -66,6 +66,8 @@ public sealed class Plugin : IDalamudPlugin
     private HashSet<string> seenBuffs = [];
     private bool characterEnabled;
     private bool inWorkshop;
+    private DateTime autoLogAt = DateTime.MaxValue;
+    private DateTime lastAutoLog = DateTime.MinValue;
 
     public Configuration Config { get; }
     public SyncClient Sync { get; }
@@ -287,6 +289,13 @@ public sealed class Plugin : IDalamudPlugin
                 plot.WateredAt + (Config.DieAfterHours * 3600L));
         }
 
+        if (DateTime.UtcNow >= autoLogAt)
+        {
+            autoLogAt = DateTime.MaxValue;
+            lastAutoLog = DateTime.UtcNow;
+            SendLog("automático, loot não lido");
+        }
+
         Sync.WindowOpen = mainWindow.IsOpen;
         Sync.Tick();
         View = FcView.Build(Config, localReadings, Sync.Remote, Sync.RemoteOffset);
@@ -402,6 +411,7 @@ public sealed class Plugin : IDalamudPlugin
         if (returnTime == 0)
         {
             Diagnostics.Write($"{name}: loot novo na memória, mas sem horário de volta conhecido. Não foi salvo.");
+            QueueLogUpload();
             return true;
         }
 
@@ -412,6 +422,24 @@ public sealed class Plugin : IDalamudPlugin
         return true;
     }
 
+    public string LogText()
+        => Diagnostics.Text($"FC Timers {Version} | fuso UTC{DateTimeOffset.Now:zzz} | gerado {DateTime.Now:dd/MM HH:mm}");
+
+    public void SendLog(string source)
+    {
+        var name = Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name : "Desconhecido";
+        if (Sync.SendLog(name, LogText()))
+            Diagnostics.Write($"Enviando o log ao serviço ({source})");
+    }
+
+    // Quando um loot se perde, o log vai sozinho ao serviço, uns segundos depois para incluir o que vier em seguida.
+    // No máximo um envio automático a cada 10 minutos.
+    private void QueueLogUpload()
+    {
+        if (autoLogAt == DateTime.MaxValue && DateTime.UtcNow - lastAutoLog > TimeSpan.FromMinutes(10))
+            autoLogAt = DateTime.UtcNow.AddSeconds(30);
+    }
+
     private void LogReturnChange(string key, string name, long previous, long current, long now)
     {
         if (current > now && previous != 0 && previous <= now)
@@ -419,7 +447,11 @@ public sealed class Plugin : IDalamudPlugin
             if (Config.Voyages.ContainsKey(LootLedger.VoyageKey(key, previous)))
                 Diagnostics.Detail($"{name}: saiu de novo, volta {DiagnosticLog.Time(current)}");
             else
+            {
                 Diagnostics.Write($"{name}: saiu de novo, volta {DiagnosticLog.Time(current)}. O loot da viagem de {DiagnosticLog.Time(previous)} ainda não foi lido.");
+                QueueLogUpload();
+            }
+
             return;
         }
 

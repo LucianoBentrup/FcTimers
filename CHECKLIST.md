@@ -45,4 +45,5 @@
 
 ## Antes de publicar
 - [ ] Testar uma coleta completa dos 4 subs e comparar com o relatório do jogo e com o baú.
+- [x] Envio do log ao serviço (0.7.1), com botão e envio automático quando um loot se perde.
 - [ ] Trocar a chave da FC, que tem só 6 caracteres.

@@ -51,8 +51,11 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private DateTime nextFetch = DateTime.MinValue;
     private string lastStatus = string.Empty;
     private List<KeyValuePair<string, string>> sendingVoyages = [];
+    private Task<string>? sendingLog;
 
     public string Status { get; private set; } = "Aguardando dados";
+    public string LogStatus { get; private set; } = string.Empty;
+    public bool SendingLog => sendingLog != null;
 
     // Último estado recebido do serviço, e a diferença entre o relógio do PC e o do servidor.
     public RemoteState? Remote { get; private set; }
@@ -119,12 +122,48 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime);
     }
 
+    // Manda o log de diagnóstico ao serviço, que guarda só o último de cada personagem.
+    public bool SendLog(string character, string text)
+    {
+        if (!Enabled || sendingLog != null)
+            return false;
+
+        var body = JsonSerializer.Serialize(new { character, text });
+        sendingLog = SendLogAsync(body, config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim());
+        LogStatus = "Enviando log...";
+        return true;
+    }
+
+    private async Task<string> SendLogAsync(string body, string url, string key)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{url}/log");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+            using var response = await http.SendAsync(request).ConfigureAwait(false);
+            return response.IsSuccessStatusCode ? $"Log enviado ({DateTime.Now:HH:mm})" : $"Erro {(int)response.StatusCode} ao enviar o log";
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException or UriFormatException)
+        {
+            return "Sem conexão com o serviço";
+        }
+    }
+
     // Busca já na próxima rodada, por exemplo ao abrir a janela.
     public void FetchSoon() => nextFetch = DateTime.MinValue;
 
     public void Tick()
     {
         TickFetch();
+
+        if (sendingLog is { IsCompleted: true })
+        {
+            LogStatus = sendingLog.Result;
+            sendingLog = null;
+            log($"Diagnóstico: {LogStatus}");
+        }
 
         if (sending != null)
         {

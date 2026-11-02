@@ -204,6 +204,18 @@ try {
   assert.equal([...messages.values()].filter((m) => m.embeds).length, 1);
   ok('o painel é reenviado no fim do canal');
 
+  // Cada personagem guarda só o último log enviado.
+  const auth = { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' };
+  const sendLog = (text) => fetch(`${service}/log`, { method: 'POST', headers: auth, body: JSON.stringify({ character: 'Luciano', text }) });
+  assert.equal((await sendLog('primeiro')).status, 200);
+  assert.equal((await sendLog('segundo')).status, 200);
+  assert.equal((await fetch(`${service}/log`, { method: 'POST', headers: auth, body: '{}' })).status, 400);
+  assert.equal((await fetch(`${service}/logs`)).status, 401);
+  const { logs } = await (await fetch(`${service}/logs`, { headers: auth })).json();
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].text, 'segundo');
+  ok('o log de diagnóstico fica guardado no serviço');
+
   console.log(`TODOS PASSARAM (${passed})`);
   exitCode = 0;
 } catch (error) {

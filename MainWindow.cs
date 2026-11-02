@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 namespace FcTimers;
@@ -206,15 +207,22 @@ public class MainWindow : Window
 
         if (ImGui.Button("Copiar log"))
         {
-            var header = $"FC Timers {Plugin.Version} | fuso UTC{DateTimeOffset.Now:zzz} | copiado {DateTime.Now:dd/MM HH:mm}";
-            ImGui.SetClipboardText(plugin.Diagnostics.Text(header));
+            ImGui.SetClipboardText(plugin.LogText());
             copiedAt = DateTime.Now;
+        }
+
+        ImGui.SameLine();
+        using (ImRaii.Disabled(!config.SyncEnabled || plugin.Sync.SendingLog))
+        {
+            if (ImGui.Button("Enviar log"))
+                plugin.SendLog("botão Enviar log");
         }
 
         ImGui.SameLine();
         ImGui.TextDisabled(DateTime.Now - copiedAt < TimeSpan.FromSeconds(5)
             ? "Copiado. Cole no Discord."
-            : "O log não inclui a chave da FC.");
+            : plugin.Sync.LogStatus.Length > 0 ? plugin.Sync.LogStatus : "O log não inclui a chave da FC.");
+        ImGui.TextDisabled("Enviar log guarda o log no serviço da FC. Ele também vai sozinho se um loot se perder.");
     }
 
     private static void DrawLoot(FcView view)

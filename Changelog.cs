@@ -9,6 +9,12 @@ public static class Changelog
 {
     public static readonly (string Version, string[] Notes)[] Entries =
     [
+        ("0.7.1",
+        [
+            "New \"Enviar log\" button: sends the diagnostic log to the FC service, so it can be checked without copying and pasting.",
+            "If a submarine's loot is missed, the log is sent automatically (at most once every 10 minutes).",
+            "\"Plantas\" is now called \"Plantação\".",
+        ]),
         ("0.7.0",
         [
             "Submarine loot is now captured the moment the voyage result arrives, fast enough for AutoRetainer.",
