@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Dalamud.Configuration;
 
 namespace FcTimers;
@@ -12,6 +13,27 @@ public class SubRecord
 
     // Volta anterior, para o loot que só chega depois de o sub já ter saído de novo.
     public long PreviousReturnTime { get; set; }
+
+    public SubDetails? Details { get; set; }
+}
+
+// Rank, peças, rota e desgaste, lidos quando a lista de subs da oficina é aberta.
+[Serializable]
+public sealed record SubDetails
+{
+    public int Rank { get; set; }
+    public int ExpPercent { get; set; }
+
+    // Letra da classe de cada peça (casco, popa, proa, ponte), com "+" nas modificadas. Ex.: "S+S+U+C+".
+    public string Build { get; set; } = string.Empty;
+    public string Route { get; set; } = string.Empty;
+    public int TanksPerVoyage { get; set; }
+
+    // Kits que um reparo completo das 4 peças gasta.
+    public int RepairKits { get; set; }
+
+    // Desgaste da peça mais gasta, de 0 a 100. Null enquanto não foi lido.
+    public double? Condition { get; set; }
 }
 
 [Serializable]
@@ -28,6 +50,27 @@ public class CharacterRecord
 {
     public string Name { get; set; } = string.Empty;
     public bool Enabled { get; set; }
+}
+
+[Serializable]
+public class SupplyPage
+{
+    public int Tanks { get; set; }
+    public int Kits { get; set; }
+}
+
+[Serializable]
+public class SupplyRecord
+{
+    // Última contagem de cada página do baú da FC (1 a 5) e do inventário de quem joga neste PC.
+    public Dictionary<int, SupplyPage> ChestPages { get; set; } = [];
+    public SupplyPage Bags { get; set; } = new();
+
+    // Quando o total mudou pela última vez. Uma contagem antiga nunca passa por cima de uma mais nova de outro membro.
+    public long ChangedAt { get; set; }
+
+    public int Tanks => ChestPages.Values.Sum(p => p.Tanks) + Bags.Tanks;
+    public int Kits => ChestPages.Values.Sum(p => p.Kits) + Bags.Kits;
 }
 
 [Serializable]
@@ -50,6 +93,9 @@ public class PlotRecord
     // Horário da última rega deste plot registrada neste PC.
     public long WateredAt { get; set; }
 
+    // Vaso dentro de casa ou de quarto privado. Só esses aparecem pelo nome nos avisos do Discord.
+    public bool Indoor { get; set; }
+
     public long NextWaterAt => WateredAt + WaterIntervalSeconds;
     public long DieAt => WateredAt + DieAfterSeconds;
 }
@@ -57,7 +103,15 @@ public class PlotRecord
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 7;
+    public int Version { get; set; } = 8;
+
+    // "pt" ou "en". Vazio: segue o idioma do Dalamud.
+    public string Language { get; set; } = string.Empty;
+
+    // Mundo ou data center dos preços do market. Vazio: o mundo de origem do último personagem marcado.
+    public string MarketWorld { get; set; } = string.Empty;
+    public string HomeWorld { get; set; } = string.Empty;
+    public uint HomeDataCenter { get; set; }
 
     // Versão cujo changelog já foi mostrado.
     public string LastChangelogVersion { get; set; } = string.Empty;
@@ -97,4 +151,6 @@ public class Configuration : IPluginConfiguration
 
     // Chave: território, ward, plot da casa e posição do plot ou vaso. "geral" quando não dá para saber qual foi.
     public Dictionary<string, PlotRecord> Plots { get; set; } = [];
+
+    public SupplyRecord Supplies { get; set; } = new();
 }

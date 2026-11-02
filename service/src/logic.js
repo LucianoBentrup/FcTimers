@@ -19,6 +19,21 @@ export const HISTORY_DAYS = 7;
 // A lista de itens fica fora do painel para a mensagem do webhook ficar leve. O código continua aqui para um bot no futuro.
 export const SHOW_ITEMS = false;
 const MAX_SUBMARINES = 4;
+// Abaixo disso sai um aviso de estoque baixo, uma vez, até o estoque voltar a subir.
+// Com as rotas conhecidas, o limite de tanques é de 2 rodadas; sem elas, 120 tanques.
+export const LOW_TANKS = 120;
+export const LOW_ROUNDS = 2;
+export const LOW_KITS = 20;
+// Item que vale mais no market do que no NPC gera aviso a partir deste valor.
+export const MARKET_ALERT = 100000;
+export const MARKET_CACHE = 6 * 3600;
+// Sub pronto há 2 horas sem sair de novo ganha um lembrete. Um vaso fica "esquecido" quando outro vaso
+// da mesma casa foi regado há 15 minutos ou mais depois de ele já poder ser regado.
+export const FORGOTTEN_SUB = 2 * 3600;
+export const FORGOTTEN_PLOT = 900;
+// Desgaste da peça mais gasta: abaixo de 50% aparece no painel, abaixo de 30% sai o aviso de reparo.
+export const REPAIR_SHOW = 50;
+export const REPAIR_LOW = 30;
 
 // Até a versão 0.6.0 o plugin enviava uma 5ª posição, que repete um dos 4 submarinos.
 export const isRealSlot = (slot) => Number(slot) < MAX_SUBMARINES;
@@ -27,7 +42,7 @@ const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 
 const gilFormat = new Intl.NumberFormat('pt-BR');
 
 export const newState = () => ({
-  subs: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, plots: {}, alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
+  subs: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, plots: {}, supplies: null, notices: [], alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
 });
 
 // O lembrete sai 1 hora antes. Se o serviço só puder enviar com menos de 30 minutos restando, ele não sai.
@@ -62,8 +77,41 @@ export function pendingAlerts(state, now) {
   const dying = plots.map((p) => ({ ...p, step: deathWarningDue(p, now) })).filter((p) => p.step);
   if (dying.length > 0) alerts.push({ kind: 'plotDying', plots: dying });
 
+  const late = subs.filter((s) => s.returnTime <= now - FORGOTTEN_SUB && s.notified === s.returnTime && s.forgotten !== s.returnTime);
+  if (late.length > 0) alerts.push({ kind: 'subForgotten', subs: late });
+
+  const forgotten = plots.filter((p) => isForgotten(p, plots, now));
+  if (forgotten.length > 0) alerts.push({ kind: 'plotForgotten', plots: forgotten });
+
+  const worn = subs.filter((s) => needsRepair(s) && !s.repairWarned);
+  if (worn.length > 0) alerts.push({ kind: 'repairNeeded', subs: worn, supplies: state.supplies });
+
+  const supplies = state.supplies;
+  if (supplies && !supplies.lowWarned && isLow(supplies, state)) {
+    const known = Object.values(state.subs).filter((s) => s.details?.tanks > 0);
+    const perRound = tanksPerRound(state);
+    alerts.push({ kind: 'suppliesLow', supplies, lowTanks: lowTanksOf(state), perRound, perVoyage: known.length > 0 ? perRound / known.length : 0 });
+  }
+
+  // Avisos de uma vez só que nascem de uma viagem: item caro de market e setor novo.
+  for (const notice of state.notices ?? []) alerts.push({ kind: notice.kind, notice });
+
   return alerts;
 }
+
+// Só vasos de dentro de casa têm nome confiável; os canteiros de fora são regados todos juntos.
+const houseOf = (key) => key.split(':').slice(0, 4).join(':');
+function isForgotten(plot, plots, now) {
+  if (!plot.indoor || plot.nextWaterAt > now || plot.forgotten === plot.nextWaterAt) return false;
+  return plots.some((other) => other.key !== plot.key && other.indoor && houseOf(other.key) === houseOf(plot.key)
+    && other.observedAt > plot.nextWaterAt && other.observedAt <= now - FORGOTTEN_PLOT);
+}
+
+const needsRepair = (sub) => sub.details?.condition != null && sub.details.condition < REPAIR_LOW;
+
+const tanksPerRound = (state) => Object.values(state.subs).reduce((sum, s) => sum + (s.details?.tanks ?? 0), 0);
+const lowTanksOf = (state) => (tanksPerRound(state) > 0 ? LOW_ROUNDS * tanksPerRound(state) : LOW_TANKS);
+const isLow = (supplies, state) => supplies.tanks < lowTanksOf(state) || supplies.kits < LOW_KITS;
 
 // Plots com horário de rega, sem os que morreram há muito tempo ou foram retirados.
 export function activePlots(state, now) {
@@ -84,9 +132,15 @@ function deathWarningDue(plot, now) {
 // Marca no estado que o aviso saiu. Só marca o que ainda está igual ao que foi avisado.
 export function markSent(state, alert) {
   for (const sent of alert.subs ?? []) {
+    if (alert.kind === 'repairNeeded') {
+      const worn = Object.values(state.subs).find((s) => s.name === sent.name);
+      if (worn) worn.repairWarned = true;
+      continue;
+    }
     const sub = Object.values(state.subs).find((s) => s.name === sent.name && s.returnTime === sent.returnTime);
     if (!sub) continue;
     if (alert.kind === 'subReady') sub.notified = sub.returnTime;
+    else if (alert.kind === 'subForgotten') sub.forgotten = sub.returnTime;
     else sub.reminded = sub.returnTime;
   }
   for (const sent of alert.plots ?? []) {
@@ -95,21 +149,65 @@ export function markSent(state, alert) {
     if (alert.kind === 'plotReady' && plot.nextWaterAt === sent.nextWaterAt) plot.notified = plot.nextWaterAt;
     if (alert.kind === 'plotReminder' && plot.nextWaterAt === sent.nextWaterAt) plot.reminded = plot.nextWaterAt;
     if (alert.kind === 'plotDying' && plot.dieAt === sent.dieAt) plot.warned = sent.step;
+    if (alert.kind === 'plotForgotten' && plot.nextWaterAt === sent.nextWaterAt) plot.forgotten = plot.nextWaterAt;
   }
+  if (alert.kind === 'suppliesLow' && state.supplies) state.supplies.lowWarned = true;
+  if (alert.notice) state.notices = (state.notices ?? []).filter((n) => n.id !== alert.notice.id);
 }
 
 export const alertDeleteAt = (sentAt) => sentAt + ALERT_LIFETIME;
 
 const joinList = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} e ${names.at(-1)}` : names[0]);
 const joinNames = (list) => joinList(list.map((s) => `**${s.name}**`));
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// Nomes só dos vasos de dentro de casa. Os canteiros de fora são regados juntos, então não vale listar.
+function plotNames(plots) {
+  const names = plots.filter((p) => p.indoor).map((p) => `**${p.name}**`);
+  if (names.length === 0) return '';
+  if (plots.some((p) => !p.indoor)) names.push('os canteiros de fora');
+  return ` (${joinList(names)})`;
+}
 
 export function alertPayload(alert, roleId) {
   const texts = {
     subReady: () => `🚢 ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'}!`,
     subReminder: () => `Lembrete: Em 1 hora os submarinos estarão prontos para coleta (${joinNames(alert.subs)}).`,
-    plotReady: () => `🌱 A plantação já pode ser regada (${joinNames(alert.plots)})!`,
-    plotReminder: () => `Lembrete: Em 1 hora a plantação estará disponível para regar (${joinNames(alert.plots)}).`,
-    plotDying: () => `⚠️ Se ninguém regar, ${alert.plots.length > 1 ? 'morrem' : 'morre'}: ${joinList(alert.plots.map((p) => `**${p.name}** <t:${p.dieAt}:R>`))}!`,
+    plotReady: () => `🌱 A plantação já pode ser regada${plotNames(alert.plots)}!`,
+    plotReminder: () => `Lembrete: Em 1 hora a plantação estará disponível para regar${plotNames(alert.plots)}.`,
+    plotForgotten: () => `🌱 ${joinNames(alert.plots)} ${alert.plots.length > 1 ? 'ficaram' : 'ficou'} sem regar? Os outros vasos já foram regados.`,
+    subForgotten: () => `⏰ ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'} há mais de 2 horas e ainda não ${alert.subs.length > 1 ? 'saíram' : 'saiu'} de novo.`,
+    repairNeeded: () => {
+      const subs = joinList(alert.subs.map((s) => `**${s.name}** (${percent(s.details.condition)})`));
+      const kits = alert.subs.reduce((sum, s) => sum + (s.details.kits ?? 0), 0);
+      const stock = alert.supplies ? `, ${gilFormat.format(alert.supplies.kits)} no estoque` : '';
+      return `🔧 Hora de reparar: ${subs}. O reparo completo gasta ${gilFormat.format(kits)} kits${stock}.`;
+    },
+    suppliesLow: () => {
+      const low = [];
+      if (alert.supplies.tanks < alert.lowTanks) {
+        const lasts = alert.perVoyage > 0
+          ? ` (≈ ${plural(Math.floor(alert.supplies.tanks / alert.perVoyage), 'viagem', 'viagens')}, ${plural(Math.floor(alert.supplies.tanks / alert.perRound), 'rodada', 'rodadas')})`
+          : '';
+        low.push(`**${gilFormat.format(alert.supplies.tanks)} tanques de ceruleum**${lasts}`);
+      }
+      if (alert.supplies.kits < LOW_KITS) low.push(`**${gilFormat.format(alert.supplies.kits)} kits de reparo**`);
+      return `⛽ Estoque baixo: restam ${joinList(low)}.`;
+    },
+    marketDrop: () => {
+      const { notice } = alert;
+      const items = joinList(notice.items.map((i) => `${i.count}x ${i.name} ≈ ${gilFormat.format(i.marketValue)} gil`));
+      return `💎 **${notice.subName}** trouxe item de market: ${items} (${notice.world}).`;
+    },
+    sectorUnlocked: () => `🗺️ **${alert.notice.subName}** desbloqueou ${joinList(alert.notice.sectors.map((s) => `**${s}**`))}!`,
+    plotDying: () => {
+      const named = alert.plots.filter((p) => p.indoor).map((p) => `**${p.name}** <t:${p.dieAt}:R>`);
+      const outside = alert.plots.filter((p) => !p.indoor);
+      const outsideDies = Math.min(...outside.map((p) => p.dieAt));
+      if (named.length === 0) return `⚠️ Se ninguém regar, a plantação morre <t:${outsideDies}:R>!`;
+      if (outside.length > 0) named.push(`os canteiros de fora <t:${outsideDies}:R>`);
+      return `⚠️ Se ninguém regar, ${alert.plots.length > 1 ? 'morrem' : 'morre'}: ${joinList(named)}!`;
+    },
   };
   const text = texts[alert.kind]();
   return {
@@ -122,6 +220,8 @@ export const dayOf = (unix) => dayFormat.format(new Date(unix * 1000));
 
 export const voyageKey = (voyage) => `voyage:${dayOf(voyage.returnTime)}:${voyage.slot}:${voyage.returnTime}`;
 
+const percent = (value) => `${Math.floor(value)}%`;
+
 const isSlot = (v) => Number.isInteger(v) && v >= 0 && v < 32;
 const isTime = (v) => Number.isInteger(v) && v >= 0;
 const isName = (v) => typeof v === 'string' && v.length > 0 && v.length <= 128;
@@ -130,7 +230,17 @@ const isAge = (v) => Number.isFinite(v) && v >= 0;
 function isVoyage(v) {
   return v && isSlot(v.slot) && isName(v.subName) && isTime(v.returnTime) && v.returnTime > 0
     && Array.isArray(v.items) && v.items.length > 0 && v.items.length <= 16
-    && v.items.every((i) => i && isTime(i.itemId) && isName(i.name) && isTime(i.count) && isTime(i.value));
+    && v.items.every((i) => i && isTime(i.itemId) && isName(i.name) && isTime(i.count) && isTime(i.value)
+      && (i.market == null || typeof i.market === 'boolean'))
+    && (v.world == null || (typeof v.world === 'string' && v.world.length <= 32))
+    && (v.unlocked == null || (Array.isArray(v.unlocked) && v.unlocked.length <= 5 && v.unlocked.every(isName)));
+}
+
+const isShort = (v) => typeof v === 'string' && v.length <= 32;
+
+function isDetails(d) {
+  return isTime(d.rank) && d.rank < 256 && isTime(d.exp) && d.exp <= 100 && isShort(d.build) && isShort(d.route)
+    && isTime(d.tanks) && isTime(d.kits) && (d.condition == null || (Number.isFinite(d.condition) && d.condition >= 0 && d.condition <= 100));
 }
 
 export function isValidUpdate(body) {
@@ -138,16 +248,20 @@ export function isValidUpdate(body) {
   const subs = body.subs ?? [];
   const voyages = body.voyages ?? [];
   if (!Array.isArray(subs) || subs.length > 16 || !Array.isArray(voyages) || voyages.length > 50) return false;
-  if (!subs.every((s) => s && isSlot(s.slot) && isName(s.name) && isTime(s.returnTime) && isAge(s.age))) return false;
+  if (!subs.every((s) => s && isSlot(s.slot) && isName(s.name) && isTime(s.returnTime) && isAge(s.age)
+    && (s.details == null || isDetails(s.details)))) return false;
   if (!voyages.every(isVoyage)) return false;
   const active = body.activeBuffs;
   if (active != null && !(isAge(active.age) && Array.isArray(active.buffs) && active.buffs.length <= 16
     && active.buffs.every((b) => b && isName(b.name) && (b.seconds === null || isTime(b.seconds))))) return false;
   const plots = body.plots ?? [];
-  const isPlot = (p) => p && isAge(p.age) && isTime(p.nextWaterAt) && (p.dieAt == null || isTime(p.dieAt));
+  const isPlot = (p) => p && isAge(p.age) && isTime(p.nextWaterAt) && (p.dieAt == null || isTime(p.dieAt))
+    && (p.indoor == null || typeof p.indoor === 'boolean');
   if (!Array.isArray(plots) || plots.length > MAX_PLOTS) return false;
   if (!plots.every((p) => isPlot(p) && isName(p.key) && isName(p.name))) return false;
   if (body.garden != null && !isPlot(body.garden)) return false;
+  const supplies = body.supplies;
+  if (supplies != null && !(isAge(supplies.age) && isTime(supplies.tanks) && isTime(supplies.kits))) return false;
   if (body.buffs == null) return true;
   return isAge(body.buffs.age) && Array.isArray(body.buffs.slots) && body.buffs.slots.length <= 16
     && body.buffs.slots.every((b) => b && isSlot(b.slot) && isTime(b.itemId) && isName(b.name) && isTime(b.hours));
@@ -167,7 +281,10 @@ export function applyUpdate(state, body, now) {
     const same = existing?.returnTime === sub.returnTime;
     const notified = same ? existing.notified : (sub.returnTime <= now ? sub.returnTime : 0);
     const reminded = same ? existing.reminded ?? 0 : 0;
-    state.subs[sub.slot] = { name: sub.name, returnTime: sub.returnTime, observedAt, notified, reminded };
+    // Plugin antigo não manda os detalhes: ficam os últimos conhecidos.
+    const details = sub.details ?? existing?.details ?? null;
+    const repairWarned = (existing?.repairWarned ?? false) && needsRepair({ details });
+    state.subs[sub.slot] = { name: sub.name, returnTime: sub.returnTime, observedAt, notified, reminded, details, repairWarned };
   }
 
   // A rega de cada plot vale a partir do horário em que foi regado, então a mais nova sempre vence.
@@ -190,7 +307,20 @@ export function applyUpdate(state, body, now) {
       notified: same ? existing.notified : (nextWaterAt <= now ? nextWaterAt : 0),
       reminded: same ? existing.reminded : 0,
       warned: existing?.dieAt === dieAt ? existing.warned ?? 0 : 0,
+      forgotten: same ? existing.forgotten ?? 0 : 0,
+      indoor: update.indoor ?? existing?.indoor ?? false,
     };
+  }
+
+  // O estoque vale a partir de quando a contagem mudou, então a mais nova sempre vence.
+  if (body.supplies) {
+    const observedAt = now - body.supplies.age;
+    if (!state.supplies || observedAt >= state.supplies.observedAt) {
+      const { tanks, kits } = body.supplies;
+      const supplies = { tanks, kits, observedAt, lowWarned: false };
+      supplies.lowWarned = isLow(supplies, state) && (state.supplies?.lowWarned ?? false);
+      state.supplies = supplies;
+    }
   }
 
   if (body.buffs) {
@@ -236,16 +366,78 @@ export function applyUpdate(state, body, now) {
 
 // A mesma viagem vira um único registro. Só é substituída por uma leitura com pelo menos tantos itens.
 export function mergeVoyage(existing, incoming) {
-  const voyage = { slot: incoming.slot, subName: incoming.subName, returnTime: incoming.returnTime, items: incoming.items };
+  const items = incoming.items.map((i) => ({ itemId: i.itemId, name: i.name, count: i.count, value: i.value, ...(i.market ? { market: true } : {}) }));
+  const voyage = {
+    slot: incoming.slot,
+    subName: incoming.subName,
+    returnTime: incoming.returnTime,
+    items,
+    ...(incoming.world ? { world: incoming.world } : {}),
+    ...(incoming.unlocked?.length ? { unlocked: incoming.unlocked } : {}),
+  };
   if (!existing) return voyage;
   if (incoming.items.length < existing.items.length) return null;
-  return JSON.stringify(existing.items) === JSON.stringify(incoming.items) ? null : voyage;
+  const same = (a, b) => a.length === b.length && a.every((x, n) => x.itemId === b[n].itemId && x.count === b[n].count && x.value === b[n].value);
+  // A mesma viagem reenviada mantém os preços que o serviço já buscou.
+  if (same(existing.items, items)) {
+    const gained = items.some((i, n) => i.market && !existing.items[n].market) || (voyage.world && !existing.world);
+    if (!gained) return null;
+    return { ...existing, items: existing.items.map((i, n) => ({ ...i, ...(items[n].market ? { market: true } : {}) })), world: existing.world ?? voyage.world };
+  }
+  return voyage;
+}
+
+// Vale o maior entre o NPC e o market.
+export const bestValue = (item) => Math.max(item.value, item.marketValue ?? 0);
+
+// Viagem com item de market ainda sem preço.
+export const needsPrice = (voyage) => Boolean(voyage.world) && voyage.items.some((i) => i.market && i.marketValue == null);
+
+// Preço por unidade de cada item, a partir da resposta do Universalis. Usa a média das vendas recentes.
+export function parseUniversalis(json) {
+  const entries = json?.items ? Object.values(json.items) : json?.itemID ? [json] : [];
+  const prices = {};
+  for (const entry of entries) {
+    const price = entry.averagePriceNQ || entry.averagePrice || entry.minPrice || 0;
+    if (entry.itemID && price > 0) prices[entry.itemID] = price;
+  }
+  return prices;
+}
+
+// Coloca o valor de market nos itens e devolve o aviso, se algum item de market passar do limite.
+export function priceVoyage(voyage, prices) {
+  const items = voyage.items.map((i) => (i.market && i.marketValue == null && prices[i.itemId] != null
+    ? { ...i, marketValue: Math.round(prices[i.itemId] * i.count) }
+    : i));
+  const priced = { ...voyage, items };
+  const rich = items.filter((i) => i.marketValue != null && i.marketValue > i.value && i.marketValue >= MARKET_ALERT);
+  const notice = rich.length === 0 ? null : {
+    id: `market:${voyage.slot}:${voyage.returnTime}`, kind: 'marketDrop', subName: voyage.subName, world: voyage.world, items: rich,
+  };
+  return { voyage: priced, notice };
+}
+
+export function sectorNotice(voyage) {
+  if (!voyage.unlocked?.length) return null;
+  return { id: `sector:${voyage.slot}:${voyage.returnTime}`, kind: 'sectorUnlocked', subName: voyage.subName, sectors: voyage.unlocked };
 }
 
 function subLine(sub, now) {
-  if (sub.returnTime === 0) return `**${sub.name}**: parado`;
-  if (sub.returnTime <= now) return `**${sub.name}**: ✅ pronto`;
-  return `**${sub.name}**: volta <t:${sub.returnTime}:R> (<t:${sub.returnTime}:t>)`;
+  const rank = sub.details ? ` (R${sub.details.rank})` : '';
+  const condition = sub.details?.condition;
+  const wear = condition != null && condition < REPAIR_SHOW ? ` · ${needsRepair(sub) ? '⚠️' : '🔧'} ${percent(condition)}` : '';
+  const name = `**${sub.name}**${rank}`;
+  if (sub.returnTime === 0) return `${name}: parado${wear}`;
+  if (sub.returnTime <= now) return `${name}: ✅ pronto${wear}`;
+  return `${name}: volta <t:${sub.returnTime}:R> (<t:${sub.returnTime}:t>)${wear}`;
+}
+
+// Build e rota numa linha discreta no topo. Se os subs forem diferentes, cada um mostra a sua.
+function setupLines(subs) {
+  const setups = subs.filter((s) => s.details?.build).map((s) => `${s.details.build} · ${s.details.route}`);
+  if (setups.length === 0) return [];
+  if (new Set(setups).size === 1) return [`*${setups[0]}*`];
+  return subs.filter((s) => s.details?.build).map((s) => `*${s.name}: ${s.details.build} · ${s.details.route}*`);
 }
 
 function buffLine(buff, now) {
@@ -270,10 +462,26 @@ function renderPlots(plots, now) {
   return lines.join('\n');
 }
 
+// Quantas rodadas dos subs os tanques aguentam, e quantos reparos completos os kits pagam.
+function suppliesText(supplies, subs = [], lowTanks = LOW_TANKS) {
+  const mark = (value, low) => (value < low ? `⚠️ **${gilFormat.format(value)}**` : `**${gilFormat.format(value)}**`);
+  const known = subs.filter((s) => s.details);
+  const tanksPerRound = known.reduce((sum, s) => sum + s.details.tanks, 0);
+  const kitsPerRepair = Math.max(0, ...known.map((s) => s.details.kits));
+  const rounds = tanksPerRound > 0 ? ` (≈ ${plural(Math.floor(supplies.tanks / tanksPerRound), 'rodada', 'rodadas')})` : '';
+  const repairs = kitsPerRepair > 0 ? ` (≈ ${plural(Math.floor(supplies.kits / kitsPerRepair), 'reparo completo', 'reparos completos')})` : '';
+  return [
+    `${mark(supplies.tanks, lowTanks)} tanques de ceruleum${rounds}`,
+    `${mark(supplies.kits, LOW_KITS)} kits de reparo${repairs}`,
+    `Contado <t:${supplies.observedAt}:R>`,
+  ].join('\n');
+}
+
 // O painel é sempre montado a partir do estado salvo e de todas as viagens do dia.
 export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
   const [, month, day] = dayOf(now).split('-');
-  const total = todayVoyages.reduce((sum, v) => sum + v.items.reduce((s, i) => s + i.value, 0), 0);
+  const total = todayVoyages.reduce((sum, v) => sum + v.items.reduce((s, i) => s + bestValue(i), 0), 0);
+  const market = todayVoyages.reduce((sum, v) => sum + v.items.reduce((s, i) => s + (bestValue(i) > i.value ? bestValue(i) : 0), 0), 0);
 
   const perSub = new Map();
   const perItem = new Map();
@@ -281,10 +489,10 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
     const sub = perSub.get(voyage.slot) ?? { name: voyage.subName, value: 0 };
     sub.name = voyage.subName;
     for (const item of voyage.items) {
-      sub.value += item.value;
+      sub.value += bestValue(item);
       const entry = perItem.get(item.itemId) ?? { name: item.name, count: 0, value: 0 };
       entry.count += item.count;
-      entry.value += item.value;
+      entry.value += bestValue(item);
       perItem.set(item.itemId, entry);
     }
     perSub.set(voyage.slot, sub);
@@ -310,7 +518,8 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
   }
   if (state.updatedAt) activeLines.push('', `||Atualizado <t:${state.updatedAt}:R>||`);
 
-  const subs = bySlot(state.subs).map((s) => subLine(s, now));
+  const subList = bySlot(state.subs);
+  const subs = [...setupLines(subList), ...subList.map((s) => subLine(s, now))];
   const buffs = bySlot(state.buffs).map((b) => buffLine(b, now));
   const plotLines = renderPlots(activePlots(state, now), now);
 
@@ -322,8 +531,12 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
       fields: [
         { name: '🚢 Submarinos', value: subs.join('\n') || 'Nenhum dado ainda.' },
         { name: '⚙️ Buffs', value: buffs.join('\n') || 'Nenhum dado ainda.' },
+        ...(state.supplies ? [{ name: '⛽ Estoque', value: suppliesText(state.supplies, subList, lowTanksOf(state)) }] : []),
         { name: '🌱 Plantação', value: plotLines },
-        { name: `💰 Loot de hoje (${day}/${month})`, value: [`**${gilFormat.format(total)} gil**`, ...subLoot].join('\n') },
+        { name: `💰 Loot de hoje (${day}/${month})`, value: [
+          `**${market > 0 ? '≈ ' : ''}${gilFormat.format(total)} gil**${market > 0 ? ` (inclui 🏷️ ${gilFormat.format(market)} de market)` : ''}`,
+          ...subLoot,
+        ].join('\n') },
         ...(showItems ? [{ name: '📦 Itens de hoje', value: itemLines.join('\n') }] : []),
         { name: '✨ Buffs ativos', value: activeLines.join('\n') },
       ],
@@ -346,6 +559,8 @@ export function nextEvent(state, now) {
     ...timed,
     ...timed.map((t) => t - REMINDER_LEAD),
     ...plots.filter((p) => p.dieAt > 0).flatMap((p) => [p.dieAt, ...DEATH_WARNINGS.map((before) => p.dieAt - before)]),
+    ...Object.values(state.subs).filter((s) => s.returnTime > 0).map((s) => s.returnTime + FORGOTTEN_SUB),
+    ...plots.filter((p) => p.indoor).map((p) => p.observedAt + FORGOTTEN_PLOT),
     ...Object.values(state.buffs).map((b) => b.readyTime),
     ...(state.activeBuffs?.buffs ?? []).map((b) => b.endTime ?? 0),
     ...(state.alerts ?? []).map((a) => a.deleteAt),
@@ -363,6 +578,7 @@ export function publicState(state, voyages, now) {
     buffsObservedAt: state.buffsObservedAt,
     activeBuffs: state.activeBuffs,
     plots: state.plots ?? {},
+    supplies: state.supplies ? { tanks: state.supplies.tanks, kits: state.supplies.kits, observedAt: state.supplies.observedAt } : null,
     voyages,
   };
 }

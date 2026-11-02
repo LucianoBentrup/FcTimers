@@ -12,6 +12,10 @@
 - Quando um submarino volta, sai o aviso de pronto. Submarinos que voltam juntos entram no mesmo aviso.
 - Plantação, por plot: lembrete 1 hora antes de poder regar, aviso quando pode regar, e um aviso 3, 2 e 1 hora antes de morrer.
 - Cada viagem e cada rega avisa uma vez só. Algo visto pela primeira vez quando já estava pronto não gera aviso.
+- Lembrete de esquecido: um sub que voltou há mais de 2 horas e não saiu de novo ganha um lembrete, uma vez por viagem. Um vaso de dentro de casa ganha um lembrete quando outro vaso da mesma casa foi regado há 15 minutos ou mais e ele, que já podia ser regado, não foi.
+- Nos avisos de plantação, só os vasos de dentro de casa ou de quarto privado aparecem pelo nome. Os canteiros de fora são regados juntos, então aparecem como "a plantação" ou "os canteiros de fora".
+- O aviso de estoque baixo diz quantas viagens e rodadas os tanques ainda aguentam.
+- Reparo: quando a peça mais gasta de um sub fica abaixo de 30%, sai um aviso com os subs gastos e os kits que o reparo completo gasta. Ele volta a avisar depois de um reparo.
 
 ## Loot do dia
 - Só valem as posições de 0 a 3. A 5ª posição da lista do jogo repete um dos 4 submarinos e é ignorada no plugin e no serviço.
@@ -35,6 +39,31 @@
 - Em cada plot, a rega mais recente entre os membros vale, e a de um PC nunca passa por cima de uma mais nova de outro.
 - No painel, cada plot tem a sua linha, com o próprio horário. Os avisos juntam os plots que ficam prontos juntos.
 - Um plot que morreu há mais de 2 dias some do painel e dos avisos.
+
+## Detalhes dos subs
+- Ao abrir a lista de subs na oficina, o plugin lê de cada sub: rank, XP, peças, rota, tanques que a rota gasta e kits de um reparo completo.
+- O desgaste das peças é carregado ao entrar na oficina. Vale a peça mais gasta de cada sub.
+- No painel, o rank fica ao lado do nome, por exemplo "**Navi** (R130)". Build e rota ficam numa linha discreta no topo quando os 4 subs são iguais; se não forem, cada sub mostra a sua.
+- O desgaste aparece no painel abaixo de 50%, com ⚠️ abaixo de 30%.
+- Um plugin de versão antiga, que não manda esses dados, não apaga os últimos conhecidos.
+
+## Estoque
+- O plugin conta os tanques de ceruleum (item 10155) e os kits de reparo (Magitek Repair Materials, item 10373) no baú da FC e no inventário de quem está jogando.
+- O jogo só carrega o baú da FC quando alguém abre. Cada página guarda a última contagem vista, e o total soma as páginas e o inventário.
+- A contagem vale a partir de quando mudou. Uma contagem mais antiga nunca passa por cima de uma mais nova de outro membro.
+- O painel mostra o estoque só depois da primeira contagem, com um ⚠️ no que estiver baixo.
+- Com os detalhes dos subs, o estoque mostra quantas rodadas os tanques aguentam (tanques ÷ soma dos tanques de cada rota) e quantos reparos completos os kits pagam.
+- Com menos de 2 rodadas de tanques (ou 120 tanques, enquanto as rotas não são conhecidas) ou 20 kits, sai um aviso marcando @Subs, uma vez só. Ele volta a avisar depois que o estoque for reposto e cair de novo.
+
+## Market
+- O plugin marca os itens do loot que podem ir para o market e manda junto o mundo dos preços: o mundo de origem do personagem, ou o escolhido em Configurações (mundos do mesmo data center ou o data center inteiro).
+- O serviço busca no Universalis a média das vendas recentes de cada item e guarda o preço por 6 horas. O preço fica gravado na viagem, então não muda depois.
+- Cada item conta pelo maior valor entre o NPC e o market. O total do dia mostra "≈" e quanto vem do market quando algum item conta pelo market.
+- Item de market que vale 100 mil gil ou mais gera um aviso 💎, uma vez por viagem.
+- Se o Universalis falhar, o painel sai normalmente e o preço é buscado de novo na próxima atualização.
+
+## Setor novo
+- Quando uma viagem desbloqueia um setor, sai um aviso 🗺️ com o nome do setor. Viagens com mais de 1 dia não geram aviso.
 
 ## Loot rápido
 - O jogo guarda na memória o loot da última viagem coletada de cada sub. O plugin salva o loot quando ele muda, lendo a cada frame dentro da oficina.

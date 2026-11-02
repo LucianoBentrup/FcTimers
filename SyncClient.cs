@@ -13,7 +13,8 @@ public readonly record struct BuffReading(int Slot, uint ItemId, string Name, in
 
 // Envia ao serviço só o que acabou de ser lido do jogo. Roda sempre na thread do jogo,
 // e só a requisição HTTP fica em segundo plano.
-public sealed class SyncClient(Configuration config, Action save, Action<string> log) : IDisposable
+// isMarketable diz se o item pode ir para o market; marketWorld é o mundo ou data center dos preços.
+public sealed class SyncClient(Configuration config, Action save, Action<string> log, Func<uint, bool> isMarketable, Func<string> marketWorld) : IDisposable
 {
     private const int MaxVoyagesPerRequest = 50;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
@@ -23,10 +24,11 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private static readonly TimeSpan FetchClosed = TimeSpan.FromMinutes(5);
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
-    private sealed record PendingSub(int Slot, string Name, long ReturnTime, DateTime ReadAt);
+    private sealed record PendingSub(int Slot, string Name, long ReturnTime, SubDetails? Details, DateTime ReadAt);
     private sealed record PendingBuffs(List<BuffReading> Slots, DateTime ReadAt);
     private sealed record PendingActive(List<ActiveBuffReading> Buffs, DateTime ReadAt);
-    private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, DateTime ReadAt);
+    private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, bool Indoor, DateTime ReadAt);
+    private sealed record PendingSupplies(int Tanks, int Kits, DateTime ReadAt);
     private sealed record SendResult(bool Success, string Status);
 
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(20) };
@@ -39,6 +41,9 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private PendingActive? pendingActive;
     private readonly Dictionary<string, string> lastPlots = [];
     private readonly Dictionary<string, PendingPlot> pendingPlots = [];
+    private long lastSupplies;
+    private PendingSupplies? pendingSupplies;
+    private PendingSupplies? sendingSupplies;
     private DateTime nextAttempt = DateTime.MinValue;
     private DateTime nextVoyageScan = DateTime.MinValue;
 
@@ -69,17 +74,17 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
     public void Dispose() => http.Dispose();
 
-    public void ReportSub(int slot, string name, long returnTime)
+    public void ReportSub(int slot, string name, long returnTime, SubDetails? details)
     {
         if (!Enabled)
             return;
 
-        var signature = $"{name}|{returnTime}";
+        var signature = $"{name}|{returnTime}|{details}";
         if (lastSubs.GetValueOrDefault(slot) == signature)
             return;
 
         lastSubs[slot] = signature;
-        pendingSubs[slot] = new PendingSub(slot, name, returnTime, DateTime.UtcNow);
+        pendingSubs[slot] = new PendingSub(slot, name, returnTime, details, DateTime.UtcNow);
     }
 
     public void ReportBuffs(List<BuffReading> slots)
@@ -112,14 +117,24 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
     // A leitura da rega vale a partir do horário em que a planta foi regada, e não do envio.
     // Assim uma rega antiga deste PC nunca passa por cima de uma rega mais nova de outro membro.
-    public void ReportPlot(string key, string name, long wateredAt, long nextWaterAt, long dieAt)
+    public void ReportPlot(string key, string name, long wateredAt, long nextWaterAt, long dieAt, bool indoor)
     {
-        var signature = $"{name}|{nextWaterAt}|{dieAt}";
+        var signature = $"{name}|{nextWaterAt}|{dieAt}|{indoor}";
         if (!Enabled || wateredAt == 0 || lastPlots.GetValueOrDefault(key) == signature)
             return;
 
         lastPlots[key] = signature;
-        pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime);
+        pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, indoor, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime);
+    }
+
+    // Vale a partir de quando a contagem mudou, e não do envio, para uma contagem antiga não vencer uma nova.
+    public void ReportSupplies(int tanks, int kits, long changedAt)
+    {
+        if (!Enabled || changedAt == 0 || changedAt == lastSupplies)
+            return;
+
+        lastSupplies = changedAt;
+        pendingSupplies = new PendingSupplies(tanks, kits, DateTimeOffset.FromUnixTimeSeconds(changedAt).UtcDateTime);
     }
 
     // Manda o log de diagnóstico ao serviço, que guarda só o último de cada personagem.
@@ -195,13 +210,14 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             nextVoyageScan = sendingVoyages.Count == MaxVoyagesPerRequest ? DateTime.MinValue : DateTime.UtcNow + VoyageScanDelay;
         }
 
-        if (pendingSubs.Count == 0 && pendingBuffs == null && pendingActive == null && pendingPlots.Count == 0 && sendingVoyages.Count == 0)
+        if (pendingSubs.Count == 0 && pendingBuffs == null && pendingActive == null && pendingPlots.Count == 0 && pendingSupplies == null && sendingVoyages.Count == 0)
             return;
 
         sendingSubs = pendingSubs.Values.ToList();
         sendingBuffs = pendingBuffs;
         sendingActive = pendingActive;
         sendingPlots = pendingPlots.Values.ToList();
+        sendingSupplies = pendingSupplies;
         sending = SendAsync(BuildBody(DateTime.UtcNow), config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim());
     }
 
@@ -209,7 +225,23 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     {
         var body = new
         {
-            subs = sendingSubs.Select(s => new { slot = s.Slot, name = s.Name, returnTime = s.ReturnTime, age = Age(s.ReadAt, now) }),
+            subs = sendingSubs.Select(s => new
+            {
+                slot = s.Slot,
+                name = s.Name,
+                returnTime = s.ReturnTime,
+                age = Age(s.ReadAt, now),
+                details = s.Details == null ? null : new
+                {
+                    rank = s.Details.Rank,
+                    exp = s.Details.ExpPercent,
+                    build = s.Details.Build,
+                    route = s.Details.Route,
+                    tanks = s.Details.TanksPerVoyage,
+                    kits = s.Details.RepairKits,
+                    condition = s.Details.Condition == null ? (double?)null : Math.Round(s.Details.Condition.Value, 1),
+                },
+            }),
             buffs = sendingBuffs == null ? null : new
             {
                 age = Age(sendingBuffs.ReadAt, now),
@@ -220,7 +252,8 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
                 age = Age(sendingActive.ReadAt, now),
                 buffs = sendingActive.Buffs.Select(b => new { name = b.Name, seconds = b.Seconds }),
             },
-            plots = sendingPlots.Select(p => new { key = p.Key, name = p.Name, nextWaterAt = p.NextWaterAt, dieAt = p.DieAt, age = Age(p.ReadAt, now) }),
+            supplies = sendingSupplies == null ? null : new { tanks = sendingSupplies.Tanks, kits = sendingSupplies.Kits, age = Age(sendingSupplies.ReadAt, now) },
+            plots = sendingPlots.Select(p => new { key = p.Key, name = p.Name, nextWaterAt = p.NextWaterAt, dieAt = p.DieAt, indoor = p.Indoor, age = Age(p.ReadAt, now) }),
             voyages = sendingVoyages.Select(v =>
             {
                 var voyage = config.Voyages[v.Key];
@@ -229,7 +262,9 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
                     slot = LootLedger.SlotOf(v.Key),
                     subName = voyage.SubName,
                     returnTime = voyage.ReturnTime,
-                    items = voyage.Items.Select(i => new { itemId = i.ItemId, name = i.Name, count = i.Count, value = i.Value }),
+                    world = marketWorld(),
+                    unlocked = voyage.Unlocked,
+                    items = voyage.Items.Select(i => new { itemId = i.ItemId, name = i.Name, count = i.Count, value = i.Value, market = isMarketable(i.ItemId) }),
                 };
             }),
         };
@@ -330,6 +365,9 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
         if (ReferenceEquals(pendingActive, sendingActive))
             pendingActive = null;
+
+        if (ReferenceEquals(pendingSupplies, sendingSupplies))
+            pendingSupplies = null;
 
         foreach (var plot in sendingPlots.Where(p => ReferenceEquals(pendingPlots.GetValueOrDefault(p.Key), p)))
             pendingPlots.Remove(plot.Key);

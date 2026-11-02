@@ -66,7 +66,10 @@ public sealed class Plugin : IDalamudPlugin
     private HashSet<string> seenBuffs = [];
     private bool characterEnabled;
     private bool inWorkshop;
-    private (string Key, string Name, DateTime SeenAt)? lastHousingObject;
+    private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
+    private string lastEmptyPages = string.Empty;
+    private string lastScan = string.Empty;
+    private DateTime nextScan = DateTime.MinValue;
     private DateTime autoLogAt = DateTime.MaxValue;
     private DateTime lastAutoLog = DateTime.MinValue;
 
@@ -78,11 +81,15 @@ public sealed class Plugin : IDalamudPlugin
 
     public static string Version => typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "?";
 
+    public string LanguageCode => Config.Language.Length > 0 ? Config.Language
+        : PluginInterface.UiLanguage.StartsWith("pt", StringComparison.OrdinalIgnoreCase) ? "pt" : "en";
+
     public Plugin()
     {
         var saved = PluginInterface.GetPluginConfig() as Configuration;
         Config = saved ?? new Configuration { LastChangelogVersion = Version };
         Migrate();
+        L.English = LanguageCode == "en";
 
         Diagnostics = new DiagnosticLog(
             System.IO.Path.Combine(PluginInterface.GetPluginConfigDirectory(), "diagnostico.txt"),
@@ -90,7 +97,8 @@ public sealed class Plugin : IDalamudPlugin
             () => Config.DetailedLog);
         Diagnostics.Write($"Plugin {Version} iniciado");
 
-        Sync = new SyncClient(Config, SaveConfig, Diagnostics.Write);
+        Sync = new SyncClient(Config, SaveConfig, Diagnostics.Write, IsMarketable, () => MarketWorld);
+        Diagnostics.Write($"Itens do estoque: {LookupItem(Supplies.CeruleumTank)?.Name ?? "?"} e {LookupItem(Supplies.RepairMaterials)?.Name ?? "?"}");
 
         // No jogo, cada ação da FC é um status com o mesmo nome-base, sem o nível.
         companyActions = DataManager.GetExcelSheet<CompanyAction>()
@@ -120,11 +128,11 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.AddHandler(Command, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Abre a janela do FC Timers. Use \"/fct regar\" depois de regar a plantação.",
+            HelpMessage = L.HelpMain,
         });
         CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Atalho do /fctimers. \"/fct regar\" registra a rega da plantação.",
+            HelpMessage = L.HelpShort,
         });
 
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
@@ -158,7 +166,7 @@ public sealed class Plugin : IDalamudPlugin
     public static string FormatRemaining(long seconds)
     {
         if (seconds <= 0)
-            return "pronto";
+            return L.Ready;
 
         var time = TimeSpan.FromSeconds(seconds);
         return time.TotalHours >= 1 ? $"{(int)time.TotalHours}h{time.Minutes:00}" : $"{time.Minutes}m{time.Seconds:00}";
@@ -188,7 +196,11 @@ public sealed class Plugin : IDalamudPlugin
         if (Config.Version < 7 && Config.Garden.WateredAt != 0 && !Config.Plots.ContainsKey(GeneralPlot))
             Config.Plots[GeneralPlot] = new PlotRecord { Name = GeneralPlotName, WateredAt = Config.Garden.WateredAt };
 
-        Config.Version = 7;
+        // Quem já usava o plugin continua em português, sem depender do idioma do Dalamud.
+        if (Config.Version < 8 && Config.Language.Length == 0)
+            Config.Language = "pt";
+
+        Config.Version = 8;
         SaveConfig();
     }
 
@@ -198,7 +210,7 @@ public sealed class Plugin : IDalamudPlugin
         if (argument is "regar" or "water")
         {
             WaterAll("comando /fct regar");
-            ChatGui.Print("Rega registrada em todos os plots.", "FC Timers");
+            ChatGui.Print(L.WateredAll, "FC Timers");
             return;
         }
 
@@ -234,13 +246,15 @@ public sealed class Plugin : IDalamudPlugin
         // Se o alvo já sumiu quando a mensagem chega, vale o último objeto da casa cujo menu foi aberto há pouco.
         var housing = ReadHousingTarget();
         if (housing == null && lastHousingObject is { } recent && DateTime.UtcNow - recent.SeenAt < TimeSpan.FromMinutes(2))
-            housing = (recent.Key, recent.Name);
+            housing = (recent.Key, recent.Name, recent.Indoor);
 
         string key;
         string name;
-        if (housing is var (housingKey, baseName))
+        var indoor = false;
+        if (housing is var (housingKey, baseName, inside))
         {
             key = housingKey;
+            indoor = inside;
             name = Config.Plots.TryGetValue(key, out var known)
                 ? known.Name
                 : $"{baseName} {Config.Plots.Values.Count(p => p.Name.StartsWith(baseName, StringComparison.Ordinal)) + 1}";
@@ -257,13 +271,14 @@ public sealed class Plugin : IDalamudPlugin
             Config.Plots[key] = plot;
         }
 
+        plot.Indoor = indoor;
         plot.WateredAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         SaveConfig();
-        Diagnostics.Write($"Rega registrada em {plot.Name} ({source}, chave {key})");
+        Diagnostics.Write($"Rega registrada em {plot.Name} ({source}, {(indoor ? "dentro de casa" : "fora")}, chave {key})");
     }
 
-    // Chave e nome do objeto da casa selecionado agora, ou null se o alvo não for um objeto da casa.
-    private unsafe (string Key, string Name)? ReadHousingTarget()
+    // Chave, nome e se está dentro de casa (sala ou quarto privado), ou null se o alvo não for um objeto da casa.
+    private unsafe (string Key, string Name, bool Indoor)? ReadHousingTarget()
     {
         var target = TargetManager.Target;
         var manager = HousingManager.Instance();
@@ -272,7 +287,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var position = target.Position;
         var key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{position.X:F1}:{position.Y:F1}:{position.Z:F1}";
-        return (key, target.Name.TextValue);
+        return (key, target.Name.TextValue, manager->IsInside());
     }
 
     private void OnUpdate(IFramework framework)
@@ -292,7 +307,10 @@ public sealed class Plugin : IDalamudPlugin
         {
             ReadWheels(now);
             ReadActiveBuffs(now);
+            ReadSupplies(now);
         }
+
+        Sync.ReportSupplies(Config.Supplies.Tanks, Config.Supplies.Kits, Config.Supplies.ChangedAt);
 
         foreach (var (key, plot) in Config.Plots.Where(p => p.Value.WateredAt != 0))
         {
@@ -301,7 +319,8 @@ public sealed class Plugin : IDalamudPlugin
                 plot.Name,
                 plot.WateredAt,
                 plot.NextWaterAt,
-                plot.DieAt);
+                plot.DieAt,
+                plot.Indoor);
         }
 
         if (DateTime.UtcNow >= autoLogAt)
@@ -311,6 +330,7 @@ public sealed class Plugin : IDalamudPlugin
             SendLog("automático, loot não lido");
         }
 
+        L.English = LanguageCode == "en";
         Sync.WindowOpen = mainWindow.IsOpen;
         Sync.Tick();
         View = FcView.Build(Config, localReadings, Sync.Remote, Sync.RemoteOffset);
@@ -328,6 +348,14 @@ public sealed class Plugin : IDalamudPlugin
             return false;
 
         var name = player.Name.TextValue;
+        var home = player.HomeWorld.ValueNullable;
+        if (home is { } world && (world.Name.ToString() != Config.HomeWorld || world.DataCenter.RowId != Config.HomeDataCenter))
+        {
+            Config.HomeWorld = world.Name.ToString();
+            Config.HomeDataCenter = world.DataCenter.RowId;
+            SaveConfig();
+        }
+
         if (!Config.Characters.TryGetValue(id, out var character))
         {
             character = new CharacterRecord { Name = name };
@@ -360,6 +388,10 @@ public sealed class Plugin : IDalamudPlugin
         var pointers = workshop->Submersible.DataPointers;
         var changed = false;
 
+        // Rank, peças e desgaste são lidos 1 vez por segundo, e não a cada frame como o loot.
+        var conditions = DateTime.UtcNow >= nextScan ? SubmarineParts.ReadCondition() : null;
+        var lastVoyages = conditions != null && Config.DetailedLog ? new List<string>() : null;
+
         // A lista tem 5 posições, mas a FC só tem 4 submarinos: a última repete o sub selecionado.
         for (var slot = 0; slot < LootLedger.MaxSubmarines; slot++)
         {
@@ -373,13 +405,16 @@ public sealed class Plugin : IDalamudPlugin
 
             changed |= CaptureLoot(slot, key, sub, name, now);
             localReadings.Subs[slot] = now;
-            Sync.ReportSub(slot, name, returnTime);
 
-            if (Config.Subs.TryGetValue(key, out var record))
+            if (!Config.Subs.TryGetValue(key, out var record))
             {
-                if (record.Name == name && record.ReturnTime == returnTime)
-                    continue;
-
+                record = new SubRecord { Name = name, ReturnTime = returnTime };
+                Config.Subs[key] = record;
+                Diagnostics.Detail($"{name}: visto pela primeira vez, volta {DiagnosticLog.Time(returnTime)}");
+                changed = true;
+            }
+            else if (record.Name != name || record.ReturnTime != returnTime)
+            {
                 if (record.ReturnTime != returnTime)
                 {
                     LogReturnChange(key, name, record.ReturnTime, returnTime, now);
@@ -388,14 +423,36 @@ public sealed class Plugin : IDalamudPlugin
 
                 record.Name = name;
                 record.ReturnTime = returnTime;
-            }
-            else
-            {
-                Config.Subs[key] = new SubRecord { Name = name, ReturnTime = returnTime };
-                Diagnostics.Detail($"{name}: visto pela primeira vez, volta {DiagnosticLog.Time(returnTime)}");
+                changed = true;
             }
 
-            changed = true;
+            if (conditions != null)
+            {
+                var condition = conditions.TryGetValue(slot, out var read) ? read : record.Details?.Condition;
+                var details = WorkshopScan.Read(sub, DataManager, condition);
+                if (details != record.Details)
+                {
+                    LogDetailsChange(name, record.Details, details);
+                    record.Details = details;
+                    changed = true;
+                }
+
+                lastVoyages?.AddRange(WorkshopScan.DescribeLastVoyage(sub, DataManager));
+            }
+
+            Sync.ReportSub(slot, name, returnTime, record.Details);
+        }
+
+        if (conditions != null)
+        {
+            nextScan = DateTime.UtcNow.AddSeconds(1);
+            var text = string.Join('\n', lastVoyages ?? []);
+            if (lastVoyages != null && text != lastScan)
+            {
+                lastScan = text;
+                if (text.Length > 0)
+                    Diagnostics.Detail($"Última viagem na memória:\n{text}");
+            }
         }
 
         if (changed)
@@ -430,7 +487,7 @@ public sealed class Plugin : IDalamudPlugin
             return true;
         }
 
-        var voyage = SubmarineLoot.Read(sub, name, returnTime, LookupItem);
+        var voyage = SubmarineLoot.Read(sub, name, returnTime, LookupItem, SectorName);
         if (voyage != null && LootLedger.Upsert(Config.Voyages, LootLedger.VoyageKey(key, returnTime), voyage))
             Diagnostics.Write($"{name}: viagem de {DiagnosticLog.Time(returnTime)} salva, {voyage.Items.Count} itens, {LootLedger.Total([voyage]):N0} gil");
 
@@ -487,8 +544,8 @@ public sealed class Plugin : IDalamudPlugin
         if (target == null || target.ObjectKind is not (ObjectKind.HousingEventObject or ObjectKind.EventObj))
             return;
 
-        if (ReadHousingTarget() is var (key, name))
-            lastHousingObject = (key, name, DateTime.UtcNow);
+        if (ReadHousingTarget() is var (key, name, indoor))
+            lastHousingObject = (key, name, indoor, DateTime.UtcNow);
 
         var addon = (AtkUnitBase*)args.Addon.Address;
         var texts = new List<string>();
@@ -517,10 +574,79 @@ public sealed class Plugin : IDalamudPlugin
             WaterTargetedPlot($"mensagem do jogo {id}");
     }
 
+    public string MarketWorld => Config.MarketWorld.Length > 0 ? Config.MarketWorld : Config.HomeWorld;
+
+    // Mundos públicos do data center do personagem, para escolher onde ver os preços.
+    public List<string> MarketWorlds()
+    {
+        var worlds = DataManager.GetExcelSheet<World>()
+            .Where(w => w.IsPublic && w.DataCenter.RowId == Config.HomeDataCenter && Config.HomeDataCenter != 0)
+            .Select(w => w.Name.ToString()).Order().ToList();
+        if (DataManager.GetExcelSheet<WorldDCGroupType>().GetRowOrDefault(Config.HomeDataCenter) is { } dataCenter)
+            worlds.Add(dataCenter.Name.ToString());
+        return worlds;
+    }
+
+    private static bool IsMarketable(uint itemId)
+        => DataManager.GetExcelSheet<Item>().GetRowOrDefault(itemId) is { } item && !item.IsUntradable && item.ItemSearchCategory.RowId != 0;
+
+    private static string? SectorName(uint point)
+        => DataManager.GetExcelSheet<SubmarineExploration>().GetRowOrDefault(point)?.Destination.ToString();
+
     private static (string Name, uint Price)? LookupItem(uint itemId)
     {
         var item = DataManager.GetExcelSheet<Item>().GetRowOrDefault(itemId);
         return item == null ? null : (item.Value.Name.ToString(), item.Value.PriceLow);
+    }
+
+    // O XP muda a cada leitura de viagem; o resto só quando rank, peças, rota ou desgaste mudam.
+    private void LogDetailsChange(string name, SubDetails? previous, SubDetails current)
+    {
+        var text = $"{name}: rank {current.Rank} ({current.ExpPercent}%), {current.Build}, rota {current.Route} "
+            + $"({current.TanksPerVoyage} tanques), peças {current.Condition?.ToString("0.#") ?? "?"}%, reparo {current.RepairKits} kits";
+        if (previous == null || previous with { ExpPercent = current.ExpPercent } != current)
+            Diagnostics.Write(text);
+        else
+            Diagnostics.Detail(text);
+    }
+
+    private void ReadSupplies(long now)
+    {
+        var record = Config.Supplies;
+        var changed = false;
+        var emptyPages = new List<int>();
+        var chest = Supplies.ReadChest(emptyPages);
+        var empty = string.Join(", ", emptyPages);
+        if (empty != lastEmptyPages)
+        {
+            lastEmptyPages = empty;
+            if (empty.Length > 0)
+                Diagnostics.Write($"Baú da FC: página(s) {empty} carregada(s) sem itens, ignorada(s)");
+        }
+
+        foreach (var (page, count) in chest)
+        {
+            if (record.ChestPages.TryGetValue(page, out var known) && known.Tanks == count.Tanks && known.Kits == count.Kits)
+                continue;
+
+            Diagnostics.Write($"Baú da FC, página {page}: {count.Tanks} tanques, {count.Kits} kits de reparo");
+            record.ChestPages[page] = new SupplyPage { Tanks = count.Tanks, Kits = count.Kits };
+            changed = true;
+        }
+
+        if (Supplies.ReadBags() is { } bags && (bags.Tanks != record.Bags.Tanks || bags.Kits != record.Bags.Kits))
+        {
+            Diagnostics.Write($"Inventário: {bags.Tanks} tanques, {bags.Kits} kits de reparo");
+            record.Bags = new SupplyPage { Tanks = bags.Tanks, Kits = bags.Kits };
+            changed = true;
+        }
+
+        if (!changed)
+            return;
+
+        record.ChangedAt = now;
+        SaveConfig();
+        Diagnostics.Write($"Estoque total: {record.Tanks} tanques, {record.Kits} kits de reparo (páginas do baú vistas: {string.Join(", ", record.ChestPages.Keys.Order())})");
     }
 
     private unsafe void ReadWheels(long now)
@@ -652,11 +778,11 @@ public sealed class Plugin : IDalamudPlugin
     {
         var due = new Dictionary<string, (long Time, string Message)>();
         foreach (var sub in View.Subs.Where(s => s.ReturnTime != 0))
-            due[$"sub:{sub.Slot}"] = (sub.ReturnTime, $"Submarino {sub.Name} voltou!");
+            due[$"sub:{sub.Slot}"] = (sub.ReturnTime, L.SubReturned(sub.Name));
         foreach (var wheel in View.Wheels)
-            due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, $"{wheel.Name} está pronta!");
+            due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, L.WheelReady(wheel.Name));
         foreach (var plot in View.Plots)
-            due[$"plot:{plot.Key}"] = (plot.NextWaterAt, $"{plot.Name} já pode ser regado!");
+            due[$"plot:{plot.Key}"] = (plot.NextWaterAt, L.PlotReady(plot.Name));
 
         var changed = false;
         foreach (var (id, (time, message)) in due)
@@ -697,7 +823,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var parts = new[]
         {
-            ready == 0 ? null : ready == 1 ? "1 pronto" : $"{ready} prontos",
+            ready == 0 ? null : L.DtrReady(ready),
             pending.Count == 0 ? null : FormatRemaining(pending.Min() - now),
         };
         var text = string.Join(" | ", parts.Where(p => p != null));
