@@ -7,31 +7,72 @@ namespace FcTimers;
 // Abre sozinho uma vez depois de cada atualização. O texto fica em inglês.
 public static class Changelog
 {
-    public static readonly (string Version, string[] Notes)[] Entries =
+    public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.7.4",
+        [
+            ("Changed",
+            [
+                "Changelog reorganized by type of change.",
+            ]),
+        ]),
         ("0.7.3",
         [
-            "Watering is now matched to the garden you opened, even if the target is lost before the game's message, so each plot shows up on its own.",
+            ("Fixed",
+            [
+                "Watering is assigned to the correct plot when the target is cleared before the confirmation message.",
+            ]),
+            ("Changed",
+            [
+                "The Discord panel lists each plot on its own line.",
+            ]),
         ]),
         ("0.7.2",
         [
-            "Watering times are now fixed: water again 24 hours after the last watering, and the plant is counted as dying 48 hours after it. The setting in the window was removed.",
+            ("Changed",
+            [
+                "Watering times are fixed at 24 hours until the next watering and 48 hours until the plant withers, based on the shortest wilt time of any seed.",
+            ]),
+            ("Removed",
+            [
+                "Watering time settings from the main window.",
+            ]),
         ]),
         ("0.7.1",
         [
-            "New \"Enviar log\" button: sends the diagnostic log to the FC service, so it can be checked without copying and pasting.",
-            "If a submarine's loot is missed, the log is sent automatically (at most once every 10 minutes).",
-            "\"Plantas\" is now called \"Plantação\".",
+            ("Added",
+            [
+                "\"Enviar log\" button to upload the diagnostic log to the FC service.",
+                "Automatic log upload when submarine loot is missed, limited to once every 10 minutes.",
+            ]),
+            ("Changed",
+            [
+                "\"Plantas\" renamed to \"Plantação\".",
+            ]),
         ]),
         ("0.7.0",
         [
-            "Submarine loot is now captured the moment the voyage result arrives, fast enough for AutoRetainer.",
-            "Two-way sync: every member's /fct window now shows what the others read, not only what this PC saw.",
-            "Plants: each plot is tracked on its own. Watering is picked up automatically, or use \"Reguei todos agora\" (/fct regar).",
-            "Discord: 1-hour reminders for submarines and plots, a ping when they're ready, and warnings 3, 2 and 1 hours before a plant dies. Every alert is removed after 8 hours.",
-            "The Discord panel no longer lists today's items, to keep the message light. The loot totals are still there.",
-            "Loot days now follow the panel's time zone (Brasília) on every PC.",
-            "New diagnostic log with a Copy log button, to help track down missing loot.",
+            ("Added",
+            [
+                "Two-way sync: the main window, server info bar and chat alerts include data reported by other FC members.",
+                "Per-plot watering tracking, detected automatically or registered with \"Reguei todos agora\" and /fct regar.",
+                "Discord alerts for submarines and plots: 1-hour reminders, ready notifications and wither warnings 3, 2 and 1 hours in advance. Alerts are deleted after 8 hours.",
+                "Diagnostic log with a \"Copiar log\" button and an optional detailed mode.",
+                "In-game changelog.",
+            ]),
+            ("Changed",
+            [
+                "Submarine loot is captured as soon as the voyage result is received, including during AutoRetainer runs.",
+                "Loot is grouped by day in Brasília time (UTC-3) on all clients.",
+                "The Discord panel no longer lists the day's items. Loot totals are still shown.",
+            ]),
+        ]),
+        ("0.6.1",
+        [
+            ("Fixed",
+            [
+                "Duplicate fifth submarine entry.",
+            ]),
         ]),
     ];
 }
@@ -45,12 +86,17 @@ public sealed class ChangelogWindow : Window
 
     public override void Draw()
     {
-        foreach (var (version, notes) in Changelog.Entries)
+        foreach (var (version, sections) in Changelog.Entries)
         {
             ImGui.TextUnformatted($"Version {version}");
             ImGui.Separator();
-            foreach (var note in notes)
-                ImGui.TextWrapped($"- {note}");
+            foreach (var (section, notes) in sections)
+            {
+                ImGui.TextDisabled(section);
+                foreach (var note in notes)
+                    ImGui.TextWrapped($"- {note}");
+            }
+
             ImGui.Spacing();
         }
 
