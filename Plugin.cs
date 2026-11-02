@@ -68,6 +68,7 @@ public sealed class Plugin : IDalamudPlugin
     private bool inWorkshop;
     private (string Key, string Name, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
+    private string lastParts = string.Empty;
     private DateTime autoLogAt = DateTime.MaxValue;
     private DateTime lastAutoLog = DateTime.MinValue;
 
@@ -295,6 +296,8 @@ public sealed class Plugin : IDalamudPlugin
             ReadWheels(now);
             ReadActiveBuffs(now);
             ReadSupplies(now);
+            if (inWorkshop)
+                LogSubmarineParts();
         }
 
         Sync.ReportSupplies(Config.Supplies.Tanks, Config.Supplies.Kits, Config.Supplies.ChangedAt);
@@ -526,6 +529,18 @@ public sealed class Plugin : IDalamudPlugin
     {
         var item = DataManager.GetExcelSheet<Item>().GetRowOrDefault(itemId);
         return item == null ? null : (item.Value.Name.ToString(), item.Value.PriceLow);
+    }
+
+    // Em teste: registra as peças e o desgaste que aparecem na oficina, só quando algo muda.
+    private void LogSubmarineParts()
+    {
+        var parts = SubmarineParts.Read(id => LookupItem(id)?.Name);
+        var text = string.Join(" | ", parts.Select(p => $"{p.Container} {p.Slot}: {p.Name} {p.Condition:0.##}%"));
+        if (text == lastParts)
+            return;
+
+        lastParts = text;
+        Diagnostics.Write(parts.Count == 0 ? "Peças dos subs: nenhuma encontrada" : $"Peças dos subs ({parts.Count}): {text}");
     }
 
     private void ReadSupplies(long now)
