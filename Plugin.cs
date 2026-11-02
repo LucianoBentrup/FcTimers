@@ -68,7 +68,6 @@ public sealed class Plugin : IDalamudPlugin
     private bool inWorkshop;
     private (string Key, string Name, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
-    private string lastParts = string.Empty;
     private string lastScan = string.Empty;
     private DateTime nextScan = DateTime.MinValue;
     private DateTime autoLogAt = DateTime.MaxValue;
@@ -82,11 +81,15 @@ public sealed class Plugin : IDalamudPlugin
 
     public static string Version => typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "?";
 
+    public string LanguageCode => Config.Language.Length > 0 ? Config.Language
+        : PluginInterface.UiLanguage.StartsWith("pt", StringComparison.OrdinalIgnoreCase) ? "pt" : "en";
+
     public Plugin()
     {
         var saved = PluginInterface.GetPluginConfig() as Configuration;
         Config = saved ?? new Configuration { LastChangelogVersion = Version };
         Migrate();
+        L.English = LanguageCode == "en";
 
         Diagnostics = new DiagnosticLog(
             System.IO.Path.Combine(PluginInterface.GetPluginConfigDirectory(), "diagnostico.txt"),
@@ -125,11 +128,11 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.AddHandler(Command, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Abre a janela do FC Timers. Use \"/fct regar\" depois de regar a plantação.",
+            HelpMessage = L.HelpMain,
         });
         CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Atalho do /fctimers. \"/fct regar\" registra a rega da plantação.",
+            HelpMessage = L.HelpShort,
         });
 
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
@@ -163,7 +166,7 @@ public sealed class Plugin : IDalamudPlugin
     public static string FormatRemaining(long seconds)
     {
         if (seconds <= 0)
-            return "pronto";
+            return L.Ready;
 
         var time = TimeSpan.FromSeconds(seconds);
         return time.TotalHours >= 1 ? $"{(int)time.TotalHours}h{time.Minutes:00}" : $"{time.Minutes}m{time.Seconds:00}";
@@ -193,7 +196,11 @@ public sealed class Plugin : IDalamudPlugin
         if (Config.Version < 7 && Config.Garden.WateredAt != 0 && !Config.Plots.ContainsKey(GeneralPlot))
             Config.Plots[GeneralPlot] = new PlotRecord { Name = GeneralPlotName, WateredAt = Config.Garden.WateredAt };
 
-        Config.Version = 7;
+        // Quem já usava o plugin continua em português, sem depender do idioma do Dalamud.
+        if (Config.Version < 8 && Config.Language.Length == 0)
+            Config.Language = "pt";
+
+        Config.Version = 8;
         SaveConfig();
     }
 
@@ -203,7 +210,7 @@ public sealed class Plugin : IDalamudPlugin
         if (argument is "regar" or "water")
         {
             WaterAll("comando /fct regar");
-            ChatGui.Print("Rega registrada em todos os plots.", "FC Timers");
+            ChatGui.Print(L.WateredAll, "FC Timers");
             return;
         }
 
@@ -298,8 +305,6 @@ public sealed class Plugin : IDalamudPlugin
             ReadWheels(now);
             ReadActiveBuffs(now);
             ReadSupplies(now);
-            if (inWorkshop)
-                LogSubmarineParts();
         }
 
         Sync.ReportSupplies(Config.Supplies.Tanks, Config.Supplies.Kits, Config.Supplies.ChangedAt);
@@ -321,6 +326,7 @@ public sealed class Plugin : IDalamudPlugin
             SendLog("automático, loot não lido");
         }
 
+        L.English = LanguageCode == "en";
         Sync.WindowOpen = mainWindow.IsOpen;
         Sync.Tick();
         View = FcView.Build(Config, localReadings, Sync.Remote, Sync.RemoteOffset);
@@ -369,8 +375,10 @@ public sealed class Plugin : IDalamudPlugin
         var workshop = manager->WorkshopTerritory;
         var pointers = workshop->Submersible.DataPointers;
         var changed = false;
-        // A varredura de teste roda no máximo 1 vez por segundo, e não a cada frame como a leitura do loot.
-        var scan = DateTime.UtcNow >= nextScan ? new List<string>() : null;
+
+        // Rank, peças e desgaste são lidos 1 vez por segundo, e não a cada frame como o loot.
+        var conditions = DateTime.UtcNow >= nextScan ? SubmarineParts.ReadCondition() : null;
+        var lastVoyages = conditions != null && Config.DetailedLog ? new List<string>() : null;
 
         // A lista tem 5 posições, mas a FC só tem 4 submarinos: a última repete o sub selecionado.
         for (var slot = 0; slot < LootLedger.MaxSubmarines; slot++)
@@ -384,15 +392,17 @@ public sealed class Plugin : IDalamudPlugin
             long returnTime = sub->ReturnTime;
 
             changed |= CaptureLoot(slot, key, sub, name, now);
-            scan?.AddRange(WorkshopScan.Describe(sub, DataManager));
             localReadings.Subs[slot] = now;
-            Sync.ReportSub(slot, name, returnTime);
 
-            if (Config.Subs.TryGetValue(key, out var record))
+            if (!Config.Subs.TryGetValue(key, out var record))
             {
-                if (record.Name == name && record.ReturnTime == returnTime)
-                    continue;
-
+                record = new SubRecord { Name = name, ReturnTime = returnTime };
+                Config.Subs[key] = record;
+                Diagnostics.Detail($"{name}: visto pela primeira vez, volta {DiagnosticLog.Time(returnTime)}");
+                changed = true;
+            }
+            else if (record.Name != name || record.ReturnTime != returnTime)
+            {
                 if (record.ReturnTime != returnTime)
                 {
                     LogReturnChange(key, name, record.ReturnTime, returnTime, now);
@@ -401,24 +411,35 @@ public sealed class Plugin : IDalamudPlugin
 
                 record.Name = name;
                 record.ReturnTime = returnTime;
-            }
-            else
-            {
-                Config.Subs[key] = new SubRecord { Name = name, ReturnTime = returnTime };
-                Diagnostics.Detail($"{name}: visto pela primeira vez, volta {DiagnosticLog.Time(returnTime)}");
+                changed = true;
             }
 
-            changed = true;
+            if (conditions != null)
+            {
+                var condition = conditions.TryGetValue(slot, out var read) ? read : record.Details?.Condition;
+                var details = WorkshopScan.Read(sub, DataManager, condition);
+                if (details != record.Details)
+                {
+                    LogDetailsChange(name, record.Details, details);
+                    record.Details = details;
+                    changed = true;
+                }
+
+                lastVoyages?.AddRange(WorkshopScan.DescribeLastVoyage(sub, DataManager));
+            }
+
+            Sync.ReportSub(slot, name, returnTime, record.Details);
         }
 
-        if (scan != null)
+        if (conditions != null)
         {
             nextScan = DateTime.UtcNow.AddSeconds(1);
-            var text = string.Join('\n', scan);
-            if (text != lastScan)
+            var text = string.Join('\n', lastVoyages ?? []);
+            if (lastVoyages != null && text != lastScan)
             {
                 lastScan = text;
-                Diagnostics.Write($"Varredura da oficina:\n{text}");
+                if (text.Length > 0)
+                    Diagnostics.Detail($"Última viagem na memória:\n{text}");
             }
         }
 
@@ -547,16 +568,15 @@ public sealed class Plugin : IDalamudPlugin
         return item == null ? null : (item.Value.Name.ToString(), item.Value.PriceLow);
     }
 
-    // Em teste: registra as peças e o desgaste que aparecem na oficina, só quando algo muda.
-    private void LogSubmarineParts()
+    // O XP muda a cada leitura de viagem; o resto só quando rank, peças, rota ou desgaste mudam.
+    private void LogDetailsChange(string name, SubDetails? previous, SubDetails current)
     {
-        var parts = SubmarineParts.Read(id => LookupItem(id)?.Name);
-        var text = string.Join(" | ", parts.Select(p => $"{p.Container} {p.Slot}: {p.Name} {p.Condition:0.##}%"));
-        if (text == lastParts)
-            return;
-
-        lastParts = text;
-        Diagnostics.Write(parts.Count == 0 ? "Peças dos subs: nenhuma encontrada" : $"Peças dos subs ({parts.Count}): {text}");
+        var text = $"{name}: rank {current.Rank} ({current.ExpPercent}%), {current.Build}, rota {current.Route} "
+            + $"({current.TanksPerVoyage} tanques), peças {current.Condition?.ToString("0.#") ?? "?"}%, reparo {current.RepairKits} kits";
+        if (previous == null || previous with { ExpPercent = current.ExpPercent } != current)
+            Diagnostics.Write(text);
+        else
+            Diagnostics.Detail(text);
     }
 
     private void ReadSupplies(long now)
@@ -727,11 +747,11 @@ public sealed class Plugin : IDalamudPlugin
     {
         var due = new Dictionary<string, (long Time, string Message)>();
         foreach (var sub in View.Subs.Where(s => s.ReturnTime != 0))
-            due[$"sub:{sub.Slot}"] = (sub.ReturnTime, $"Submarino {sub.Name} voltou!");
+            due[$"sub:{sub.Slot}"] = (sub.ReturnTime, L.SubReturned(sub.Name));
         foreach (var wheel in View.Wheels)
-            due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, $"{wheel.Name} está pronta!");
+            due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, L.WheelReady(wheel.Name));
         foreach (var plot in View.Plots)
-            due[$"plot:{plot.Key}"] = (plot.NextWaterAt, $"{plot.Name} já pode ser regado!");
+            due[$"plot:{plot.Key}"] = (plot.NextWaterAt, L.PlotReady(plot.Name));
 
         var changed = false;
         foreach (var (id, (time, message)) in due)
@@ -772,7 +792,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var parts = new[]
         {
-            ready == 0 ? null : ready == 1 ? "1 pronto" : $"{ready} prontos",
+            ready == 0 ? null : L.DtrReady(ready),
             pending.Count == 0 ? null : FormatRemaining(pending.Min() - now),
         };
         var text = string.Join(" | ", parts.Where(p => p != null));

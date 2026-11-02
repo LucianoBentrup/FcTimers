@@ -23,7 +23,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private static readonly TimeSpan FetchClosed = TimeSpan.FromMinutes(5);
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
-    private sealed record PendingSub(int Slot, string Name, long ReturnTime, DateTime ReadAt);
+    private sealed record PendingSub(int Slot, string Name, long ReturnTime, SubDetails? Details, DateTime ReadAt);
     private sealed record PendingBuffs(List<BuffReading> Slots, DateTime ReadAt);
     private sealed record PendingActive(List<ActiveBuffReading> Buffs, DateTime ReadAt);
     private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, DateTime ReadAt);
@@ -73,17 +73,17 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
     public void Dispose() => http.Dispose();
 
-    public void ReportSub(int slot, string name, long returnTime)
+    public void ReportSub(int slot, string name, long returnTime, SubDetails? details)
     {
         if (!Enabled)
             return;
 
-        var signature = $"{name}|{returnTime}";
+        var signature = $"{name}|{returnTime}|{details}";
         if (lastSubs.GetValueOrDefault(slot) == signature)
             return;
 
         lastSubs[slot] = signature;
-        pendingSubs[slot] = new PendingSub(slot, name, returnTime, DateTime.UtcNow);
+        pendingSubs[slot] = new PendingSub(slot, name, returnTime, details, DateTime.UtcNow);
     }
 
     public void ReportBuffs(List<BuffReading> slots)
@@ -224,7 +224,23 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     {
         var body = new
         {
-            subs = sendingSubs.Select(s => new { slot = s.Slot, name = s.Name, returnTime = s.ReturnTime, age = Age(s.ReadAt, now) }),
+            subs = sendingSubs.Select(s => new
+            {
+                slot = s.Slot,
+                name = s.Name,
+                returnTime = s.ReturnTime,
+                age = Age(s.ReadAt, now),
+                details = s.Details == null ? null : new
+                {
+                    rank = s.Details.Rank,
+                    exp = s.Details.ExpPercent,
+                    build = s.Details.Build,
+                    route = s.Details.Route,
+                    tanks = s.Details.TanksPerVoyage,
+                    kits = s.Details.RepairKits,
+                    condition = s.Details.Condition == null ? (double?)null : Math.Round(s.Details.Condition.Value, 1),
+                },
+            }),
             buffs = sendingBuffs == null ? null : new
             {
                 age = Age(sendingBuffs.ReadAt, now),

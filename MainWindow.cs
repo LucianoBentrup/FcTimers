@@ -9,88 +9,150 @@ namespace FcTimers;
 
 public class MainWindow : Window
 {
+    // Abaixo disso o desgaste aparece em destaque, igual ao painel do Discord.
+    private const double RepairShow = 50;
+    private const double RepairLow = 30;
+
+    private static readonly (string Code, string Name)[] Languages = [("pt", "Português"), ("en", "English")];
+
     private readonly Plugin plugin;
     private DateTime copiedAt = DateTime.MinValue;
 
     public MainWindow(Plugin plugin) : base("FC Timers")
     {
         this.plugin = plugin;
-        SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(360, 240) };
+        SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(380, 260) };
     }
 
     public override void OnOpen() => plugin.Sync.FetchSoon();
 
     public override void Draw()
     {
-        var config = plugin.Config;
-        var view = plugin.View;
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using var tabs = ImRaii.TabBar("##tabs");
+        if (!tabs)
+            return;
 
-        ImGui.TextUnformatted("Submarinos");
-        ImGui.Separator();
+        // O id depois de ### mantém a aba aberta ao trocar o idioma.
+        Tab($"{L.TabSubs}###subs", () => DrawSubs(plugin.View, now));
+        Tab($"{L.TabLoot}###loot", () => DrawLoot(plugin.View));
+        Tab($"{L.TabBuffs}###buffs", () => DrawBuffs(plugin.View, now));
+        Tab($"{L.TabGarden}###garden", () => DrawGarden(plugin.Config, plugin.View, now));
+        Tab($"{L.TabSettings}###settings", () => DrawSettings(plugin.Config));
+    }
+
+    private static void Tab(string label, Action draw)
+    {
+        using var tab = ImRaii.TabItem(label);
+        if (tab)
+            draw();
+    }
+
+    private static void DrawSubs(FcView view, long now)
+    {
         if (view.Subs.Count == 0)
-            ImGui.TextUnformatted("Nenhum dado ainda. Abra o painel de submarinos na oficina da FC.");
+            ImGui.TextUnformatted(L.NoSubs);
+
+        // Build e rota numa linha discreta. Se os subs forem diferentes, cada um mostra a sua.
+        var setups = view.Subs.Select(s => s.Details).Where(d => d != null && d.Build.Length > 0)
+            .Select(d => L.SetupLine(d!.Build, d.Route, d.TanksPerVoyage)).Distinct().ToList();
+        if (setups.Count == 1)
+            ImGui.TextDisabled(setups[0]);
 
         foreach (var sub in view.Subs.OrderBy(s => s.ReturnTime))
         {
-            var state = sub.ReturnTime == 0 ? "parado" : Plugin.FormatRemaining(sub.ReturnTime - now);
-            ImGui.TextUnformatted($"{sub.Name}: {state}");
+            var details = sub.Details;
+            var rank = details == null ? string.Empty : $" (R{details.Rank}, {details.ExpPercent}%)";
+            var state = sub.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(sub.ReturnTime - now);
+            ImGui.TextUnformatted($"{sub.Name}{rank}: {state}");
+
+            if (details?.Condition is { } condition && condition < RepairShow)
+            {
+                ImGui.SameLine();
+                var text = $"{L.Wear($"{Math.Floor(condition)}%")}{(condition < RepairLow ? $", {L.NeedsRepair}" : string.Empty)}";
+                if (condition < RepairLow)
+                    ImGui.TextColored(new Vector4(1f, 0.45f, 0.35f, 1f), text);
+                else
+                    ImGui.TextDisabled(text);
+            }
+
+            if (setups.Count > 1 && details != null)
+                ImGui.TextDisabled($"  {L.SetupLine(details.Build, details.Route, details.TanksPerVoyage)}");
         }
 
         ImGui.Spacing();
-        ImGui.TextUnformatted("Buffs");
+        ImGui.TextUnformatted(L.Supplies);
+        ImGui.Separator();
+        if (view.Supplies is not { } stock)
+        {
+            ImGui.TextUnformatted(L.NoSupplies);
+            return;
+        }
+
+        var known = view.Subs.Select(s => s.Details).Where(d => d != null).ToList();
+        var tanksPerRound = known.Sum(d => d!.TanksPerVoyage);
+        var kitsPerRepair = known.Count == 0 ? 0 : known.Max(d => d!.RepairKits);
+        ImGui.TextUnformatted(L.Tanks($"{stock.Tanks:N0}") + (tanksPerRound > 0 ? $" ({L.Rounds(stock.Tanks / tanksPerRound)})" : string.Empty));
+        ImGui.TextUnformatted(L.Kits($"{stock.Kits:N0}") + (kitsPerRepair > 0 ? $" ({L.Repairs(stock.Kits / kitsPerRepair)})" : string.Empty));
+        var age = now - stock.ObservedAt;
+        ImGui.TextDisabled(age < 60 ? L.CountedNow : L.CountedAgo(Plugin.FormatRemaining(age)));
+    }
+
+    private static void DrawLoot(FcView view)
+    {
+        ImGui.TextDisabled(L.LootTitle);
+        if (view.Voyages.Count == 0)
+            ImGui.TextUnformatted(L.NoVoyages);
+
+        var today = GameTime.Today;
+        var days = view.Voyages.Select(v => v.Voyage)
+            .GroupBy(v => LootLedger.DayOf(v, GameTime.PanelZone))
+            .OrderByDescending(d => d.Key)
+            .Take(7);
+
+        foreach (var day in days)
+        {
+            var total = LootLedger.Total(day);
+            var label = $"{day.Key:dd/MM}: {L.DayTotal($"{total:N0}", L.Voyages(day.Count()))}###{day.Key:yyyyMMdd}";
+            var flags = day.Key == today ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
+            if (!ImGui.CollapsingHeader(label, flags))
+                continue;
+
+            var items = day.SelectMany(v => v.Items)
+                .GroupBy(i => i.Name)
+                .Select(g => (Name: g.Key, Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Value)))
+                .OrderByDescending(i => i.Value);
+
+            foreach (var item in items)
+                ImGui.TextUnformatted($"{item.Count}x {item.Name}: {item.Value:N0} gil");
+        }
+    }
+
+    private static void DrawBuffs(FcView view, long now)
+    {
+        ImGui.TextUnformatted(L.Wheels);
         ImGui.Separator();
         if (view.Wheels.Count == 0)
-            ImGui.TextUnformatted("Nenhum buff registrado. Abra a mesa da roda na casa da FC.");
+            ImGui.TextUnformatted(L.NoWheels);
 
         foreach (var wheel in view.Wheels.OrderBy(w => w.ReadyTime))
             ImGui.TextUnformatted($"{wheel.Name}: {Plugin.FormatRemaining(wheel.ReadyTime - now)}");
 
-        DrawSupplies(view, now);
-        DrawGarden(config, view, now);
-        DrawCharacters(config);
-        DrawLoot(view);
-
         ImGui.Spacing();
-        ImGui.TextUnformatted("Buffs ativos");
+        ImGui.TextUnformatted(L.ActiveBuffs);
         ImGui.Separator();
         var active = view.ActiveBuffs.Where(b => b.EndTime == 0 || b.EndTime > now).ToList();
         if (active.Count == 0)
-            ImGui.TextUnformatted("Nenhum");
+            ImGui.TextUnformatted(L.None);
 
         foreach (var buff in active)
             ImGui.TextUnformatted($"{buff.Name}: {(buff.EndTime == 0 ? "?" : Plugin.FormatRemaining(buff.EndTime - now))}");
-
-        DrawDiscord(config);
-        DrawDiagnostics(config);
-    }
-
-    private static void DrawSupplies(FcView view, long now)
-    {
-        ImGui.Spacing();
-        ImGui.TextUnformatted("Estoque");
-        ImGui.Separator();
-        if (view.Supplies is not { } stock)
-        {
-            ImGui.TextUnformatted("Nenhum dado ainda. Abra o baú da FC.");
-            return;
-        }
-
-        ImGui.TextUnformatted($"Tanques de ceruleum: {stock.Tanks:N0}");
-        ImGui.TextUnformatted($"Kits de reparo: {stock.Kits:N0}");
-        var age = now - stock.ObservedAt;
-        var when = age < 60 ? "agora" : $"há {Plugin.FormatRemaining(age)}";
-        ImGui.TextDisabled($"Contado {when}, no baú da FC e no inventário de quem abriu.");
     }
 
     private void DrawGarden(Configuration config, FcView view, long now)
     {
-        ImGui.Spacing();
-        ImGui.TextUnformatted("Plantação");
-        ImGui.Separator();
-
         if (view.Plots.Count == 0)
-            ImGui.TextUnformatted("Nenhuma rega registrada. Regue um plot com o plugin ligado.");
+            ImGui.TextUnformatted(L.NoPlots);
 
         foreach (var plot in view.Plots)
         {
@@ -116,95 +178,93 @@ public class MainWindow : Window
             if (record != null)
             {
                 ImGui.SameLine();
-                if (ImGui.SmallButton("Remover"))
+                if (ImGui.SmallButton(L.Remove))
                     plugin.RemovePlot(plot.Key);
             }
 
             ImGui.PopID();
         }
 
-        if (ImGui.Button("Reguei todos agora"))
+        ImGui.Spacing();
+        if (ImGui.Button(L.WaterAll))
             plugin.WaterAll("botão Reguei todos agora");
         ImGui.SameLine();
-        ImGui.TextDisabled("ou /fct regar. Cada plot também é registrado sozinho ao regar.");
+        ImGui.TextDisabled(L.WaterAllHint);
     }
 
     private static string PlotState(PlotView plot, long now)
     {
         if (plot.NextWaterAt > now)
-            return $"regar em {Plugin.FormatRemaining(plot.NextWaterAt - now)}";
+            return L.WaterIn(Plugin.FormatRemaining(plot.NextWaterAt - now));
         if (plot.DieAt > now)
-            return $"pronta para regar. Morre em {Plugin.FormatRemaining(plot.DieAt - now)}";
-        return plot.DieAt > 0 ? "passou do prazo de rega" : "pronta para regar";
+            return L.WaterNow(Plugin.FormatRemaining(plot.DieAt - now));
+        return plot.DieAt > 0 ? L.WaterLate : L.WaterReady;
     }
 
-    private void DrawCharacters(Configuration config)
+    private void DrawSettings(Configuration config)
     {
-        ImGui.Spacing();
-        ImGui.TextUnformatted("Personagens que leem e enviam dados");
-        ImGui.Separator();
+        var current = Array.FindIndex(Languages, l => l.Code == plugin.LanguageCode);
+        ImGui.SetNextItemWidth(150);
+        if (ImGui.Combo(L.Language, ref current, Languages.Select(l => l.Name).ToArray(), Languages.Length))
+        {
+            config.Language = Languages[current].Code;
+            plugin.SaveConfig();
+        }
 
+        ImGui.Spacing();
+        ImGui.TextUnformatted(L.Characters);
+        ImGui.Separator();
         foreach (var (id, character) in config.Characters.OrderBy(c => c.Value.Name))
         {
             var enabled = character.Enabled;
-            var current = id == plugin.CurrentCharacterId ? " (atual)" : string.Empty;
-            if (ImGui.Checkbox($"{character.Name}{current}###{id}", ref enabled))
+            var mark = id == plugin.CurrentCharacterId ? $" ({L.Current})" : string.Empty;
+            if (ImGui.Checkbox($"{character.Name}{mark}###{id}", ref enabled))
             {
                 character.Enabled = enabled;
                 plugin.SaveConfig();
             }
         }
-    }
 
-    private void DrawDiscord(Configuration config)
-    {
         ImGui.Spacing();
-        if (!ImGui.CollapsingHeader("Discord"))
-            return;
-
-        var enabled = config.SyncEnabled;
-        if (ImGui.Checkbox("Enviar e receber dados do painel da FC", ref enabled))
+        ImGui.TextUnformatted("Discord");
+        ImGui.Separator();
+        var sync = config.SyncEnabled;
+        if (ImGui.Checkbox(L.SyncEnabled, ref sync))
         {
-            config.SyncEnabled = enabled;
+            config.SyncEnabled = sync;
             plugin.SaveConfig();
         }
 
         var url = config.ServiceUrl;
-        if (ImGui.InputText("Endereço do serviço", ref url, 256))
+        if (ImGui.InputText(L.ServiceUrl, ref url, 256))
         {
             config.ServiceUrl = url;
             plugin.SaveConfig();
         }
 
         var key = config.ServiceKey;
-        if (ImGui.InputText("Chave da FC", ref key, 256, ImGuiInputTextFlags.Password))
+        if (ImGui.InputText(L.ServiceKey, ref key, 256, ImGuiInputTextFlags.Password))
         {
             config.ServiceKey = key;
             plugin.SaveConfig();
         }
 
-        ImGui.TextUnformatted($"Envio: {plugin.Sync.Status}");
-        ImGui.TextUnformatted(plugin.Sync.LastFetch is { } fetched
-            ? $"Recebido: {fetched:HH:mm}"
-            : "Recebido: ainda nada, mostrando só os dados deste PC");
-    }
+        ImGui.TextUnformatted(L.Sent(plugin.Sync.Status));
+        ImGui.TextUnformatted(plugin.Sync.LastFetch is { } fetched ? L.Received($"{fetched:HH:mm}") : L.NothingReceived);
 
-    private void DrawDiagnostics(Configuration config)
-    {
         ImGui.Spacing();
-        if (!ImGui.CollapsingHeader("Diagnóstico"))
-            return;
-
+        ImGui.TextUnformatted(L.Diagnostics);
+        ImGui.Separator();
         var detailed = config.DetailedLog;
-        if (ImGui.Checkbox("Log detalhado", ref detailed))
+        if (ImGui.Checkbox(L.DetailedLog, ref detailed))
         {
             config.DetailedLog = detailed;
             plugin.SaveConfig();
         }
 
-        ImGui.TextDisabled("Desligado: só loot, rega, horta e erros. Ligado: também cada leitura e envio.");
+        ImGui.TextDisabled(L.DetailedLogHint);
 
-        if (ImGui.Button("Copiar log"))
+        if (ImGui.Button(L.CopyLog))
         {
             ImGui.SetClipboardText(plugin.LogText());
             copiedAt = DateTime.Now;
@@ -213,47 +273,14 @@ public class MainWindow : Window
         ImGui.SameLine();
         using (ImRaii.Disabled(!config.SyncEnabled || plugin.Sync.SendingLog))
         {
-            if (ImGui.Button("Enviar log"))
+            if (ImGui.Button(L.SendLog))
                 plugin.SendLog("botão Enviar log");
         }
 
         ImGui.SameLine();
         ImGui.TextDisabled(DateTime.Now - copiedAt < TimeSpan.FromSeconds(5)
-            ? "Copiado. Cole no Discord."
-            : plugin.Sync.LogStatus.Length > 0 ? plugin.Sync.LogStatus : "O log não inclui a chave da FC.");
-        ImGui.TextDisabled("Enviar log guarda o log no serviço da FC. Ele também vai sozinho se um loot se perder.");
-    }
-
-    private static void DrawLoot(FcView view)
-    {
-        ImGui.Spacing();
-        ImGui.TextUnformatted("Loot por dia (valor de venda para NPC, dia de Brasília)");
-        ImGui.Separator();
-        if (view.Voyages.Count == 0)
-            ImGui.TextUnformatted("Nenhuma viagem registrada ainda.");
-
-        var today = GameTime.Today;
-        var days = view.Voyages.Select(v => v.Voyage)
-            .GroupBy(v => LootLedger.DayOf(v, GameTime.PanelZone))
-            .OrderByDescending(d => d.Key)
-            .Take(7);
-
-        foreach (var day in days)
-        {
-            var total = LootLedger.Total(day);
-            var voyages = day.Count() == 1 ? "1 viagem" : $"{day.Count()} viagens";
-            var label = $"{day.Key:dd/MM}: {total:N0} gil em {voyages}###{day.Key:yyyyMMdd}";
-            var flags = day.Key == today ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
-            if (!ImGui.CollapsingHeader(label, flags))
-                continue;
-
-            var items = day.SelectMany(v => v.Items)
-                .GroupBy(i => i.Name)
-                .Select(g => (Name: g.Key, Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Value)))
-                .OrderByDescending(i => i.Value);
-
-            foreach (var item in items)
-                ImGui.TextUnformatted($"{item.Count}x {item.Name}: {item.Value:N0} gil");
-        }
+            ? L.Copied
+            : plugin.Sync.LogStatus.Length > 0 ? plugin.Sync.LogStatus : L.LogHasNoKey);
+        ImGui.TextDisabled(L.SendLogHint);
     }
 }

@@ -43,6 +43,12 @@
 - [x] Rega e avisos por plot, no plugin e no Discord.
 - [x] Changelog no jogo, em inglês, que abre depois de cada atualização (texto para revisar).
 
+## Versão pública (depois da 0.8)
+- [ ] Serviço para várias FCs, cada uma com os próprios dados.
+- [ ] Bot do Discord no lugar do webhook: o dono da FC adiciona o bot, usa um comando no canal e recebe um código curto para colar no `/fct`. Sem webhook, Cloudflare ou chave longa.
+- [ ] Painel e avisos do Discord em inglês também.
+- [ ] Pedido de entrada no repositório oficial do Dalamud, com a política de privacidade.
+
 ## Antes de publicar
 - [ ] Testar uma coleta completa dos 4 subs e comparar com o relatório do jogo e com o baú.
 - [x] Envio do log ao serviço (0.7.1), com botão e envio automático quando um loot se perde.

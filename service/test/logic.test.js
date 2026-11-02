@@ -250,6 +250,40 @@ test('sem tempo para o lembrete, só sai o aviso de pronto', () => {
 
 const plot = (key, name, nextWaterAt, dieAt = 0, age = 0) => ({ key, name, nextWaterAt, dieAt, age });
 
+test('detalhes dos subs: rank no nome, build e rota no topo, desgaste e aviso de reparo', () => {
+  const state = newState();
+  const details = (condition) => ({ rank: 130, exp: 51, build: 'S+S+U+C+', route: 'J > O > R > Z', tanks: 21, kits: 24, condition });
+  const subs = [0, 1, 2, 3].map((slot) => ({ slot, name: `Sub${slot}`, returnTime: at(2, 15), age: 0, details: details(40.4) }));
+  assert.equal(isValidUpdate({ subs }), true);
+  assert.equal(isValidUpdate({ subs: [{ ...subs[0], details: { ...details(40), exp: 120 } }] }), false);
+  applyUpdate(state, { subs, supplies: { tanks: 579, kits: 65, age: 0 } }, at(1, 9));
+
+  const fields = renderPanel(state, [], at(1, 9)).embeds[0].fields;
+  const subField = fields[0].value.split('\n');
+  assert.equal(subField[0], '*S+S+U+C+ · J > O > R > Z*');
+  assert.equal(subField[1], `**Sub0** (R130): volta <t:${at(2, 15)}:R> (<t:${at(2, 15)}:t>) · 🔧 40%`);
+  assert.match(fields.find((f) => f.name.includes('Estoque')).value, /579\*\* tanques de ceruleum \(≈ 6 rodadas\)\n\*\*65\*\* kits de reparo \(≈ 2 reparos completos\)/);
+  assert.deepEqual(pendingAlerts(state, at(1, 9)), []);
+
+  // Abaixo de 30%, um aviso só com os subs gastos, e não repete.
+  applyUpdate(state, { subs: subs.map((s) => ({ ...s, details: details(s.slot < 2 ? 28.9 : 40) })) }, at(1, 10));
+  const [repair] = pendingAlerts(state, at(1, 10));
+  assert.equal(alertPayload(repair, '').content,
+    '🔧 Hora de reparar: **Sub0** (28%) e **Sub1** (28%). O reparo completo gasta 48 kits, 65 no estoque.');
+  markSent(state, repair);
+  assert.deepEqual(pendingAlerts(state, at(1, 11)), []);
+  assert.match(renderPanel(state, [], at(1, 11)).embeds[0].fields[0].value, /\*\*Sub0\*\* \(R130\): .* · ⚠️ 28%/);
+
+  // Depois do reparo, uma nova queda volta a avisar.
+  applyUpdate(state, { subs: [{ ...subs[0], details: details(100) }] }, at(1, 12));
+  applyUpdate(state, { subs: [{ ...subs[0], details: details(25) }] }, at(1, 13));
+  assert.equal(pendingAlerts(state, at(1, 13))[0].subs.map((s) => s.name).join(), 'Sub0');
+
+  // Plugin antigo sem detalhes não apaga o que já se sabe.
+  applyUpdate(state, { subs: [{ slot: 2, name: 'Sub2', returnTime: at(2, 15), age: 0 }] }, at(1, 14));
+  assert.equal(state.subs[2].details.rank, 130);
+});
+
 test('estoque: painel, aviso de estoque baixo uma vez e volta a avisar depois de repor', () => {
   const state = newState();
   applyUpdate(state, { supplies: { tanks: 579, kits: 65, age: 0 } }, at(1, 9));

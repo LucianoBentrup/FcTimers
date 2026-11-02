@@ -22,6 +22,23 @@ public sealed class RemoteSub
     public string Name { get; set; } = string.Empty;
     public long ReturnTime { get; set; }
     public long ObservedAt { get; set; }
+    public RemoteSubDetails? Details { get; set; }
+}
+
+public sealed class RemoteSubDetails
+{
+    public int Rank { get; set; }
+    public int Exp { get; set; }
+    public string Build { get; set; } = string.Empty;
+    public string Route { get; set; } = string.Empty;
+    public int Tanks { get; set; }
+    public int Kits { get; set; }
+    public double? Condition { get; set; }
+
+    public SubDetails ToDetails() => new()
+    {
+        Rank = Rank, ExpPercent = Exp, Build = Build, Route = Route, TanksPerVoyage = Tanks, RepairKits = Kits, Condition = Condition,
+    };
 }
 
 public sealed class RemoteWheel
@@ -65,7 +82,7 @@ public sealed class RemoteVoyage
     public List<LootItem> Items { get; set; } = [];
 }
 
-public readonly record struct SubView(int Slot, string Name, long ReturnTime);
+public readonly record struct SubView(int Slot, string Name, long ReturnTime, SubDetails? Details);
 
 public readonly record struct WheelView(int Slot, string Name, long ReadyTime);
 
@@ -104,7 +121,7 @@ public sealed class FcView
         foreach (var (key, record) in config.Subs)
         {
             var slot = int.Parse(key.Split(':')[^1]);
-            subs[slot] = (new SubView(slot, record.Name, record.ReturnTime), local.Subs.GetValueOrDefault(slot));
+            subs[slot] = (new SubView(slot, record.Name, record.ReturnTime, record.Details), local.Subs.GetValueOrDefault(slot));
         }
 
         foreach (var (slotText, sub) in remote?.Subs ?? [])
@@ -112,7 +129,7 @@ public sealed class FcView
             if (!int.TryParse(slotText, out var slot) || slot >= LootLedger.MaxSubmarines)
                 continue;
             if (!subs.TryGetValue(slot, out var current) || Local(sub.ObservedAt) > current.ObservedAt)
-                subs[slot] = (new SubView(slot, sub.Name, sub.ReturnTime), Local(sub.ObservedAt));
+                subs[slot] = (new SubView(slot, sub.Name, sub.ReturnTime, sub.Details?.ToDetails() ?? current.View.Details), Local(sub.ObservedAt));
         }
 
         var wheels = remote != null && Local(remote.BuffsObservedAt) > local.Wheels

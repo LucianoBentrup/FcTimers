@@ -13,8 +13,14 @@ public static class Changelog
         [
             ("Added",
             [
-                "Ceruleum tank and repair material stock, counted from the FC chest and the inventory, in the main window and the Discord panel.",
-                "Discord alert when stock falls below 120 tanks or 20 repair materials.",
+                "Ceruleum tank and repair material stock, counted from the FC chest and the inventory, with how many rounds and full repairs it covers.",
+                "Submarine rank, experience, build, route and part condition in the main window and the Discord panel.",
+                "Discord alerts when a submarine needs repair (below 30%) and when stock falls below 120 tanks or 20 repair materials.",
+                "English translation. The language can be changed in Settings.",
+            ]),
+            ("Changed",
+            [
+                "The main window is split into tabs: Submarines, Loot, Buffs, Garden and Settings.",
             ]),
         ]),
         ("0.7.4",

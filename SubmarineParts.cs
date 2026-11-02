@@ -1,50 +1,42 @@
-using System;
 using System.Collections.Generic;
+using System.Linq;
 using FFXIVClientStructs.FFXIV.Client.Game;
 
 namespace FcTimers;
 
-public readonly record struct PartReading(InventoryType Container, int Slot, uint ItemId, string Name, double Condition);
-
-// Peças dos subs e airships ("Shark-class Bow" e afins), com o desgaste. Ainda em teste:
-// o plugin só registra no log o que encontrar na oficina, para comparar com a tela de reparo do jogo.
+// Desgaste das peças dos subs. O jogo carrega isso ao entrar na oficina, em 5 posições por sub:
+// casco, popa, proa, ponte e uma vazia. Vale a peça mais gasta de cada sub.
 public static class SubmarineParts
 {
-    private static readonly InventoryType[] Containers =
-    [
-        InventoryType.HousingInteriorPlacedItems1,
-        InventoryType.HousingInteriorPlacedItems2,
-        InventoryType.HousingInteriorPlacedItems3,
-    ];
+    private const int SlotsPerSub = 5;
+    private const int PartsPerSub = 4;
 
-    // O jogo guarda o desgaste de 0 a 30000, que vira 0% a 100%.
-    public static unsafe List<PartReading> Read(Func<uint, string?> name)
+    // O jogo guarda o desgaste de 0 a 30000, que vira 0% a 100%. Chave: posição do sub, de 0 a 3.
+    public static unsafe Dictionary<int, double> ReadCondition()
     {
-        var parts = new List<PartReading>();
+        var conditions = new Dictionary<int, double>();
         var manager = InventoryManager.Instance();
         if (manager == null)
-            return parts;
+            return conditions;
 
-        foreach (var type in Containers)
+        var container = manager->GetInventoryContainer(InventoryType.HousingInteriorPlacedItems2);
+        if (container == null || !container->IsLoaded)
+            return conditions;
+
+        for (var sub = 0; sub < LootLedger.MaxSubmarines; sub++)
         {
-            var container = manager->GetInventoryContainer(type);
-            if (container == null || !container->IsLoaded)
-                continue;
-
-            for (var slot = 0; slot < container->Size; slot++)
+            var parts = new List<double>();
+            for (var slot = sub * SlotsPerSub; slot < (sub * SlotsPerSub) + PartsPerSub && slot < container->Size; slot++)
             {
                 var item = container->GetInventorySlot(slot);
-                if (item == null || item->ItemId == 0)
-                    continue;
-
-                var itemName = name(item->ItemId);
-                if (itemName == null || !itemName.Contains("-class", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                parts.Add(new PartReading(type, slot, item->ItemId, itemName, item->Condition / 300.0));
+                if (item != null && item->ItemId != 0)
+                    parts.Add(item->Condition / 300.0);
             }
+
+            if (parts.Count == PartsPerSub)
+                conditions[sub] = parts.Min();
         }
 
-        return parts;
+        return conditions;
     }
 }
