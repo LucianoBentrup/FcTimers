@@ -69,6 +69,8 @@ public sealed class Plugin : IDalamudPlugin
     private (string Key, string Name, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
     private string lastParts = string.Empty;
+    private string lastScan = string.Empty;
+    private DateTime nextScan = DateTime.MinValue;
     private DateTime autoLogAt = DateTime.MaxValue;
     private DateTime lastAutoLog = DateTime.MinValue;
 
@@ -367,6 +369,8 @@ public sealed class Plugin : IDalamudPlugin
         var workshop = manager->WorkshopTerritory;
         var pointers = workshop->Submersible.DataPointers;
         var changed = false;
+        // A varredura de teste roda no máximo 1 vez por segundo, e não a cada frame como a leitura do loot.
+        var scan = DateTime.UtcNow >= nextScan ? new List<string>() : null;
 
         // A lista tem 5 posições, mas a FC só tem 4 submarinos: a última repete o sub selecionado.
         for (var slot = 0; slot < LootLedger.MaxSubmarines; slot++)
@@ -380,6 +384,7 @@ public sealed class Plugin : IDalamudPlugin
             long returnTime = sub->ReturnTime;
 
             changed |= CaptureLoot(slot, key, sub, name, now);
+            scan?.AddRange(WorkshopScan.Describe(sub, DataManager));
             localReadings.Subs[slot] = now;
             Sync.ReportSub(slot, name, returnTime);
 
@@ -404,6 +409,17 @@ public sealed class Plugin : IDalamudPlugin
             }
 
             changed = true;
+        }
+
+        if (scan != null)
+        {
+            nextScan = DateTime.UtcNow.AddSeconds(1);
+            var text = string.Join('\n', scan);
+            if (text != lastScan)
+            {
+                lastScan = text;
+                Diagnostics.Write($"Varredura da oficina:\n{text}");
+            }
         }
 
         if (changed)
