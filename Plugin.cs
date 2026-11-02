@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
+using Dalamud.Game.Chat;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui.Dtr;
 using Dalamud.Interface.Windowing;
@@ -22,6 +26,18 @@ public sealed class Plugin : IDalamudPlugin
     private const int ActiveBuffSettleSeconds = 60;
     private const int MaxCompanySlots = 3;
 
+    // Mensagens do jogo sobre a horta. A 4017 ("This crop is doing well.") aparece ao cuidar da planta,
+    // e a 4015 ao plantar. Ainda falta confirmar no jogo que só aparecem nesses momentos.
+    private const uint CropTendedMessage = 4017;
+    private const uint SeedsPlantedMessage = 4015;
+    private const uint FirstGardenMessage = 4000;
+    private const uint LastGardenMessage = 4026;
+    private const string GeneralPlot = "geral";
+    private const string GeneralPlotName = "Plantas";
+
+    // Telas que aparecem quando o resultado de uma viagem chega.
+    private static readonly string[] ResultAddons = ["AirShipExplorationResult", "SubmersibleExplorationResult"];
+
     [PluginService] private static IDalamudPluginInterface PluginInterface { get; set; } = null!;
     [PluginService] private static IFramework Framework { get; set; } = null!;
     [PluginService] private static IDtrBar DtrBar { get; set; } = null!;
@@ -32,47 +48,46 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] private static IObjectTable ObjectTable { get; set; } = null!;
     [PluginService] private static IPlayerState PlayerState { get; set; } = null!;
     [PluginService] private static ICondition Condition { get; set; } = null!;
+    [PluginService] private static ITargetManager TargetManager { get; set; } = null!;
+    [PluginService] private static IAddonLifecycle AddonLifecycle { get; set; } = null!;
     [PluginService] private static IPluginLog Log { get; set; } = null!;
 
     private readonly WindowSystem windowSystem = new("FcTimers");
     private readonly MainWindow mainWindow;
+    private readonly ChangelogWindow changelogWindow;
     private readonly IDtrBarEntry dtrEntry;
     private readonly Dictionary<uint, string> companyStatuses;
     private readonly List<CompanyActionInfo> companyActions;
+    private readonly LocalReadings localReadings = new();
     private DateTime nextUpdate = DateTime.MinValue;
     private string candidateBuffs = string.Empty;
     private int candidateSeconds;
     private int secondsSinceLogin;
     private HashSet<string> seenBuffs = [];
+    private bool characterEnabled;
+    private bool inWorkshop;
 
     public Configuration Config { get; }
     public SyncClient Sync { get; }
+    public DiagnosticLog Diagnostics { get; }
+    public FcView View { get; private set; } = new();
     public ulong CurrentCharacterId { get; private set; }
+
+    public static string Version => typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "?";
 
     public Plugin()
     {
-        Config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
-        if (Config.Version < 4)
-        {
-            Config.Voyages = LootLedger.MigrateKeys(Config.Voyages);
-            Config.Version = 4;
-            SaveConfig();
-        }
+        var saved = PluginInterface.GetPluginConfig() as Configuration;
+        Config = saved ?? new Configuration { LastChangelogVersion = Version };
+        Migrate();
 
-        // Até a versão 0.6.0 a 5ª posição era lida como um submarino, duplicando timer e loot.
-        if (Config.Version < 5)
-        {
-            foreach (var key in Config.Subs.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^1])).ToList())
-                Config.Subs.Remove(key);
-            foreach (var key in Config.Voyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
-                Config.Voyages.Remove(key);
-            foreach (var key in Config.SyncedVoyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
-                Config.SyncedVoyages.Remove(key);
-            Config.Version = 5;
-            SaveConfig();
-        }
+        Diagnostics = new DiagnosticLog(
+            System.IO.Path.Combine(PluginInterface.GetPluginConfigDirectory(), "diagnostico.txt"),
+            message => Log.Information(message),
+            () => Config.DetailedLog);
+        Diagnostics.Write($"Plugin {Version} iniciado");
 
-        Sync = new SyncClient(Config, SaveConfig);
+        Sync = new SyncClient(Config, SaveConfig, Diagnostics.Write);
 
         // No jogo, cada ação da FC é um status com o mesmo nome-base, sem o nível.
         companyActions = DataManager.GetExcelSheet<CompanyAction>()
@@ -85,19 +100,33 @@ public sealed class Plugin : IDalamudPlugin
             .ToDictionary(s => s.RowId, s => s.Name.ToString());
 
         mainWindow = new MainWindow(this);
+        changelogWindow = new ChangelogWindow();
         windowSystem.AddWindow(mainWindow);
+        windowSystem.AddWindow(changelogWindow);
+
+        // O changelog abre uma vez depois de cada atualização, nunca na primeira instalação.
+        if (Config.LastChangelogVersion != Version)
+        {
+            changelogWindow.IsOpen = true;
+            Config.LastChangelogVersion = Version;
+            SaveConfig();
+        }
 
         dtrEntry = DtrBar.Get("FC Timers");
         dtrEntry.OnClick = _ => mainWindow.Toggle();
 
-        CommandManager.AddHandler(Command, new CommandInfo((_, _) => mainWindow.Toggle())
+        CommandManager.AddHandler(Command, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Abre a janela do FC Timers.",
+            HelpMessage = "Abre a janela do FC Timers. Use \"/fct regar\" depois de regar as plantas.",
         });
-        CommandManager.AddHandler(ShortCommand, new CommandInfo((_, _) => mainWindow.Toggle())
+        CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Atalho para abrir a janela do FC Timers.",
+            HelpMessage = "Atalho do /fctimers. \"/fct regar\" registra a rega das plantas.",
         });
+
+        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
+        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
+        ChatGui.LogMessage += OnLogMessage;
 
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += mainWindow.Toggle;
@@ -111,6 +140,9 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenConfigUi -= mainWindow.Toggle;
         PluginInterface.UiBuilder.OpenMainUi -= mainWindow.Toggle;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
+        ChatGui.LogMessage -= OnLogMessage;
+        AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
+        AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
         CommandManager.RemoveHandler(ShortCommand);
         CommandManager.RemoveHandler(Command);
         dtrEntry.Remove();
@@ -129,23 +161,137 @@ public sealed class Plugin : IDalamudPlugin
         return time.TotalHours >= 1 ? $"{(int)time.TotalHours}h{time.Minutes:00}" : $"{time.Minutes}m{time.Seconds:00}";
     }
 
+    private void Migrate()
+    {
+        if (Config.Version < 4)
+        {
+            Config.Voyages = LootLedger.MigrateKeys(Config.Voyages);
+            Config.Version = 4;
+        }
+
+        // Até a versão 0.6.0 a 5ª posição era lida como um submarino, duplicando timer e loot.
+        if (Config.Version < 5)
+        {
+            foreach (var key in Config.Subs.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^1])).ToList())
+                Config.Subs.Remove(key);
+            foreach (var key in Config.Voyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
+                Config.Voyages.Remove(key);
+            foreach (var key in Config.SyncedVoyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
+                Config.SyncedVoyages.Remove(key);
+            Config.Version = 5;
+        }
+
+        // A versão de testes guardava uma rega só, que vira o plot "Plantas".
+        if (Config.Version < 7 && Config.Garden.WateredAt != 0 && !Config.Plots.ContainsKey(GeneralPlot))
+            Config.Plots[GeneralPlot] = new PlotRecord { Name = GeneralPlotName, WateredAt = Config.Garden.WateredAt };
+
+        Config.Version = 7;
+        SaveConfig();
+    }
+
+    private void OnCommand(string command, string arguments)
+    {
+        var argument = arguments.Trim().ToLowerInvariant();
+        if (argument is "regar" or "water")
+        {
+            WaterAll("comando /fct regar");
+            ChatGui.Print("Rega registrada em todos os plots.", "FC Timers");
+            return;
+        }
+
+        mainWindow.Toggle();
+    }
+
+    // Rega na mão: vale para todos os plots conhecidos, ou cria o plot geral se ainda não houver nenhum.
+    public void WaterAll(string source)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (Config.Plots.Count == 0)
+            Config.Plots[GeneralPlot] = new PlotRecord { Name = GeneralPlotName };
+
+        foreach (var plot in Config.Plots.Values)
+            plot.WateredAt = now;
+        SaveConfig();
+        Diagnostics.Write($"Rega registrada em todos os plots ({source})");
+    }
+
+    public void RemovePlot(string key)
+    {
+        if (Config.Plots.Remove(key))
+        {
+            SaveConfig();
+            Diagnostics.Write($"Plot removido da lista: {key}");
+        }
+    }
+
+    // O plot regado é o objeto selecionado no momento da mensagem. A chave junta a casa, o quarto e a posição dele,
+    // que só muda se alguém mover o plot. Sem um alvo da casa, a rega vai para o plot geral.
+    private unsafe void WaterTargetedPlot(string source)
+    {
+        var target = TargetManager.Target;
+        var manager = HousingManager.Instance();
+        string key;
+        string name;
+        if (target != null && manager != null && target.ObjectKind is ObjectKind.HousingEventObject or ObjectKind.EventObj)
+        {
+            var position = target.Position;
+            key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{position.X:F1}:{position.Y:F1}:{position.Z:F1}";
+            var baseName = target.Name.TextValue;
+            name = Config.Plots.TryGetValue(key, out var known)
+                ? known.Name
+                : $"{baseName} {Config.Plots.Values.Count(p => p.Name.StartsWith(baseName, StringComparison.Ordinal)) + 1}";
+        }
+        else
+        {
+            key = GeneralPlot;
+            name = GeneralPlotName;
+        }
+
+        if (!Config.Plots.TryGetValue(key, out var plot))
+        {
+            plot = new PlotRecord { Name = name };
+            Config.Plots[key] = plot;
+        }
+
+        plot.WateredAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        SaveConfig();
+        Diagnostics.Write($"Rega registrada em {plot.Name} ({source}, chave {key})");
+    }
+
     private void OnUpdate(IFramework framework)
     {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // Dentro da oficina, os subs são lidos a cada frame, para não perder o loot quando a coleta é rápida.
+        if (characterEnabled)
+            ReadSubmarines(now);
+
         if (DateTime.UtcNow < nextUpdate)
             return;
         nextUpdate = DateTime.UtcNow.AddSeconds(1);
 
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (IsCurrentCharacterEnabled())
+        characterEnabled = IsCurrentCharacterEnabled();
+        if (characterEnabled)
         {
-            ReadSubmarines(now);
             ReadWheels(now);
             ReadActiveBuffs(now);
         }
 
+        foreach (var (key, plot) in Config.Plots.Where(p => p.Value.WateredAt != 0))
+        {
+            Sync.ReportPlot(
+                key,
+                plot.Name,
+                plot.WateredAt,
+                plot.WateredAt + (Config.WaterIntervalHours * 3600L),
+                plot.WateredAt + (Config.DieAfterHours * 3600L));
+        }
+
+        Sync.WindowOpen = mainWindow.IsOpen;
+        Sync.Tick();
+        View = FcView.Build(Config, localReadings, Sync.Remote, Sync.RemoteOffset);
         CheckAlerts(now);
         UpdateDtr(now);
-        Sync.Tick();
     }
 
     // Personagem novo entra na lista desmarcado, e só um personagem marcado lê e envia dados.
@@ -176,14 +322,21 @@ public sealed class Plugin : IDalamudPlugin
     private unsafe void ReadSubmarines(long now)
     {
         var manager = HousingManager.Instance();
-        if (manager == null || manager->WorkshopTerritory == null)
+        var inside = manager != null && manager->WorkshopTerritory != null;
+        if (inside != inWorkshop)
+        {
+            inWorkshop = inside;
+            Diagnostics.Write(inside ? "Entrou na oficina" : "Saiu da oficina");
+        }
+
+        if (!inside)
             return;
 
         var workshop = manager->WorkshopTerritory;
         var pointers = workshop->Submersible.DataPointers;
         var changed = false;
 
-        // A lista tem 5 posições, mas a FC só tem 4 submarinos: a última repete um deles.
+        // A lista tem 5 posições, mas a FC só tem 4 submarinos: a última repete o sub selecionado.
         for (var slot = 0; slot < LootLedger.MaxSubmarines; slot++)
         {
             var sub = pointers[slot].Value;
@@ -194,26 +347,28 @@ public sealed class Plugin : IDalamudPlugin
             var name = sub->NameString;
             long returnTime = sub->ReturnTime;
 
+            changed |= CaptureLoot(slot, key, sub, name, now);
+            localReadings.Subs[slot] = now;
             Sync.ReportSub(slot, name, returnTime);
-
-            var voyage = SubmarineLoot.Read(sub, name, now, LookupItem);
-            if (voyage != null)
-                changed |= LootLedger.Upsert(Config.Voyages, LootLedger.VoyageKey(key, voyage.ReturnTime), voyage);
 
             if (Config.Subs.TryGetValue(key, out var record))
             {
                 if (record.Name == name && record.ReturnTime == returnTime)
                     continue;
 
-                record.Name = name;
                 if (record.ReturnTime != returnTime)
-                    record.Notified = false;
+                {
+                    LogReturnChange(key, name, record.ReturnTime, returnTime, now);
+                    record.PreviousReturnTime = record.ReturnTime;
+                }
+
+                record.Name = name;
                 record.ReturnTime = returnTime;
             }
             else
             {
-                // Na primeira leitura, o que já voltou não gera alerta.
-                Config.Subs[key] = new SubRecord { Name = name, ReturnTime = returnTime, Notified = returnTime <= now };
+                Config.Subs[key] = new SubRecord { Name = name, ReturnTime = returnTime };
+                Diagnostics.Detail($"{name}: visto pela primeira vez, volta {DiagnosticLog.Time(returnTime)}");
             }
 
             changed = true;
@@ -221,6 +376,95 @@ public sealed class Plugin : IDalamudPlugin
 
         if (changed)
             SaveConfig();
+    }
+
+    // O loot na memória muda quando o resultado de uma viagem chega. É esse o momento de salvar.
+    private unsafe bool CaptureLoot(int slot, string key, HousingWorkshopSubmersibleSubData* sub, string name, long now)
+    {
+        var signature = SubmarineLoot.Signature(sub);
+        if (signature.Length == 0)
+            return false;
+
+        var firstSight = !Config.LootSeen.TryGetValue(slot, out var last);
+        if (!firstSight && last == signature)
+            return false;
+
+        Config.LootSeen[slot] = signature;
+
+        // Na primeira leitura depois de atualizar, o loot na memória pode ser de uma viagem já salva.
+        if (firstSight && Config.Voyages.Any(v => LootLedger.SlotOf(v.Key) == slot && SubmarineLoot.Signature(v.Value.Items) == signature))
+            return true;
+
+        // O loot é da última viagem que já voltou. Se o sub já saiu de novo, é a volta anterior.
+        Config.Subs.TryGetValue(key, out var record);
+        var returnTime = new[] { (long)sub->ReturnTime, record?.ReturnTime ?? 0, record?.PreviousReturnTime ?? 0 }
+            .FirstOrDefault(t => t != 0 && t <= now);
+        if (returnTime == 0)
+        {
+            Diagnostics.Write($"{name}: loot novo na memória, mas sem horário de volta conhecido. Não foi salvo.");
+            return true;
+        }
+
+        var voyage = SubmarineLoot.Read(sub, name, returnTime, LookupItem);
+        if (voyage != null && LootLedger.Upsert(Config.Voyages, LootLedger.VoyageKey(key, returnTime), voyage))
+            Diagnostics.Write($"{name}: viagem de {DiagnosticLog.Time(returnTime)} salva, {voyage.Items.Count} itens, {LootLedger.Total([voyage]):N0} gil");
+
+        return true;
+    }
+
+    private void LogReturnChange(string key, string name, long previous, long current, long now)
+    {
+        if (current > now && previous != 0 && previous <= now)
+        {
+            if (Config.Voyages.ContainsKey(LootLedger.VoyageKey(key, previous)))
+                Diagnostics.Detail($"{name}: saiu de novo, volta {DiagnosticLog.Time(current)}");
+            else
+                Diagnostics.Write($"{name}: saiu de novo, volta {DiagnosticLog.Time(current)}. O loot da viagem de {DiagnosticLog.Time(previous)} ainda não foi lido.");
+            return;
+        }
+
+        Diagnostics.Detail($"{name}: volta mudou para {DiagnosticLog.Time(current)}");
+    }
+
+    private void OnVoyageResult(AddonEvent type, AddonArgs args)
+    {
+        Diagnostics.Write($"Tela de resultado da viagem aberta ({args.AddonName})");
+        if (characterEnabled)
+            ReadSubmarines(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+    }
+
+    // Registra o menu de objetos da casa, como os plots, para confirmar como a horta funciona.
+    private unsafe void OnSelectString(AddonEvent type, AddonArgs args)
+    {
+        var target = TargetManager.Target;
+        if (target == null || target.ObjectKind is not (ObjectKind.HousingEventObject or ObjectKind.EventObj))
+            return;
+
+        var addon = (AtkUnitBase*)args.Addon.Address;
+        var texts = new List<string>();
+        for (var i = 0; i < addon->AtkValuesCount; i++)
+        {
+            var value = addon->AtkValues[i];
+            if (value.Type is AtkValueType.String or AtkValueType.ManagedString or AtkValueType.ConstString)
+            {
+                var text = value.String.ToString();
+                if (!string.IsNullOrWhiteSpace(text))
+                    texts.Add(text);
+            }
+        }
+
+        Diagnostics.Write($"Menu de {target.Name.TextValue} ({target.ObjectKind}): {string.Join(" | ", texts)}");
+    }
+
+    private void OnLogMessage(ILogMessage message)
+    {
+        var id = message.LogMessageId;
+        if (id < FirstGardenMessage || id > LastGardenMessage)
+            return;
+
+        Diagnostics.Write($"Mensagem da horta {id}: {message.GameData.ValueNullable?.Text.ToString()}");
+        if (characterEnabled && id is CropTendedMessage or SeedsPlantedMessage)
+            WaterTargetedPlot($"mensagem do jogo {id}");
     }
 
     private static (string Name, uint Price)? LookupItem(uint itemId)
@@ -236,6 +480,7 @@ public sealed class Plugin : IDalamudPlugin
         if (manager == null || slots == null)
             return;
 
+        localReadings.Wheels = now;
         Sync.ReportBuffs(slots.Select(s => new BuffReading(
             s.Slot,
             s.ItemId,
@@ -254,26 +499,18 @@ public sealed class Plugin : IDalamudPlugin
         foreach (var slot in slots)
         {
             var key = $"{prefix}{slot.Slot}";
-            var ready = slot.Percent >= 100;
-            var hours = ready ? 0 : slot.Hours;
+            var hours = slot.Percent >= 100 ? 0 : slot.Hours;
 
             // A janela só informa horas inteiras, então o horário só muda quando esse número muda.
             if (Config.Wheels.TryGetValue(key, out var record) && record.ItemId == slot.ItemId && record.Hours == hours)
                 continue;
 
-            var name = LookupItem(slot.ItemId)?.Name ?? $"Buff {slot.Slot + 1}";
-
-            // Na primeira leitura, o que já está pronto não gera alerta.
-            var notified = record == null
-                ? hours == 0
-                : record.ItemId == slot.ItemId && record.Notified && hours <= record.Hours;
             Config.Wheels[key] = new WheelRecord
             {
                 ItemId = slot.ItemId,
-                Name = name,
+                Name = LookupItem(slot.ItemId)?.Name ?? $"Buff {slot.Slot + 1}",
                 Hours = hours,
                 ReadyTime = now + (hours * 3600L),
-                Notified = notified,
             };
             changed = true;
         }
@@ -324,13 +561,14 @@ public sealed class Plugin : IDalamudPlugin
             readings = ActiveBuffMatcher.WithEstimates(readings, active, seenBuffs, ActiveBuffStableSeconds);
         seenBuffs = active.Select(a => a.BaseName).ToHashSet();
 
+        localReadings.ActiveBuffs = now;
         Sync.ReportActiveBuffs(readings);
 
         var updated = ActiveBuffMatcher.Update(Config.ActiveFcBuffs, readings, now);
         if (updated == null)
             return;
 
-        Log.Information($"Buffs ativos da FC: {string.Join(" | ", readings)}");
+        Diagnostics.Detail($"Buffs ativos da FC: {string.Join(" | ", readings)}");
         Config.ActiveFcBuffs = updated;
         SaveConfig();
     }
@@ -358,23 +596,42 @@ public sealed class Plugin : IDalamudPlugin
         return slots;
     }
 
+    // Avisa no chat o que ficou pronto, usando também o que os outros membros leram.
+    // Só avisa o que já foi visto pendente, então nada antigo avisa ao logar.
     private void CheckAlerts(long now)
     {
+        var due = new Dictionary<string, (long Time, string Message)>();
+        foreach (var sub in View.Subs.Where(s => s.ReturnTime != 0))
+            due[$"sub:{sub.Slot}"] = (sub.ReturnTime, $"Submarino {sub.Name} voltou!");
+        foreach (var wheel in View.Wheels)
+            due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, $"{wheel.Name} está pronta!");
+        foreach (var plot in View.Plots)
+            due[$"plot:{plot.Key}"] = (plot.NextWaterAt, $"{plot.Name} já pode ser regado!");
+
         var changed = false;
-
-        foreach (var sub in Config.Subs.Values.Where(s => s.ReturnTime != 0 && !s.Notified && s.ReturnTime <= now))
+        foreach (var (id, (time, message)) in due)
         {
-            ChatGui.Print($"Submarino {sub.Name} voltou!", "FC Timers");
-            sub.Notified = true;
+            if (time > now)
+            {
+                if (Config.AlertWatch.GetValueOrDefault(id) != time)
+                {
+                    Config.AlertWatch[id] = time;
+                    changed = true;
+                }
+
+                continue;
+            }
+
+            if (!Config.AlertWatch.Remove(id, out var watched))
+                continue;
+
+            if (watched == time)
+                ChatGui.Print(message, "FC Timers");
             changed = true;
         }
 
-        foreach (var wheel in Config.Wheels.Values.Where(w => !w.Notified && w.ReadyTime <= now))
-        {
-            ChatGui.Print($"{wheel.Name} está pronta!", "FC Timers");
-            wheel.Notified = true;
-            changed = true;
-        }
+        foreach (var id in Config.AlertWatch.Keys.Where(k => !due.ContainsKey(k)).ToList())
+            changed |= Config.AlertWatch.Remove(id);
 
         if (changed)
             SaveConfig();
@@ -382,8 +639,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private void UpdateDtr(long now)
     {
-        var times = Config.Subs.Values.Where(s => s.ReturnTime != 0).Select(s => s.ReturnTime)
-            .Concat(Config.Wheels.Values.Select(w => w.ReadyTime))
+        var times = View.Subs.Where(s => s.ReturnTime != 0).Select(s => s.ReturnTime)
+            .Concat(View.Wheels.Select(w => w.ReadyTime))
             .ToList();
         var ready = times.Count(t => t <= now);
         var pending = times.Where(t => t > now).ToList();

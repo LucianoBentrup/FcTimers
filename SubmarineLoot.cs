@@ -1,21 +1,38 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FFXIVClientStructs.FFXIV.Client.Game;
 
 namespace FcTimers;
 
+// O jogo guarda na memória de cada sub o loot da última viagem coletada. Esse loot muda
+// no instante em que o resultado de uma viagem chega, então o plugin salva quando ele muda,
+// e não depende do intervalo entre o sub voltar e sair de novo.
 public static unsafe class SubmarineLoot
 {
-    // Só devolve a viagem depois que o submarino voltou. Em viagem, ou sem itens, devolve null.
+    // Itens na mesma ordem em que Read monta a lista, para comparar com viagens já salvas.
+    public static string Signature(HousingWorkshopSubmersibleSubData* sub)
+    {
+        var parts = new List<string>();
+        foreach (ref readonly var sector in sub->GatheredData)
+        {
+            if (sector.ItemIdPrimary != 0 && sector.ItemCountPrimary != 0)
+                parts.Add($"{sector.ItemIdPrimary}|{sector.ItemCountPrimary}");
+            if (sector.ItemIdAdditional != 0 && sector.ItemCountAdditional != 0)
+                parts.Add($"{sector.ItemIdAdditional}|{sector.ItemCountAdditional}");
+        }
+
+        return string.Join(';', parts);
+    }
+
+    public static string Signature(IEnumerable<LootItem> items) => string.Join(';', items.Select(i => $"{i.ItemId}|{i.Count}"));
+
     public static VoyageRecord? Read(
         HousingWorkshopSubmersibleSubData* sub,
         string name,
-        long now,
+        long returnTime,
         Func<uint, (string Name, uint Price)?> lookup)
     {
-        if (sub->ReturnTime == 0 || sub->ReturnTime > now)
-            return null;
-
         var items = new List<LootItem>();
         foreach (ref readonly var sector in sub->GatheredData)
         {
@@ -23,7 +40,7 @@ public static unsafe class SubmarineLoot
             Add(items, sector.ItemIdAdditional, sector.ItemCountAdditional, sector.ItemHQAdditional, lookup);
         }
 
-        return items.Count == 0 ? null : new VoyageRecord { SubName = name, ReturnTime = sub->ReturnTime, Items = items };
+        return items.Count == 0 ? null : new VoyageRecord { SubName = name, ReturnTime = returnTime, Items = items };
     }
 
     private static void Add(List<LootItem> items, uint itemId, ushort count, bool hq, Func<uint, (string Name, uint Price)?> lookup)

@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
-  alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, mergeVoyage, newState, nextEvent, pendingReturns, renderPanel, voyageKey,
+  alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, markSent, mergeVoyage, newState, nextEvent, pendingAlerts,
+  publicState, recentDays, renderPanel, voyageKey,
 } from './logic.js';
 
 const DEBOUNCE_MS = 2000;
@@ -21,7 +22,8 @@ export default {
     if (!isAuthorized(request, env)) return json({ error: 'unauthorized' }, 401);
 
     const { pathname } = new URL(request.url);
-    const allowed = (request.method === 'POST' && pathname === '/update') || (request.method === 'GET' && pathname === '/history');
+    const allowed = (request.method === 'POST' && pathname === '/update')
+      || (request.method === 'GET' && (pathname === '/history' || pathname === '/state'));
     if (!allowed) return json({ error: 'not found' }, 404);
 
     // Todo pedido passa pelo mesmo objeto, que é o único ponto de gravação.
@@ -31,7 +33,17 @@ export default {
 
 export class FcState extends DurableObject {
   async fetch(request) {
-    return request.method === 'POST' ? this.handleUpdate(request) : this.handleHistory(request);
+    if (request.method === 'POST') return this.handleUpdate(request);
+    return new URL(request.url).pathname === '/state' ? this.handleState() : this.handleHistory(request);
+  }
+
+  // Leitura para o plugin: estado atual e viagens dos últimos dias.
+  async handleState() {
+    const now = nowSeconds();
+    const state = (await this.ctx.storage.get('state')) ?? newState();
+    const voyages = [];
+    for (const day of recentDays(now)) voyages.push(...(await this.voyagesOn(day)));
+    return json(publicState(state, voyages, now));
   }
 
   async handleUpdate(request) {
@@ -100,34 +112,31 @@ export class FcState extends DurableObject {
     return this.env.DISCORD_WEBHOOK.trim().split('?')[0];
   }
 
-  // Um aviso só para os submarinos que voltaram juntos. Devolve quando tentar de novo, ou null.
+  // Um aviso por tipo, juntando o que ficou pronto junto. Devolve quando tentar de novo, ou null.
   async sendAlerts(now) {
     const state = (await this.ctx.storage.get('state')) ?? newState();
-    const returned = pendingReturns(state, now);
-    if (returned.length === 0) return null;
+    for (const alert of pendingAlerts(state, now)) {
+      const response = await fetch(`${this.webhook()}?wait=true`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(alertPayload(alert, this.env.ROLE_ID)),
+      });
+      if (response.status === 429) {
+        const seconds = Number(response.headers.get('Retry-After')) || 5;
+        return Date.now() + ((seconds + 1) * 1000);
+      }
+      if (!response.ok) {
+        console.error(`Discord respondeu ${response.status} ao avisar`);
+        return Date.now() + RETRY_MS;
+      }
+      const { id } = await response.json();
 
-    const response = await fetch(`${this.webhook()}?wait=true`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(alertPayload(returned, this.env.ROLE_ID)),
-    });
-    if (response.status === 429) {
-      const seconds = Number(response.headers.get('Retry-After')) || 5;
-      return Date.now() + ((seconds + 1) * 1000);
+      // O estado pode ter mudado durante o envio. Marca só o que entrou neste aviso.
+      const latest = (await this.ctx.storage.get('state')) ?? newState();
+      markSent(latest, alert);
+      latest.alerts = [...(latest.alerts ?? []), { id, deleteAt: alertDeleteAt(now) }];
+      await this.ctx.storage.put('state', latest);
     }
-    if (!response.ok) {
-      console.error(`Discord respondeu ${response.status} ao avisar`);
-      return Date.now() + RETRY_MS;
-    }
-    const { id } = await response.json();
-
-    // O estado pode ter mudado durante o envio. Marca só as viagens que entraram neste aviso.
-    const latest = (await this.ctx.storage.get('state')) ?? newState();
-    for (const sub of Object.values(latest.subs)) {
-      if (returned.some((r) => r.name === sub.name && r.returnTime === sub.returnTime)) sub.notified = sub.returnTime;
-    }
-    latest.alerts = [...(latest.alerts ?? []), { id, deleteAt: alertDeleteAt(latest, now) }];
-    await this.ctx.storage.put('state', latest);
     return null;
   }
 

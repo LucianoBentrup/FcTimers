@@ -1,5 +1,6 @@
-# Publica no Discord um painel de exemplo, com dados fictícios.
-# Rodar de novo edita a mesma mensagem em vez de criar outra.
+# Publica no Discord o painel e os avisos de exemplo, com dados fictícios e o mesmo visual do serviço.
+# Rodar de novo edita o mesmo painel e troca os avisos de teste anteriores.
+# Os avisos mostram o @Subs, mas não notificam ninguém.
 $ErrorActionPreference = 'Stop'
 
 $idFile = Join-Path $PSScriptRoot 'painel-teste.id'
@@ -10,50 +11,38 @@ if ($webhook -notmatch '^https://(canary\.|ptb\.)?discord(app)?\.com/api/webhook
     throw 'Isso não parece um link de webhook do Discord.'
 }
 
-$now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-function Get-Line([string]$Name, [int]$Hours) {
-    if ($Hours -le 0) { return "**$Name**: ✅ pronto" }
-    $time = $now + ($Hours * 3600)
-    return "**$Name**: volta <t:${time}:R> (<t:${time}:t>)"
+$out = Join-Path ([System.IO.Path]::GetTempPath()) 'fc-timers-painel-teste'
+if (Test-Path $out) { Remove-Item -Recurse -Force $out }
+node (Join-Path $PSScriptRoot 'painel-teste.mjs') $out
+if ($LASTEXITCODE -ne 0) { throw 'Não consegui montar o painel de teste.' }
+
+$type = 'application/json; charset=utf-8'
+$panelBody = [System.IO.File]::ReadAllBytes((Join-Path $out 'panel.json'))
+$alertBodies = Get-ChildItem $out -Filter 'alert-*.json' | Sort-Object Name | ForEach-Object { , [System.IO.File]::ReadAllBytes($_.FullName) }
+
+# Linha 1: painel. Demais linhas: avisos do teste anterior.
+$ids = if (Test-Path $idFile) { @(Get-Content $idFile | Where-Object { $_ }) } else { @() }
+foreach ($old in ($ids | Select-Object -Skip 1)) {
+    try { Invoke-RestMethod -Method Delete -Uri "$webhook/messages/$old" | Out-Null } catch { }
 }
 
-$subs = @(
-    Get-Line 'Navi' 3
-    Get-Line 'Tatl' 5
-    Get-Line 'Ciela' 0
-    Get-Line 'Tael' 0
-) -join "`n"
-
-$wheelTime = $now + (70 * 3600)
-$today = (Get-Date).ToString('dd/MM')
-$payload = @{
-    allowed_mentions = @{ parse = @() }
-    embeds = @(@{
-        title       = 'Timers'
-        color       = 0x3B82F6
-        fields      = @(
-            @{ name = '🚢 Submarinos'; value = $subs }
-            @{ name = '⚙️ Buffs'; value = "**Grade 3 Wheel of Confrontation**: <t:${wheelTime}:R>" }
-            @{ name = "💰 Loot de hoje ($today)"; value = "**1.240.000 gil**`n**Navi**: 480.000 gil`n**Tatl**: 390.000 gil`n**Ciela**: 210.000 gil`n**Tael**: 160.000 gil" }
-            @{ name = '📦 Itens de hoje'; value = "12x Item Teste A: 480.000 gil`n9x Item Teste B: 310.000 gil`n15x Item Teste C: 250.000 gil`n8x Item Teste D: 200.000 gil" }
-            @{ name = '✨ Buffs ativos'; value = "**Meat and Mead II**: <t:$($now + 86392):R>`n**The Heat of Battle II**: <t:$($now + 86394):R>`n`n||Atualizado <t:${now}:R>||" }
-        )
-    })
-} | ConvertTo-Json -Depth 6
-$body = [System.Text.Encoding]::UTF8.GetBytes($payload)
-$type = 'application/json; charset=utf-8'
-
-if (Test-Path $idFile) {
-    $id = (Get-Content $idFile -Raw).Trim()
+$panelId = $null
+if ($ids.Count -gt 0) {
     try {
-        Invoke-RestMethod -Method Patch -Uri "$webhook/messages/$id" -ContentType $type -Body $body | Out-Null
-        Write-Host 'Painel de teste atualizado.'
-        return
+        Invoke-RestMethod -Method Patch -Uri "$webhook/messages/$($ids[0])" -ContentType $type -Body $panelBody | Out-Null
+        $panelId = $ids[0]
     } catch {
         if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
     }
 }
+if (-not $panelId) {
+    $panelId = (Invoke-RestMethod -Method Post -Uri "${webhook}?wait=true" -ContentType $type -Body $panelBody).id
+}
 
-$message = Invoke-RestMethod -Method Post -Uri "${webhook}?wait=true" -ContentType $type -Body $body
-Set-Content -Path $idFile -Value $message.id
-Write-Host 'Painel de teste publicado.'
+$alertIds = foreach ($alertBody in $alertBodies) {
+    (Invoke-RestMethod -Method Post -Uri "${webhook}?wait=true" -ContentType $type -Body $alertBody).id
+    Start-Sleep -Milliseconds 600
+}
+
+Set-Content -Path $idFile -Value (@($panelId) + @($alertIds))
+Write-Host "Painel de teste publicado, com $(@($alertIds).Count) avisos de exemplo."

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  alertDeleteAt, alertPayload, applyUpdate, dayOf, isValidUpdate, mergeVoyage, newState, nextEvent, nextMidnight, pendingReturns, renderPanel, voyageKey,
+  alertDeleteAt, alertPayload, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, newState, nextEvent, nextMidnight, pendingAlerts, publicState,
+  recentDays, renderPanel, voyageKey,
 } from '../src/logic.js';
 
 const at = (day, hour, minute = 0) => Math.floor(Date.UTC(2026, 10, day, hour + 3, minute) / 1000);
@@ -51,14 +52,14 @@ test('o total do dia acumula entre coletas e aparece por submarino', () => {
   for (const slot of [0, 1, 2, 3]) {
     today.push(voyage(slot, at(1, 8 + slot), 100));
     const panel = renderPanel(state, today, at(1, 15));
-    totals.push(panel.embeds[0].fields[2].value.split('\n')[0]);
+    totals.push(panel.embeds[0].fields[3].value.split('\n')[0]);
   }
   assert.deepEqual(totals, ['**100 gil**', '**200 gil**', '**300 gil**', '**400 gil**']);
 });
 
 test('segunda rodada soma no valor do submarino', () => {
   const panel = renderPanel(newState(), [voyage(0, at(1, 8), 100), voyage(0, at(1, 20), 50)], at(1, 21));
-  assert.match(panel.embeds[0].fields[2].value, /\*\*Sub0\*\*: 150 gil/);
+  assert.match(panel.embeds[0].fields[3].value, /\*\*Sub0\*\*: 150 gil/);
 });
 
 test('leitura antiga de outro membro não volta o status do submarino', () => {
@@ -110,8 +111,9 @@ const activeBuffs = (buffs, age = 0) => ({ activeBuffs: { age, buffs } });
 test('buffs ativos ficam depois dos itens, com nível e tempo', () => {
   const state = newState();
   applyUpdate(state, activeBuffs([{ name: 'Meat and Mead II', seconds: 86392 }, { name: 'The Heat of Battle II', seconds: 86394 }]), at(1, 15));
+  assert.equal(renderPanel(state, [], at(1, 15), true).embeds[0].fields.at(-2).name, '📦 Itens de hoje');
   const { fields } = renderPanel(state, [], at(1, 15)).embeds[0];
-  assert.equal(fields.at(-2).name, '📦 Itens de hoje');
+  assert.ok(fields.every((f) => f.name !== '📦 Itens de hoje'));
   assert.equal(fields.at(-1).name, '✨ Buffs ativos');
   assert.match(fields.at(-1).value, /\*\*Meat and Mead II\*\*: <t:\d+:R>\n\*\*The Heat of Battle II\*\*: <t:\d+:R>/);
   assert.doesNotMatch(fields.at(-1).value, /Lido/);
@@ -167,16 +169,19 @@ test('sem leitura, os buffs ativos dizem que não há dados', () => {
 
 test('o painel respeita o limite de texto do Discord', () => {
   const items = Array.from({ length: 16 }, (_, i) => ({ itemId: i + 1, name: 'x'.repeat(128), count: 99, value: 1000000 }));
-  const panel = renderPanel(newState(), Array.from({ length: 8 }, (_, i) => ({ slot: i % 4, subName: 'x'.repeat(128), returnTime: at(1, 8), items })), at(1, 9));
+  const panel = renderPanel(newState(), Array.from({ length: 8 }, (_, i) => ({ slot: i % 4, subName: 'x'.repeat(128), returnTime: at(1, 8), items })), at(1, 9), true);
   for (const field of panel.embeds[0].fields) assert.ok(field.value.length <= 1024, `${field.name}: ${field.value.length}`);
 });
 
-test('o próximo evento é o retorno mais próximo ou a meia-noite', () => {
+test('o próximo evento é o lembrete, o retorno ou a meia-noite', () => {
   const state = newState();
   assert.equal(nextEvent(state, at(1, 10)), at(2, 0));
   applyUpdate(state, { subs: [{ slot: 0, name: 'Navi', returnTime: at(1, 12), age: 0 }] }, at(1, 10));
-  assert.equal(nextEvent(state, at(1, 10)), at(1, 12));
+  assert.equal(nextEvent(state, at(1, 10)), at(1, 11));
+  assert.equal(nextEvent(state, at(1, 11)), at(1, 12));
 });
+
+const pendingReturns = (state, now) => pendingAlerts(state, now).find((a) => a.kind === 'subReady')?.subs ?? [];
 
 test('submarino em viagem gera aviso ao voltar, uma vez só', () => {
   const state = newState();
@@ -209,26 +214,99 @@ test('reenvio gera novo aviso na volta seguinte', () => {
 });
 
 test('o aviso marca só o cargo e junta os nomes', () => {
-  const one = alertPayload([{ name: 'Navi' }], '123');
+  const one = alertPayload({ kind: 'subReady', subs: [{ name: 'Navi' }] }, '123');
   assert.equal(one.content, '<@&123> 🚢 **Navi** voltou!');
   assert.deepEqual(one.allowed_mentions, { parse: [], roles: ['123'] });
-  assert.equal(alertPayload([{ name: 'Navi' }, { name: 'Tatl' }, { name: 'Tael' }], '123').content, '<@&123> 🚢 **Navi**, **Tatl** e **Tael** voltaram!');
+  const three = alertPayload({ kind: 'subReady', subs: [{ name: 'Navi' }, { name: 'Tatl' }, { name: 'Tael' }] }, '123');
+  assert.equal(three.content, '<@&123> 🚢 **Navi**, **Tatl** e **Tael** voltaram!');
 });
 
-test('o aviso dura até a volta do submarino mais demorado', () => {
-  const state = newState();
-  applyUpdate(state, { subs: [
-    { slot: 0, name: 'Navi', returnTime: 2000, age: 0 },
-    { slot: 1, name: 'Tatl', returnTime: 90000, age: 0 },
-    { slot: 2, name: 'Ciela', returnTime: 40000, age: 0 },
-  ] }, 1000);
-  assert.equal(alertDeleteAt(state, 2000), 90000);
+test('todo aviso se apaga 8 horas depois de enviado', () => {
+  assert.equal(alertDeleteAt(1000), 1000 + (8 * 3600));
 });
 
-test('sem submarino em viagem, o aviso usa o limite de segurança', () => {
+const subsAt = (...returns) => ({ subs: returns.map((returnTime, slot) => ({ slot, name: `Sub${slot}`, returnTime, age: 0 })) });
+
+test('lembrete 1 hora antes junta quem volta perto e sai uma vez só', () => {
   const state = newState();
-  applyUpdate(state, { subs: [{ slot: 0, name: 'Navi', returnTime: 2000, age: 0 }] }, 1000);
-  assert.equal(alertDeleteAt(state, 2000), 2000 + 86400);
+  applyUpdate(state, subsAt(at(1, 14, 58), at(1, 14, 58), at(1, 15, 9), at(1, 20)), at(1, 6));
+  assert.equal(nextEvent(state, at(1, 6)), at(1, 13, 58));
+  assert.equal(pendingAlerts(state, at(1, 13, 57)).length, 0);
+  const [reminder] = pendingAlerts(state, at(1, 13, 58));
+  assert.equal(reminder.kind, 'subReminder');
+  assert.deepEqual(reminder.subs.map((s) => s.name), ['Sub0', 'Sub1', 'Sub2']);
+  assert.equal(alertPayload(reminder, '9').content,
+    '<@&9> Lembrete: Em 1 hora os submarinos estarão prontos para coleta (**Sub0**, **Sub1** e **Sub2**).');
+  markSent(state, reminder);
+  assert.equal(pendingAlerts(state, at(1, 14, 9)).length, 0);
+});
+
+test('sem tempo para o lembrete, só sai o aviso de pronto', () => {
+  const state = newState();
+  applyUpdate(state, subsAt(at(1, 10, 20)), at(1, 10));
+  assert.equal(pendingAlerts(state, at(1, 10)).length, 0);
+  assert.equal(pendingAlerts(state, at(1, 10, 20))[0].kind, 'subReady');
+});
+
+const plot = (key, name, nextWaterAt, dieAt = 0, age = 0) => ({ key, name, nextWaterAt, dieAt, age });
+
+test('plantas: lembrete 1 hora antes, aviso na hora e painel, por plot', () => {
+  const state = newState();
+  applyUpdate(state, { plots: [plot('a', 'Vaso 1', at(2, 9)), plot('b', 'Vaso 2', at(2, 9, 10)), plot('c', 'Canteiro', at(2, 15))] }, at(1, 9));
+  assert.equal(renderPanel(state, [], at(1, 9)).embeds[0].fields[2].value,
+    `**Vaso 1, Vaso 2**: regar <t:${at(2, 9)}:R> (<t:${at(2, 9)}:t>)\n**Canteiro**: regar <t:${at(2, 15)}:R> (<t:${at(2, 15)}:t>)`);
+  const [reminder] = pendingAlerts(state, at(2, 8));
+  assert.equal(alertPayload(reminder, '9').content, '<@&9> Lembrete: Em 1 hora as plantas estarão disponíveis para regar (**Vaso 1** e **Vaso 2**).');
+  markSent(state, reminder);
+  const [ready] = pendingAlerts(state, at(2, 9, 10));
+  assert.equal(alertPayload(ready, '9').content, '<@&9> 🌱 As plantas já podem ser regadas (**Vaso 1** e **Vaso 2**)!');
+  markSent(state, ready);
+  assert.equal(pendingAlerts(state, at(2, 10)).length, 0);
+  assert.equal(pendingAlerts(state, at(2, 14))[0].plots[0].name, 'Canteiro');
+});
+
+test('plantas perto de morrer: painel mostra quando morre e avisa 3, 2 e 1 hora antes', () => {
+  const state = newState();
+  applyUpdate(state, { plots: [plot('a', 'Vaso 1', at(2, 9), at(3, 9))] }, at(1, 9));
+  assert.equal(renderPanel(state, [], at(2, 10)).embeds[0].fields[2].value, `**Vaso 1**: ✅ Pronta para regar. Morre <t:${at(3, 9)}:R>`);
+  assert.equal(nextEvent(state, at(3, 5)), at(3, 6));
+  const sent = [];
+  for (let hour = 5; hour <= 9; hour += 1) {
+    for (const alert of pendingAlerts(state, at(3, hour)).filter((a) => a.kind === 'plotDying')) {
+      sent.push(hour);
+      assert.equal(alertPayload(alert, '9').content, `<@&9> ⚠️ Se ninguém regar, morre: **Vaso 1** <t:${at(3, 9)}:R>!`);
+      markSent(state, alert);
+    }
+  }
+  assert.deepEqual(sent, [6, 7, 8]);
+  applyUpdate(state, { plots: [plot('a', 'Vaso 1', at(4, 9), at(5, 9))] }, at(3, 8, 30));
+  assert.equal(pendingAlerts(state, at(3, 8, 31)).length, 0);
+});
+
+test('rega antiga de outro PC não passa por cima da mais nova, e plot morto há dias some', () => {
+  const state = newState();
+  applyUpdate(state, { plots: [plot('a', 'Vaso 1', at(2, 9), at(3, 9))] }, at(1, 9));
+  applyUpdate(state, { plots: [plot('a', 'Vaso 1', at(2, 5), at(3, 5), 4 * 3600)] }, at(1, 9, 1));
+  assert.equal(state.plots.a.nextWaterAt, at(2, 9));
+  assert.match(renderPanel(state, [], at(6, 0)).embeds[0].fields[2].value, /^Nenhum dado ainda/);
+});
+
+test('rega vista já vencida não gera aviso atrasado, e o formato antigo vira o plot Plantas', () => {
+  const state = newState();
+  applyUpdate(state, { garden: { nextWaterAt: at(1, 8), age: 0 } }, at(1, 9));
+  assert.equal(state.plots.geral.name, 'Plantas');
+  assert.equal(pendingAlerts(state, at(1, 9)).length, 0);
+  applyUpdate(state, { garden: { nextWaterAt: at(2, 9), age: 0 } }, at(1, 9, 5));
+  assert.equal(pendingAlerts(state, at(2, 8))[0].kind, 'plotReminder');
+});
+
+test('o plugin recebe o estado sem os dados internos e com os últimos 7 dias', () => {
+  const state = newState();
+  state.messageId = '1';
+  const body = publicState(state, [], at(2, 10));
+  assert.equal(body.messageId, undefined);
+  assert.equal(body.alerts, undefined);
+  assert.deepEqual(recentDays(at(7, 1)), ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07']);
 });
 
 test('apagar um aviso também agenda o serviço', () => {
@@ -241,4 +319,6 @@ test('dados inválidos são recusados', () => {
   assert.equal(isValidUpdate({ subs: [{ slot: 0, name: 'Navi', returnTime: 'x', age: 0 }] }), false);
   assert.equal(isValidUpdate({ voyages: [{ slot: 0, subName: 'Navi', returnTime: 1, items: [] }] }), false);
   assert.equal(isValidUpdate({ subs: [{ slot: 0, name: 'Navi', returnTime: 1, age: 0 }] }), true);
+  assert.equal(isValidUpdate({ garden: { nextWaterAt: -1, age: 0 } }), false);
+  assert.equal(isValidUpdate({ plots: [{ key: '', name: 'x', nextWaterAt: 1, age: 0 }] }), false);
 });

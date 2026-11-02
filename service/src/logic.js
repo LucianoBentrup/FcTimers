@@ -3,8 +3,21 @@ export const TIME_ZONE = 'America/Sao_Paulo';
 const MAX_ITEMS_SHOWN = 8;
 const MAX_NAME_SHOWN = 60;
 const END_TIME_TOLERANCE = 120;
-const ALERT_FALLBACK_SECONDS = 86400;
+const ALERT_LIFETIME = 8 * 3600;
+const REMINDER_LEAD = 3600;
+const REMINDER_GROUP = 900;
+const REMINDER_MIN_LEFT = 1800;
+// Avisos de que as plantas vão morrer: 3, 2 e 1 hora antes.
+const DEATH_WARNINGS = [3, 2, 1].map((h) => h * 3600);
+const DEATH_WARNING_LATE = 1800;
+// Plot que morreu há mais de 2 dias some do painel e dos avisos.
+const PLOT_STALE = 2 * 86400;
+const MAX_PLOTS = 64;
+const MAX_PLOT_LINES = 12;
 const DAY_STEP = 900;
+export const HISTORY_DAYS = 7;
+// A lista de itens fica fora do painel para a mensagem do webhook ficar leve. O código continua aqui para um bot no futuro.
+export const SHOW_ITEMS = false;
 const MAX_SUBMARINES = 4;
 
 // Até a versão 0.6.0 o plugin enviava uma 5ª posição, que repete um dos 4 submarinos.
@@ -14,24 +27,91 @@ const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 
 const gilFormat = new Intl.NumberFormat('pt-BR');
 
 export const newState = () => ({
-  subs: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
+  subs: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, plots: {}, alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
 });
 
-// Submarinos que voltaram e ainda não geraram aviso.
-export const pendingReturns = (state, now) => Object.values(state.subs)
-  .filter((s) => s.returnTime > 0 && s.returnTime <= now && s.notified !== s.returnTime);
+// O lembrete sai 1 hora antes. Se o serviço só puder enviar com menos de 30 minutos restando, ele não sai.
+const reminderDue = (time, reminded, now) => reminded !== time && now >= time - REMINDER_LEAD && now < time - REMINDER_MIN_LEFT;
 
-// O aviso dura até a volta do submarino mais demorado do momento.
-// Sem nenhum em viagem, não há retorno para usar, e vale o limite de segurança.
-export function alertDeleteAt(state, now) {
-  const returns = Object.values(state.subs).map((s) => s.returnTime).filter((t) => t > now);
-  return returns.length > 0 ? Math.max(...returns) : now + ALERT_FALLBACK_SECONDS;
+// Avisos que precisam sair agora, já agrupados. Cada submarino e cada rega avisa uma vez só.
+export function pendingAlerts(state, now) {
+  const subs = Object.values(state.subs).filter((s) => s.returnTime > 0);
+  const alerts = [];
+
+  const ready = subs.filter((s) => s.returnTime <= now && s.notified !== s.returnTime);
+  if (ready.length > 0) alerts.push({ kind: 'subReady', subs: ready });
+
+  // Quem volta até 15 minutos depois entra no mesmo lembrete.
+  if (subs.some((s) => reminderDue(s.returnTime, s.reminded, now))) {
+    const soon = subs.filter((s) => s.reminded !== s.returnTime
+      && s.returnTime > now + REMINDER_MIN_LEFT && s.returnTime <= now + REMINDER_LEAD + REMINDER_GROUP);
+    alerts.push({ kind: 'subReminder', subs: soon });
+  }
+
+  // Plantas: cada plot avisa por conta própria, e os que ficam prontos juntos entram no mesmo aviso.
+  const plots = activePlots(state, now);
+  const readyPlots = plots.filter((p) => p.nextWaterAt <= now && p.notified !== p.nextWaterAt);
+  if (readyPlots.length > 0) alerts.push({ kind: 'plotReady', plots: readyPlots });
+
+  if (plots.some((p) => reminderDue(p.nextWaterAt, p.reminded, now))) {
+    const soon = plots.filter((p) => p.reminded !== p.nextWaterAt
+      && p.nextWaterAt > now + REMINDER_MIN_LEFT && p.nextWaterAt <= now + REMINDER_LEAD + REMINDER_GROUP);
+    alerts.push({ kind: 'plotReminder', plots: soon });
+  }
+
+  const dying = plots.map((p) => ({ ...p, step: deathWarningDue(p, now) })).filter((p) => p.step);
+  if (dying.length > 0) alerts.push({ kind: 'plotDying', plots: dying });
+
+  return alerts;
 }
 
-export function alertPayload(subs, roleId) {
-  const names = subs.map((s) => `**${s.name}**`);
-  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} e ${names.at(-1)}` : names[0];
-  const text = `🚢 ${list} ${names.length > 1 ? 'voltaram' : 'voltou'}!`;
+// Plots com horário de rega, sem os que morreram há muito tempo ou foram retirados.
+export function activePlots(state, now) {
+  return Object.entries(state.plots ?? {})
+    .map(([key, plot]) => ({ key, ...plot }))
+    .filter((p) => p.nextWaterAt > 0 && !(p.dieAt > 0 && p.dieAt < now - PLOT_STALE))
+    .sort((a, b) => a.nextWaterAt - b.nextWaterAt || a.name.localeCompare(b.name));
+}
+
+// O aviso de morte da vez: o último horário de aviso que já passou, se ainda não saiu e não ficou velho.
+function deathWarningDue(plot, now) {
+  if (!(plot.dieAt > now)) return null;
+  const step = DEATH_WARNINGS.map((before) => plot.dieAt - before).filter((t) => t <= now).at(-1);
+  if (!step || step <= (plot.warned ?? 0) || now - step >= DEATH_WARNING_LATE) return null;
+  return step;
+}
+
+// Marca no estado que o aviso saiu. Só marca o que ainda está igual ao que foi avisado.
+export function markSent(state, alert) {
+  for (const sent of alert.subs ?? []) {
+    const sub = Object.values(state.subs).find((s) => s.name === sent.name && s.returnTime === sent.returnTime);
+    if (!sub) continue;
+    if (alert.kind === 'subReady') sub.notified = sub.returnTime;
+    else sub.reminded = sub.returnTime;
+  }
+  for (const sent of alert.plots ?? []) {
+    const plot = state.plots?.[sent.key];
+    if (!plot) continue;
+    if (alert.kind === 'plotReady' && plot.nextWaterAt === sent.nextWaterAt) plot.notified = plot.nextWaterAt;
+    if (alert.kind === 'plotReminder' && plot.nextWaterAt === sent.nextWaterAt) plot.reminded = plot.nextWaterAt;
+    if (alert.kind === 'plotDying' && plot.dieAt === sent.dieAt) plot.warned = sent.step;
+  }
+}
+
+export const alertDeleteAt = (sentAt) => sentAt + ALERT_LIFETIME;
+
+const joinList = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} e ${names.at(-1)}` : names[0]);
+const joinNames = (list) => joinList(list.map((s) => `**${s.name}**`));
+
+export function alertPayload(alert, roleId) {
+  const texts = {
+    subReady: () => `🚢 ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'}!`,
+    subReminder: () => `Lembrete: Em 1 hora os submarinos estarão prontos para coleta (${joinNames(alert.subs)}).`,
+    plotReady: () => `🌱 As plantas já podem ser regadas (${joinNames(alert.plots)})!`,
+    plotReminder: () => `Lembrete: Em 1 hora as plantas estarão disponíveis para regar (${joinNames(alert.plots)}).`,
+    plotDying: () => `⚠️ Se ninguém regar, ${alert.plots.length > 1 ? 'morrem' : 'morre'}: ${joinList(alert.plots.map((p) => `**${p.name}** <t:${p.dieAt}:R>`))}!`,
+  };
+  const text = texts[alert.kind]();
   return {
     content: roleId ? `<@&${roleId}> ${text}` : text,
     allowed_mentions: { parse: [], roles: roleId ? [roleId] : [] },
@@ -63,6 +143,11 @@ export function isValidUpdate(body) {
   const active = body.activeBuffs;
   if (active != null && !(isAge(active.age) && Array.isArray(active.buffs) && active.buffs.length <= 16
     && active.buffs.every((b) => b && isName(b.name) && (b.seconds === null || isTime(b.seconds))))) return false;
+  const plots = body.plots ?? [];
+  const isPlot = (p) => p && isAge(p.age) && isTime(p.nextWaterAt) && (p.dieAt == null || isTime(p.dieAt));
+  if (!Array.isArray(plots) || plots.length > MAX_PLOTS) return false;
+  if (!plots.every((p) => isPlot(p) && isName(p.key) && isName(p.name))) return false;
+  if (body.garden != null && !isPlot(body.garden)) return false;
   if (body.buffs == null) return true;
   return isAge(body.buffs.age) && Array.isArray(body.buffs.slots) && body.buffs.slots.length <= 16
     && body.buffs.slots.every((b) => b && isSlot(b.slot) && isTime(b.itemId) && isName(b.name) && isTime(b.hours));
@@ -79,10 +164,33 @@ export function applyUpdate(state, body, now) {
     const existing = state.subs[sub.slot];
     if (existing && existing.observedAt > observedAt) continue;
     // Viagem vista pela primeira vez quando já tinha voltado não gera aviso atrasado.
-    const notified = existing?.returnTime === sub.returnTime
-      ? existing.notified
-      : (sub.returnTime <= now ? sub.returnTime : 0);
-    state.subs[sub.slot] = { name: sub.name, returnTime: sub.returnTime, observedAt, notified };
+    const same = existing?.returnTime === sub.returnTime;
+    const notified = same ? existing.notified : (sub.returnTime <= now ? sub.returnTime : 0);
+    const reminded = same ? existing.reminded ?? 0 : 0;
+    state.subs[sub.slot] = { name: sub.name, returnTime: sub.returnTime, observedAt, notified, reminded };
+  }
+
+  // A rega de cada plot vale a partir do horário em que foi regado, então a mais nova sempre vence.
+  // O formato com uma rega só vira o plot "Plantas".
+  const plotUpdates = [...(body.plots ?? [])];
+  if (body.garden) plotUpdates.push({ ...body.garden, key: 'geral', name: 'Plantas' });
+  state.plots ??= {};
+  for (const update of plotUpdates) {
+    const observedAt = now - update.age;
+    const existing = state.plots[update.key];
+    if (existing && observedAt < existing.observedAt) continue;
+    const { nextWaterAt } = update;
+    const dieAt = update.dieAt ?? 0;
+    const same = existing?.nextWaterAt === nextWaterAt;
+    state.plots[update.key] = {
+      name: update.name,
+      nextWaterAt,
+      dieAt,
+      observedAt,
+      notified: same ? existing.notified : (nextWaterAt <= now ? nextWaterAt : 0),
+      reminded: same ? existing.reminded : 0,
+      warned: existing?.dieAt === dieAt ? existing.warned ?? 0 : 0,
+    };
   }
 
   if (body.buffs) {
@@ -147,8 +255,29 @@ function buffLine(buff, now) {
 const bySlot = (record) => Object.keys(record).map(Number).sort((a, b) => a - b).map((slot) => record[slot]);
 const shorten = (name) => (name.length > MAX_NAME_SHOWN ? `${name.slice(0, MAX_NAME_SHOWN - 1)}…` : name);
 
+function plotText(plot, now) {
+  if (plot.nextWaterAt > now) return `regar <t:${plot.nextWaterAt}:R> (<t:${plot.nextWaterAt}:t>)`;
+  if (plot.dieAt > now) return `✅ Pronta para regar. Morre <t:${plot.dieAt}:R>`;
+  if (plot.dieAt > 0) return '⚠️ Passou do prazo de rega';
+  return '✅ Pronta para regar.';
+}
+
+// Plots regados juntos (até 15 minutos de diferença) dividem a mesma linha, com o horário do primeiro.
+function renderPlots(plots, now) {
+  if (plots.length === 0) return 'Nenhum dado ainda.';
+  const groups = [];
+  for (const plot of plots) {
+    const last = groups.at(-1);
+    if (last && plot.nextWaterAt - last[0].nextWaterAt <= REMINDER_GROUP) last.push(plot);
+    else groups.push([plot]);
+  }
+  const lines = groups.map((group) => `**${shorten(group.map((p) => p.name).join(', '))}**: ${plotText(group[0], now)}`);
+  if (lines.length > MAX_PLOT_LINES) return [...lines.slice(0, MAX_PLOT_LINES), `e mais ${lines.length - MAX_PLOT_LINES}`].join('\n');
+  return lines.join('\n');
+}
+
 // O painel é sempre montado a partir do estado salvo e de todas as viagens do dia.
-export function renderPanel(state, todayVoyages, now) {
+export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
   const [, month, day] = dayOf(now).split('-');
   const total = todayVoyages.reduce((sum, v) => sum + v.items.reduce((s, i) => s + i.value, 0), 0);
 
@@ -189,6 +318,7 @@ export function renderPanel(state, todayVoyages, now) {
 
   const subs = bySlot(state.subs).map((s) => subLine(s, now));
   const buffs = bySlot(state.buffs).map((b) => buffLine(b, now));
+  const plotLines = renderPlots(activePlots(state, now), now);
 
   return {
     allowed_mentions: { parse: [] },
@@ -198,8 +328,9 @@ export function renderPanel(state, todayVoyages, now) {
       fields: [
         { name: '🚢 Submarinos', value: subs.join('\n') || 'Nenhum dado ainda.' },
         { name: '⚙️ Buffs', value: buffs.join('\n') || 'Nenhum dado ainda.' },
+        { name: '🌱 Plantas', value: plotLines },
         { name: `💰 Loot de hoje (${day}/${month})`, value: [`**${gilFormat.format(total)} gil**`, ...subLoot].join('\n') },
-        { name: '📦 Itens de hoje', value: itemLines.join('\n') },
+        ...(showItems ? [{ name: '📦 Itens de hoje', value: itemLines.join('\n') }] : []),
         { name: '✨ Buffs ativos', value: activeLines.join('\n') },
       ],
     }],
@@ -213,14 +344,38 @@ export function nextMidnight(now) {
   return time;
 }
 
-// Próximo momento em que o painel muda sem ninguém enviar nada.
+// Próximo momento em que o painel muda ou um aviso sai, sem ninguém enviar nada.
 export function nextEvent(state, now) {
+  const plots = Object.values(state.plots ?? {});
+  const timed = [...Object.values(state.subs).map((s) => s.returnTime), ...plots.map((p) => p.nextWaterAt)].filter((t) => t > 0);
   const times = [
-    ...Object.values(state.subs).map((s) => s.returnTime),
+    ...timed,
+    ...timed.map((t) => t - REMINDER_LEAD),
+    ...plots.filter((p) => p.dieAt > 0).flatMap((p) => [p.dieAt, ...DEATH_WARNINGS.map((before) => p.dieAt - before)]),
     ...Object.values(state.buffs).map((b) => b.readyTime),
     ...(state.activeBuffs?.buffs ?? []).map((b) => b.endTime ?? 0),
     ...(state.alerts ?? []).map((a) => a.deleteAt),
     nextMidnight(now),
   ];
   return Math.min(...times.filter((t) => t > now));
+}
+
+// O que o plugin recebe em GET /state: o estado sem os dados internos do Discord.
+export function publicState(state, voyages, now) {
+  return {
+    now,
+    subs: state.subs,
+    buffs: state.buffs,
+    buffsObservedAt: state.buffsObservedAt,
+    activeBuffs: state.activeBuffs,
+    plots: state.plots ?? {},
+    voyages,
+  };
+}
+
+// Os últimos dias, do mais antigo para hoje, no fuso do painel.
+export function recentDays(now, count = HISTORY_DAYS) {
+  const days = new Set();
+  for (let t = now; days.size < count; t -= DAY_STEP) days.add(dayOf(t));
+  return [...days].reverse();
 }

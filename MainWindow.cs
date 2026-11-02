@@ -9,6 +9,7 @@ namespace FcTimers;
 public class MainWindow : Window
 {
     private readonly Plugin plugin;
+    private DateTime copiedAt = DateTime.MinValue;
 
     public MainWindow(Plugin plugin) : base("FC Timers")
     {
@@ -16,17 +17,20 @@ public class MainWindow : Window
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(360, 240) };
     }
 
+    public override void OnOpen() => plugin.Sync.FetchSoon();
+
     public override void Draw()
     {
         var config = plugin.Config;
+        var view = plugin.View;
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         ImGui.TextUnformatted("Submarinos");
         ImGui.Separator();
-        if (config.Subs.Count == 0)
+        if (view.Subs.Count == 0)
             ImGui.TextUnformatted("Nenhum dado ainda. Abra o painel de submarinos na oficina da FC.");
 
-        foreach (var sub in config.Subs.Values.OrderBy(s => s.ReturnTime))
+        foreach (var sub in view.Subs.OrderBy(s => s.ReturnTime))
         {
             var state = sub.ReturnTime == 0 ? "parado" : Plugin.FormatRemaining(sub.ReturnTime - now);
             ImGui.TextUnformatted($"{sub.Name}: {state}");
@@ -35,19 +39,20 @@ public class MainWindow : Window
         ImGui.Spacing();
         ImGui.TextUnformatted("Buffs");
         ImGui.Separator();
-        if (config.Wheels.Count == 0)
+        if (view.Wheels.Count == 0)
             ImGui.TextUnformatted("Nenhum buff registrado. Abra a mesa da roda na casa da FC.");
 
-        foreach (var wheel in config.Wheels.Values.OrderBy(w => w.ReadyTime))
+        foreach (var wheel in view.Wheels.OrderBy(w => w.ReadyTime))
             ImGui.TextUnformatted($"{wheel.Name}: {Plugin.FormatRemaining(wheel.ReadyTime - now)}");
 
+        DrawGarden(config, view, now);
         DrawCharacters(config);
-        DrawLoot(config);
+        DrawLoot(view);
 
         ImGui.Spacing();
         ImGui.TextUnformatted("Buffs ativos");
         ImGui.Separator();
-        var active = config.ActiveFcBuffs.Where(b => b.EndTime == 0 || b.EndTime > now).ToList();
+        var active = view.ActiveBuffs.Where(b => b.EndTime == 0 || b.EndTime > now).ToList();
         if (active.Count == 0)
             ImGui.TextUnformatted("Nenhum");
 
@@ -55,6 +60,82 @@ public class MainWindow : Window
             ImGui.TextUnformatted($"{buff.Name}: {(buff.EndTime == 0 ? "?" : Plugin.FormatRemaining(buff.EndTime - now))}");
 
         DrawDiscord(config);
+        DrawDiagnostics(config);
+    }
+
+    private void DrawGarden(Configuration config, FcView view, long now)
+    {
+        ImGui.Spacing();
+        ImGui.TextUnformatted("Plantas");
+        ImGui.Separator();
+
+        if (view.Plots.Count == 0)
+            ImGui.TextUnformatted("Nenhuma rega registrada. Regue um plot com o plugin ligado.");
+
+        foreach (var plot in view.Plots)
+        {
+            ImGui.PushID(plot.Key);
+            var name = plot.Name;
+            ImGui.SetNextItemWidth(150);
+            if (config.Plots.TryGetValue(plot.Key, out var record))
+            {
+                // Renomear só vale para os plots que este PC já regou; o nome vai junto na próxima rega.
+                if (ImGui.InputText("##nome", ref name, 40) && name.Trim().Length > 0)
+                {
+                    record.Name = name.Trim();
+                    plugin.SaveConfig();
+                }
+            }
+            else
+            {
+                ImGui.TextUnformatted(name);
+            }
+
+            ImGui.SameLine();
+            ImGui.TextUnformatted(PlotState(plot, now));
+            if (record != null)
+            {
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Remover"))
+                    plugin.RemovePlot(plot.Key);
+            }
+
+            ImGui.PopID();
+        }
+
+        if (ImGui.Button("Reguei todos agora"))
+            plugin.WaterAll("botão Reguei todos agora");
+        ImGui.SameLine();
+        ImGui.TextDisabled("ou /fct regar. Cada plot também é registrado sozinho ao regar.");
+
+        if (!ImGui.TreeNode("Tempos da rega"))
+            return;
+
+        var interval = config.WaterIntervalHours;
+        if (ImGui.InputInt("Horas até poder regar de novo", ref interval) && interval is >= 1 and <= 240)
+        {
+            config.WaterIntervalHours = interval;
+            plugin.SaveConfig();
+        }
+
+        var die = config.DieAfterHours;
+        if (ImGui.InputInt("Horas até morrer sem rega", ref die) && die is >= 1 and <= 480)
+        {
+            config.DieAfterHours = die;
+            plugin.SaveConfig();
+        }
+
+        ImGui.TextDisabled("Contados a partir da última rega. Valores ainda a confirmar no jogo.");
+        ImGui.TreePop();
+    }
+
+    private static string PlotState(PlotView plot, long now)
+    {
+        if (plot.NextWaterAt > now)
+            return $"regar em {Plugin.FormatRemaining(plot.NextWaterAt - now)}";
+        if (plot.DieAt > now)
+            return $"pronta para regar. Morre em {Plugin.FormatRemaining(plot.DieAt - now)}";
+        return plot.DieAt > 0 ? "passou do prazo de rega" : "pronta para regar";
     }
 
     private void DrawCharacters(Configuration config)
@@ -82,7 +163,7 @@ public class MainWindow : Window
             return;
 
         var enabled = config.SyncEnabled;
-        if (ImGui.Checkbox("Enviar leituras para o painel da FC", ref enabled))
+        if (ImGui.Checkbox("Enviar e receber dados do painel da FC", ref enabled))
         {
             config.SyncEnabled = enabled;
             plugin.SaveConfig();
@@ -102,20 +183,51 @@ public class MainWindow : Window
             plugin.SaveConfig();
         }
 
-        ImGui.TextUnformatted($"Situação: {plugin.Sync.Status}");
+        ImGui.TextUnformatted($"Envio: {plugin.Sync.Status}");
+        ImGui.TextUnformatted(plugin.Sync.LastFetch is { } fetched
+            ? $"Recebido: {fetched:HH:mm}"
+            : "Recebido: ainda nada, mostrando só os dados deste PC");
     }
 
-    private static void DrawLoot(Configuration config)
+    private void DrawDiagnostics(Configuration config)
     {
         ImGui.Spacing();
-        ImGui.TextUnformatted("Loot por dia (valor de venda para NPC)");
+        if (!ImGui.CollapsingHeader("Diagnóstico"))
+            return;
+
+        var detailed = config.DetailedLog;
+        if (ImGui.Checkbox("Log detalhado", ref detailed))
+        {
+            config.DetailedLog = detailed;
+            plugin.SaveConfig();
+        }
+
+        ImGui.TextDisabled("Desligado: só loot, rega, horta e erros. Ligado: também cada leitura e envio.");
+
+        if (ImGui.Button("Copiar log"))
+        {
+            var header = $"FC Timers {Plugin.Version} | fuso UTC{DateTimeOffset.Now:zzz} | copiado {DateTime.Now:dd/MM HH:mm}";
+            ImGui.SetClipboardText(plugin.Diagnostics.Text(header));
+            copiedAt = DateTime.Now;
+        }
+
+        ImGui.SameLine();
+        ImGui.TextDisabled(DateTime.Now - copiedAt < TimeSpan.FromSeconds(5)
+            ? "Copiado. Cole no Discord."
+            : "O log não inclui a chave da FC.");
+    }
+
+    private static void DrawLoot(FcView view)
+    {
+        ImGui.Spacing();
+        ImGui.TextUnformatted("Loot por dia (valor de venda para NPC, dia de Brasília)");
         ImGui.Separator();
-        if (config.Voyages.Count == 0)
+        if (view.Voyages.Count == 0)
             ImGui.TextUnformatted("Nenhuma viagem registrada ainda.");
 
-        var today = DateTime.Today;
-        var days = config.Voyages.Values
-            .GroupBy(v => LootLedger.DayOf(v, TimeZoneInfo.Local))
+        var today = GameTime.Today;
+        var days = view.Voyages.Select(v => v.Voyage)
+            .GroupBy(v => LootLedger.DayOf(v, GameTime.PanelZone))
             .OrderByDescending(d => d.Key)
             .Take(7);
 

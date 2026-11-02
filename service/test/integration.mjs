@@ -103,8 +103,8 @@ try {
 
   // 2 pessoas enviando ao mesmo tempo, com a mesma viagem.
   const results = await Promise.all([
-    post({ subs: [{ slot: 0, name: 'Navi', returnTime: now + 3600, age: 0 }], voyages: [voyage(0, earlier, 100)] }),
-    post({ subs: [{ slot: 1, name: 'Tatl', returnTime: now + 7200, age: 0 }], voyages: [voyage(0, earlier, 100)] }),
+    post({ subs: [{ slot: 0, name: 'Navi', returnTime: now + 14400, age: 0 }], voyages: [voyage(0, earlier, 100)] }),
+    post({ subs: [{ slot: 1, name: 'Tatl', returnTime: now + 18000, age: 0 }], voyages: [voyage(0, earlier, 100)] }),
     post({ buffs: { age: 0, slots: [{ slot: 5, itemId: 9669, name: 'Grade 3 Wheel', hours: 70 }] } }),
   ]);
   assert.ok(results.every((r) => r.ok));
@@ -182,6 +182,18 @@ try {
   assert.equal(alerts().length, 1);
   assert.equal([...messages.values()].filter((m) => m.embeds).length, 1);
   ok('reler o mesmo submarino não repete o aviso');
+
+  // O plugin recebe o estado de volta, sem os dados internos do Discord.
+  await post({ plots: [{ key: 'casa:1', name: 'Vaso 1', nextWaterAt: Math.floor(Date.now() / 1000) + 86400, dieAt: Math.floor(Date.now() / 1000) + 172800, age: 0 }] });
+  const state = await (await fetch(`${service}/state`, { headers: { Authorization: `Bearer ${KEY}` } })).json();
+  assert.equal(state.subs[2].name, 'Ciela');
+  assert.ok(state.plots['casa:1'].nextWaterAt > 0);
+  assert.equal(state.voyages.length, 5);
+  assert.equal(state.messageId, undefined);
+  assert.equal((await fetch(`${service}/state`)).status, 401);
+  ok('o plugin recebe o estado, as plantas e as viagens');
+  await waitFor(() => /Vaso 1\*\*: regar <t:\d+:R>/.test(field('Plantas')), 'plantas no painel');
+  ok('as plantas aparecem no painel');
 
   console.log(`TODOS PASSARAM (${passed})`);
   exitCode = 0;

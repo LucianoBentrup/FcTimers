@@ -13,16 +13,20 @@ public readonly record struct BuffReading(int Slot, uint ItemId, string Name, in
 
 // Envia ao serviço só o que acabou de ser lido do jogo. Roda sempre na thread do jogo,
 // e só a requisição HTTP fica em segundo plano.
-public sealed class SyncClient(Configuration config, Action save) : IDisposable
+public sealed class SyncClient(Configuration config, Action save, Action<string> log) : IDisposable
 {
     private const int MaxVoyagesPerRequest = 50;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ActiveBuffRefresh = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan VoyageScanDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan FetchOpen = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan FetchClosed = TimeSpan.FromMinutes(5);
+    private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
     private sealed record PendingSub(int Slot, string Name, long ReturnTime, DateTime ReadAt);
     private sealed record PendingBuffs(List<BuffReading> Slots, DateTime ReadAt);
     private sealed record PendingActive(List<ActiveBuffReading> Buffs, DateTime ReadAt);
+    private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, DateTime ReadAt);
     private sealed record SendResult(bool Success, string Status);
 
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(20) };
@@ -33,6 +37,8 @@ public sealed class SyncClient(Configuration config, Action save) : IDisposable
     private string? lastActive;
     private DateTime lastActiveAt = DateTime.MinValue;
     private PendingActive? pendingActive;
+    private readonly Dictionary<string, string> lastPlots = [];
+    private readonly Dictionary<string, PendingPlot> pendingPlots = [];
     private DateTime nextAttempt = DateTime.MinValue;
     private DateTime nextVoyageScan = DateTime.MinValue;
 
@@ -40,9 +46,21 @@ public sealed class SyncClient(Configuration config, Action save) : IDisposable
     private List<PendingSub> sendingSubs = [];
     private PendingBuffs? sendingBuffs;
     private PendingActive? sendingActive;
+    private List<PendingPlot> sendingPlots = [];
+    private Task<RemoteState?>? fetching;
+    private DateTime nextFetch = DateTime.MinValue;
+    private string lastStatus = string.Empty;
     private List<KeyValuePair<string, string>> sendingVoyages = [];
 
     public string Status { get; private set; } = "Aguardando dados";
+
+    // Último estado recebido do serviço, e a diferença entre o relógio do PC e o do servidor.
+    public RemoteState? Remote { get; private set; }
+    public long RemoteOffset { get; private set; }
+    public DateTime? LastFetch { get; private set; }
+
+    // Com a janela aberta, busca com mais frequência.
+    public bool WindowOpen { get; set; }
 
     private bool Enabled => config.SyncEnabled && !string.IsNullOrWhiteSpace(config.ServiceUrl) && !string.IsNullOrWhiteSpace(config.ServiceKey);
 
@@ -89,8 +107,25 @@ public sealed class SyncClient(Configuration config, Action save) : IDisposable
         pendingActive = new PendingActive(buffs, DateTime.UtcNow);
     }
 
+    // A leitura da rega vale a partir do horário em que a planta foi regada, e não do envio.
+    // Assim uma rega antiga deste PC nunca passa por cima de uma rega mais nova de outro membro.
+    public void ReportPlot(string key, string name, long wateredAt, long nextWaterAt, long dieAt)
+    {
+        var signature = $"{name}|{nextWaterAt}|{dieAt}";
+        if (!Enabled || wateredAt == 0 || lastPlots.GetValueOrDefault(key) == signature)
+            return;
+
+        lastPlots[key] = signature;
+        pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime);
+    }
+
+    // Busca já na próxima rodada, por exemplo ao abrir a janela.
+    public void FetchSoon() => nextFetch = DateTime.MinValue;
+
     public void Tick()
     {
+        TickFetch();
+
         if (sending != null)
         {
             if (!sending.IsCompleted)
@@ -121,12 +156,13 @@ public sealed class SyncClient(Configuration config, Action save) : IDisposable
             nextVoyageScan = sendingVoyages.Count == MaxVoyagesPerRequest ? DateTime.MinValue : DateTime.UtcNow + VoyageScanDelay;
         }
 
-        if (pendingSubs.Count == 0 && pendingBuffs == null && pendingActive == null && sendingVoyages.Count == 0)
+        if (pendingSubs.Count == 0 && pendingBuffs == null && pendingActive == null && pendingPlots.Count == 0 && sendingVoyages.Count == 0)
             return;
 
         sendingSubs = pendingSubs.Values.ToList();
         sendingBuffs = pendingBuffs;
         sendingActive = pendingActive;
+        sendingPlots = pendingPlots.Values.ToList();
         sending = SendAsync(BuildBody(DateTime.UtcNow), config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim());
     }
 
@@ -145,12 +181,13 @@ public sealed class SyncClient(Configuration config, Action save) : IDisposable
                 age = Age(sendingActive.ReadAt, now),
                 buffs = sendingActive.Buffs.Select(b => new { name = b.Name, seconds = b.Seconds }),
             },
+            plots = sendingPlots.Select(p => new { key = p.Key, name = p.Name, nextWaterAt = p.NextWaterAt, dieAt = p.DieAt, age = Age(p.ReadAt, now) }),
             voyages = sendingVoyages.Select(v =>
             {
                 var voyage = config.Voyages[v.Key];
                 return new
                 {
-                    slot = SlotOf(v.Key),
+                    slot = LootLedger.SlotOf(v.Key),
                     subName = voyage.SubName,
                     returnTime = voyage.ReturnTime,
                     items = voyage.Items.Select(i => new { itemId = i.ItemId, name = i.Name, count = i.Count, value = i.Value }),
@@ -180,9 +217,65 @@ public sealed class SyncClient(Configuration config, Action save) : IDisposable
         }
     }
 
+    private void TickFetch()
+    {
+        if (fetching != null)
+        {
+            if (!fetching.IsCompleted)
+                return;
+
+            var state = fetching.Result;
+            fetching = null;
+            if (state != null)
+            {
+                Remote = state;
+                RemoteOffset = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - state.Now;
+                LastFetch = DateTime.Now;
+            }
+        }
+
+        if (!Enabled)
+        {
+            Remote = null;
+            LastFetch = null;
+            return;
+        }
+
+        if (DateTime.UtcNow < nextFetch)
+            return;
+
+        nextFetch = DateTime.UtcNow + (WindowOpen ? FetchOpen : FetchClosed);
+        fetching = FetchAsync(config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim());
+    }
+
+    private async Task<RemoteState?> FetchAsync(string url, string key)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{url}/state");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            using var response = await http.SendAsync(request).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return JsonSerializer.Deserialize<RemoteState>(text, ReadOptions);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException or UriFormatException or JsonException)
+        {
+            return null;
+        }
+    }
+
     private void Finish(SendResult result)
     {
         Status = result.Success ? $"{result.Status} ({DateTime.Now:HH:mm})" : result.Status;
+        if (result.Status != lastStatus)
+        {
+            lastStatus = result.Status;
+            log($"Serviço: {result.Status}");
+        }
+
         if (!result.Success)
         {
             nextAttempt = DateTime.UtcNow + RetryDelay;
@@ -199,6 +292,12 @@ public sealed class SyncClient(Configuration config, Action save) : IDisposable
         if (ReferenceEquals(pendingActive, sendingActive))
             pendingActive = null;
 
+        foreach (var plot in sendingPlots.Where(p => ReferenceEquals(pendingPlots.GetValueOrDefault(p.Key), p)))
+            pendingPlots.Remove(plot.Key);
+
+        if (sendingVoyages.Count > 0)
+            log($"Serviço: {sendingVoyages.Count} viagem(ns) enviada(s)");
+
         foreach (var voyage in sendingVoyages)
             config.SyncedVoyages[voyage.Key] = voyage.Value;
 
@@ -207,12 +306,6 @@ public sealed class SyncClient(Configuration config, Action save) : IDisposable
     }
 
     private static long Age(DateTime readAt, DateTime now) => Math.Max(0, (long)(now - readAt).TotalSeconds);
-
-    private static int SlotOf(string voyageKey)
-    {
-        var parts = voyageKey.Split(':');
-        return int.Parse(parts[^2]);
-    }
 
     private static string Signature(VoyageRecord voyage)
         => string.Join(';', voyage.Items.Select(i => $"{i.ItemId}|{i.Count}|{i.Value}"));

@@ -34,6 +34,9 @@ public static class LootLedger
 
     public static bool IsRealSlot(string slot) => int.TryParse(slot, out var value) && value < MaxSubmarines;
 
+    // Chaves locais são "<id da casa>:<slot>:<hora de retorno>"; o slot é o penúltimo pedaço.
+    public static int SlotOf(string voyageKey) => int.Parse(voyageKey.Split(':')[^2]);
+
     // Se a mesma viagem vier com dados diferentes, vale a leitura mais recente. Leitura sem itens é ignorada.
     public static bool Upsert(Dictionary<string, VoyageRecord> voyages, string key, VoyageRecord voyage)
     {

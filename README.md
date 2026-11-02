@@ -14,7 +14,8 @@ Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda e dos 
 
 ## Configurar
 1. Digite `/fct` e marque o seu personagem.
-2. Para enviar ao painel da FC, abra a seção **Discord**, cole o endereço do serviço e a chave da FC e marque a opção de enviar. O endereço e a chave são passados pela FC.
+2. Depois de regar as plantas, o plugin tenta registrar sozinho. Cada plot é registrado separado. Se não registrar, use **Reguei todos agora** ou `/fct regar`.
+3. Para enviar ao painel da FC e receber o que os outros membros leram, abra a seção **Discord**, cole o endereço do serviço e a chave da FC e marque a opção de enviar. O endereço e a chave são passados pela FC.
 
 ## Estrutura
 - Raiz: código do plugin.
