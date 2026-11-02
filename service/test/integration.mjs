@@ -195,6 +195,15 @@ try {
   await waitFor(() => /Vaso 1\*\*: regar <t:\d+:R>/.test(field('Plantas')), 'plantas no painel');
   ok('as plantas aparecem no painel');
 
+  // Reenviar o painel apaga a mensagem antiga e cria outra no fim do canal.
+  const oldPanel = [...messages.entries()].filter(([, m]) => m.embeds).at(-1)[0];
+  assert.equal((await fetch(`${service}/repost`, { method: 'POST' })).status, 401);
+  const repost = await fetch(`${service}/repost`, { method: 'POST', headers: { Authorization: `Bearer ${KEY}` } });
+  assert.equal(repost.status, 200);
+  await waitFor(() => !messages.has(oldPanel) && [...messages.values()].some((m) => m.embeds), 'painel reenviado');
+  assert.equal([...messages.values()].filter((m) => m.embeds).length, 1);
+  ok('o painel é reenviado no fim do canal');
+
   console.log(`TODOS PASSARAM (${passed})`);
   exitCode = 0;
 } catch (error) {

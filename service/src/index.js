@@ -22,7 +22,7 @@ export default {
     if (!isAuthorized(request, env)) return json({ error: 'unauthorized' }, 401);
 
     const { pathname } = new URL(request.url);
-    const allowed = (request.method === 'POST' && pathname === '/update')
+    const allowed = (request.method === 'POST' && (pathname === '/update' || pathname === '/repost'))
       || (request.method === 'GET' && (pathname === '/history' || pathname === '/state'));
     if (!allowed) return json({ error: 'not found' }, 404);
 
@@ -33,7 +33,9 @@ export default {
 
 export class FcState extends DurableObject {
   async fetch(request) {
-    if (request.method === 'POST') return this.handleUpdate(request);
+    if (request.method === 'POST') {
+      return new URL(request.url).pathname === '/repost' ? this.handleRepost() : this.handleUpdate(request);
+    }
     return new URL(request.url).pathname === '/state' ? this.handleState() : this.handleHistory(request);
   }
 
@@ -74,6 +76,23 @@ export class FcState extends DurableObject {
     const alarm = await storage.getAlarm();
     if (alarm === null || alarm > soon) await storage.setAlarm(soon);
 
+    return json({ ok: true });
+  }
+
+  // Apaga a mensagem do painel e manda outra, que fica no fim do canal.
+  async handleRepost() {
+    const state = (await this.ctx.storage.get('state')) ?? newState();
+    if (state.messageId) {
+      const response = await fetch(`${this.webhook()}/messages/${state.messageId}`, { method: 'DELETE' });
+      // 404: alguém já apagou a mensagem.
+      if (!response.ok && response.status !== 404) return json({ error: `discord ${response.status}` }, 502);
+    }
+
+    const latest = (await this.ctx.storage.get('state')) ?? newState();
+    delete latest.messageId;
+    delete latest.lastPanel;
+    await this.ctx.storage.put('state', latest);
+    await this.ctx.storage.setAlarm(Date.now());
     return json({ ok: true });
   }
 
