@@ -66,6 +66,7 @@ public sealed class Plugin : IDalamudPlugin
     private HashSet<string> seenBuffs = [];
     private bool characterEnabled;
     private bool inWorkshop;
+    private (string Key, string Name, DateTime SeenAt)? lastHousingObject;
     private DateTime autoLogAt = DateTime.MaxValue;
     private DateTime lastAutoLog = DateTime.MinValue;
 
@@ -230,15 +231,16 @@ public sealed class Plugin : IDalamudPlugin
     // que só muda se alguém mover o plot. Sem um alvo da casa, a rega vai para o plot geral.
     private unsafe void WaterTargetedPlot(string source)
     {
-        var target = TargetManager.Target;
-        var manager = HousingManager.Instance();
+        // Se o alvo já sumiu quando a mensagem chega, vale o último objeto da casa cujo menu foi aberto há pouco.
+        var housing = ReadHousingTarget();
+        if (housing == null && lastHousingObject is { } recent && DateTime.UtcNow - recent.SeenAt < TimeSpan.FromMinutes(2))
+            housing = (recent.Key, recent.Name);
+
         string key;
         string name;
-        if (target != null && manager != null && target.ObjectKind is ObjectKind.HousingEventObject or ObjectKind.EventObj)
+        if (housing is var (housingKey, baseName))
         {
-            var position = target.Position;
-            key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{position.X:F1}:{position.Y:F1}:{position.Z:F1}";
-            var baseName = target.Name.TextValue;
+            key = housingKey;
             name = Config.Plots.TryGetValue(key, out var known)
                 ? known.Name
                 : $"{baseName} {Config.Plots.Values.Count(p => p.Name.StartsWith(baseName, StringComparison.Ordinal)) + 1}";
@@ -258,6 +260,19 @@ public sealed class Plugin : IDalamudPlugin
         plot.WateredAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         SaveConfig();
         Diagnostics.Write($"Rega registrada em {plot.Name} ({source}, chave {key})");
+    }
+
+    // Chave e nome do objeto da casa selecionado agora, ou null se o alvo não for um objeto da casa.
+    private unsafe (string Key, string Name)? ReadHousingTarget()
+    {
+        var target = TargetManager.Target;
+        var manager = HousingManager.Instance();
+        if (target == null || manager == null || target.ObjectKind is not (ObjectKind.HousingEventObject or ObjectKind.EventObj))
+            return null;
+
+        var position = target.Position;
+        var key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{position.X:F1}:{position.Y:F1}:{position.Z:F1}";
+        return (key, target.Name.TextValue);
     }
 
     private void OnUpdate(IFramework framework)
@@ -465,12 +480,15 @@ public sealed class Plugin : IDalamudPlugin
             ReadSubmarines(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
     }
 
-    // Registra o menu de objetos da casa, como os plots, para confirmar como a horta funciona.
+    // Registra o menu de objetos da casa, como os plots, e guarda qual objeto foi, para a rega que vier em seguida.
     private unsafe void OnSelectString(AddonEvent type, AddonArgs args)
     {
         var target = TargetManager.Target;
         if (target == null || target.ObjectKind is not (ObjectKind.HousingEventObject or ObjectKind.EventObj))
             return;
+
+        if (ReadHousingTarget() is var (key, name))
+            lastHousingObject = (key, name, DateTime.UtcNow);
 
         var addon = (AtkUnitBase*)args.Addon.Address;
         var texts = new List<string>();

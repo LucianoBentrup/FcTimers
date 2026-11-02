@@ -9,6 +9,10 @@ public static class Changelog
 {
     public static readonly (string Version, string[] Notes)[] Entries =
     [
+        ("0.7.3",
+        [
+            "Watering is now matched to the garden you opened, even if the target is lost before the game's message, so each plot shows up on its own.",
+        ]),
         ("0.7.2",
         [
             "Watering times are now fixed: water again 24 hours after the last watering, and the plant is counted as dying 48 hours after it. The setting in the window was removed.",
