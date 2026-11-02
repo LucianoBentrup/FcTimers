@@ -256,10 +256,10 @@ test('plantas: lembrete 1 hora antes, aviso na hora e painel, por plot', () => {
   assert.equal(renderPanel(state, [], at(1, 9)).embeds[0].fields[2].value,
     `**Vaso 1, Vaso 2**: regar <t:${at(2, 9)}:R> (<t:${at(2, 9)}:t>)\n**Canteiro**: regar <t:${at(2, 15)}:R> (<t:${at(2, 15)}:t>)`);
   const [reminder] = pendingAlerts(state, at(2, 8));
-  assert.equal(alertPayload(reminder, '9').content, '<@&9> Lembrete: Em 1 hora as plantas estarão disponíveis para regar (**Vaso 1** e **Vaso 2**).');
+  assert.equal(alertPayload(reminder, '9').content, '<@&9> Lembrete: Em 1 hora a plantação estará disponível para regar (**Vaso 1** e **Vaso 2**).');
   markSent(state, reminder);
   const [ready] = pendingAlerts(state, at(2, 9, 10));
-  assert.equal(alertPayload(ready, '9').content, '<@&9> 🌱 As plantas já podem ser regadas (**Vaso 1** e **Vaso 2**)!');
+  assert.equal(alertPayload(ready, '9').content, '<@&9> 🌱 A plantação já pode ser regada (**Vaso 1** e **Vaso 2**)!');
   markSent(state, ready);
   assert.equal(pendingAlerts(state, at(2, 10)).length, 0);
   assert.equal(pendingAlerts(state, at(2, 14))[0].plots[0].name, 'Canteiro');
@@ -291,10 +291,10 @@ test('rega antiga de outro PC não passa por cima da mais nova, e plot morto há
   assert.match(renderPanel(state, [], at(6, 0)).embeds[0].fields[2].value, /^Nenhum dado ainda/);
 });
 
-test('rega vista já vencida não gera aviso atrasado, e o formato antigo vira o plot Plantas', () => {
+test('rega vista já vencida não gera aviso atrasado, e o formato antigo vira o plot Plantação', () => {
   const state = newState();
   applyUpdate(state, { garden: { nextWaterAt: at(1, 8), age: 0 } }, at(1, 9));
-  assert.equal(state.plots.geral.name, 'Plantas');
+  assert.equal(state.plots.geral.name, 'Plantação');
   assert.equal(pendingAlerts(state, at(1, 9)).length, 0);
   applyUpdate(state, { garden: { nextWaterAt: at(2, 9), age: 0 } }, at(1, 9, 5));
   assert.equal(pendingAlerts(state, at(2, 8))[0].kind, 'plotReminder');

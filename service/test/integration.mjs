@@ -192,7 +192,7 @@ try {
   assert.equal(state.messageId, undefined);
   assert.equal((await fetch(`${service}/state`)).status, 401);
   ok('o plugin recebe o estado, as plantas e as viagens');
-  await waitFor(() => /Vaso 1\*\*: regar <t:\d+:R>/.test(field('Plantas')), 'plantas no painel');
+  await waitFor(() => /Vaso 1\*\*: regar <t:\d+:R>/.test(field('Plantação')), 'plantas no painel');
   ok('as plantas aparecem no painel');
 
   // Reenviar o painel apaga a mensagem antiga e cria outra no fim do canal.

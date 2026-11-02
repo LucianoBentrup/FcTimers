@@ -107,8 +107,8 @@ export function alertPayload(alert, roleId) {
   const texts = {
     subReady: () => `🚢 ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'}!`,
     subReminder: () => `Lembrete: Em 1 hora os submarinos estarão prontos para coleta (${joinNames(alert.subs)}).`,
-    plotReady: () => `🌱 As plantas já podem ser regadas (${joinNames(alert.plots)})!`,
-    plotReminder: () => `Lembrete: Em 1 hora as plantas estarão disponíveis para regar (${joinNames(alert.plots)}).`,
+    plotReady: () => `🌱 A plantação já pode ser regada (${joinNames(alert.plots)})!`,
+    plotReminder: () => `Lembrete: Em 1 hora a plantação estará disponível para regar (${joinNames(alert.plots)}).`,
     plotDying: () => `⚠️ Se ninguém regar, ${alert.plots.length > 1 ? 'morrem' : 'morre'}: ${joinList(alert.plots.map((p) => `**${p.name}** <t:${p.dieAt}:R>`))}!`,
   };
   const text = texts[alert.kind]();
@@ -171,9 +171,9 @@ export function applyUpdate(state, body, now) {
   }
 
   // A rega de cada plot vale a partir do horário em que foi regado, então a mais nova sempre vence.
-  // O formato com uma rega só vira o plot "Plantas".
+  // O formato com uma rega só vira o plot "Plantação".
   const plotUpdates = [...(body.plots ?? [])];
-  if (body.garden) plotUpdates.push({ ...body.garden, key: 'geral', name: 'Plantas' });
+  if (body.garden) plotUpdates.push({ ...body.garden, key: 'geral', name: 'Plantação' });
   state.plots ??= {};
   for (const update of plotUpdates) {
     const observedAt = now - update.age;
@@ -328,7 +328,7 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
       fields: [
         { name: '🚢 Submarinos', value: subs.join('\n') || 'Nenhum dado ainda.' },
         { name: '⚙️ Buffs', value: buffs.join('\n') || 'Nenhum dado ainda.' },
-        { name: '🌱 Plantas', value: plotLines },
+        { name: '🌱 Plantação', value: plotLines },
         { name: `💰 Loot de hoje (${day}/${month})`, value: [`**${gilFormat.format(total)} gil**`, ...subLoot].join('\n') },
         ...(showItems ? [{ name: '📦 Itens de hoje', value: itemLines.join('\n') }] : []),
         { name: '✨ Buffs ativos', value: activeLines.join('\n') },

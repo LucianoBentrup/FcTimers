@@ -66,7 +66,7 @@ public class MainWindow : Window
     private void DrawGarden(Configuration config, FcView view, long now)
     {
         ImGui.Spacing();
-        ImGui.TextUnformatted("Plantas");
+        ImGui.TextUnformatted("Plantação");
         ImGui.Separator();
 
         if (view.Plots.Count == 0)

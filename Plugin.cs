@@ -33,7 +33,7 @@ public sealed class Plugin : IDalamudPlugin
     private const uint FirstGardenMessage = 4000;
     private const uint LastGardenMessage = 4026;
     private const string GeneralPlot = "geral";
-    private const string GeneralPlotName = "Plantas";
+    private const string GeneralPlotName = "Plantação";
 
     // Telas que aparecem quando o resultado de uma viagem chega.
     private static readonly string[] ResultAddons = ["AirShipExplorationResult", "SubmersibleExplorationResult"];
@@ -117,11 +117,11 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.AddHandler(Command, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Abre a janela do FC Timers. Use \"/fct regar\" depois de regar as plantas.",
+            HelpMessage = "Abre a janela do FC Timers. Use \"/fct regar\" depois de regar a plantação.",
         });
         CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Atalho do /fctimers. \"/fct regar\" registra a rega das plantas.",
+            HelpMessage = "Atalho do /fctimers. \"/fct regar\" registra a rega da plantação.",
         });
 
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
@@ -181,7 +181,7 @@ public sealed class Plugin : IDalamudPlugin
             Config.Version = 5;
         }
 
-        // A versão de testes guardava uma rega só, que vira o plot "Plantas".
+        // A versão de testes guardava uma rega só, que vira o plot "Plantação".
         if (Config.Version < 7 && Config.Garden.WateredAt != 0 && !Config.Plots.ContainsKey(GeneralPlot))
             Config.Plots[GeneralPlot] = new PlotRecord { Name = GeneralPlotName, WateredAt = Config.Garden.WateredAt };
 

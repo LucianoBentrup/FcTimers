@@ -2,7 +2,7 @@
 
 ## Painel
 - Existe uma única mensagem no Discord, sempre editada.
-- Ela mostra o status atual, as plantas e o total do loot do dia atual.
+- Ela mostra o status atual, a plantação e o total do loot do dia atual.
 - A lista de itens do dia fica fora do painel, para a mensagem ficar leve. O código continua no serviço (`SHOW_ITEMS`) para um bot no futuro.
 
 ## Avisos
@@ -10,7 +10,7 @@
 - 1 hora antes de um submarino voltar: "Lembrete: Em 1 hora os submarinos estarão prontos para coleta", com os nomes. Quem volta até 15 minutos depois entra no mesmo lembrete.
 - Se faltar menos de 30 minutos quando o serviço puder enviar o lembrete, ele não sai, e só sai o aviso de pronto.
 - Quando um submarino volta, sai o aviso de pronto. Submarinos que voltam juntos entram no mesmo aviso.
-- Plantas, por plot: lembrete 1 hora antes de poder regar, aviso quando pode regar, e um aviso 3, 2 e 1 hora antes de morrer.
+- Plantação, por plot: lembrete 1 hora antes de poder regar, aviso quando pode regar, e um aviso 3, 2 e 1 hora antes de morrer.
 - Cada viagem e cada rega avisa uma vez só. Algo visto pela primeira vez quando já estava pronto não gera aviso.
 
 ## Loot do dia
@@ -27,9 +27,9 @@
 - Se o buff surgir com o plugin ligado há pelo menos 1 minuto, o término é estimado em 24 horas. A aba de ações, quando aberta, traz o valor exato.
 - Sem horário conhecido, o painel mostra `?` e o horário da leitura. O nível ausente fica só com o nome-base.
 
-## Plantas
+## Plantação
 - Cada plot ou vaso tem o seu horário. Ele é identificado pela casa (território, ward e plot), pelo quarto privado quando houver e pela posição do objeto, que só muda se alguém mover o plot.
-- O plugin registra a rega quando o jogo mostra "This crop is doing well." (mensagem 4017) ou ao plantar (4015), no plot que estiver selecionado. Sem plot selecionado, a rega vai para o plot geral "Plantas". Ainda falta confirmar no jogo que essas mensagens só aparecem nesses momentos.
+- O plugin registra a rega quando o jogo mostra "This crop is doing well." (mensagem 4017) ou ao plantar (4015), no plot que estiver selecionado. Sem plot selecionado, a rega vai para o plot geral "Plantação". Ainda falta confirmar no jogo que essas mensagens só aparecem nesses momentos.
 - Na mão, "Reguei todos agora" ou `/fct regar` registram a rega em todos os plots conhecidos.
 - O próximo horário de regar e o de morrer contam a partir da última rega de cada plot, com as horas configuradas na janela (24 e 48 por padrão, a confirmar).
 - Em cada plot, a rega mais recente entre os membros vale, e a de um PC nunca passa por cima de uma mais nova de outro.
