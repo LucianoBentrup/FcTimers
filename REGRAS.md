@@ -36,6 +36,13 @@
 - No painel, cada plot tem a sua linha, com o próprio horário. Os avisos juntam os plots que ficam prontos juntos.
 - Um plot que morreu há mais de 2 dias some do painel e dos avisos.
 
+## Estoque
+- O plugin conta os tanques de ceruleum (item 10155) e os kits de reparo (Magitek Repair Materials, item 10373) no baú da FC e no inventário de quem está jogando.
+- O jogo só carrega o baú da FC quando alguém abre. Cada página guarda a última contagem vista, e o total soma as páginas e o inventário.
+- A contagem vale a partir de quando mudou. Uma contagem mais antiga nunca passa por cima de uma mais nova de outro membro.
+- O painel mostra o estoque só depois da primeira contagem, com um ⚠️ no que estiver baixo.
+- Com menos de 120 tanques ou 20 kits, sai um aviso marcando @Subs, uma vez só. Ele volta a avisar depois que o estoque for reposto e cair de novo.
+
 ## Loot rápido
 - O jogo guarda na memória o loot da última viagem coletada de cada sub. O plugin salva o loot quando ele muda, lendo a cada frame dentro da oficina.
 - Se o sub já saiu de novo quando o loot chega, a viagem usa a volta anterior.

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Dalamud.Configuration;
 
 namespace FcTimers;
@@ -28,6 +29,27 @@ public class CharacterRecord
 {
     public string Name { get; set; } = string.Empty;
     public bool Enabled { get; set; }
+}
+
+[Serializable]
+public class SupplyPage
+{
+    public int Tanks { get; set; }
+    public int Kits { get; set; }
+}
+
+[Serializable]
+public class SupplyRecord
+{
+    // Última contagem de cada página do baú da FC (1 a 5) e do inventário de quem joga neste PC.
+    public Dictionary<int, SupplyPage> ChestPages { get; set; } = [];
+    public SupplyPage Bags { get; set; } = new();
+
+    // Quando o total mudou pela última vez. Uma contagem antiga nunca passa por cima de uma mais nova de outro membro.
+    public long ChangedAt { get; set; }
+
+    public int Tanks => ChestPages.Values.Sum(p => p.Tanks) + Bags.Tanks;
+    public int Kits => ChestPages.Values.Sum(p => p.Kits) + Bags.Kits;
 }
 
 [Serializable]
@@ -97,4 +119,6 @@ public class Configuration : IPluginConfiguration
 
     // Chave: território, ward, plot da casa e posição do plot ou vaso. "geral" quando não dá para saber qual foi.
     public Dictionary<string, PlotRecord> Plots { get; set; } = [];
+
+    public SupplyRecord Supplies { get; set; } = new();
 }

@@ -46,6 +46,7 @@ public class MainWindow : Window
         foreach (var wheel in view.Wheels.OrderBy(w => w.ReadyTime))
             ImGui.TextUnformatted($"{wheel.Name}: {Plugin.FormatRemaining(wheel.ReadyTime - now)}");
 
+        DrawSupplies(view, now);
         DrawGarden(config, view, now);
         DrawCharacters(config);
         DrawLoot(view);
@@ -62,6 +63,24 @@ public class MainWindow : Window
 
         DrawDiscord(config);
         DrawDiagnostics(config);
+    }
+
+    private static void DrawSupplies(FcView view, long now)
+    {
+        ImGui.Spacing();
+        ImGui.TextUnformatted("Estoque");
+        ImGui.Separator();
+        if (view.Supplies is not { } stock)
+        {
+            ImGui.TextUnformatted("Nenhum dado ainda. Abra o baú da FC.");
+            return;
+        }
+
+        ImGui.TextUnformatted($"Tanques de ceruleum: {stock.Tanks:N0}");
+        ImGui.TextUnformatted($"Kits de reparo: {stock.Kits:N0}");
+        var age = now - stock.ObservedAt;
+        var when = age < 60 ? "agora" : $"há {Plugin.FormatRemaining(age)}";
+        ImGui.TextDisabled($"Contado {when}, no baú da FC e no inventário de quem abriu.");
     }
 
     private void DrawGarden(Configuration config, FcView view, long now)

@@ -9,6 +9,14 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.8.0",
+        [
+            ("Added",
+            [
+                "Ceruleum tank and repair material stock, counted from the FC chest and the inventory, in the main window and the Discord panel.",
+                "Discord alert when stock falls below 120 tanks or 20 repair materials.",
+            ]),
+        ]),
         ("0.7.4",
         [
             ("Changed",

@@ -250,6 +250,31 @@ test('sem tempo para o lembrete, só sai o aviso de pronto', () => {
 
 const plot = (key, name, nextWaterAt, dieAt = 0, age = 0) => ({ key, name, nextWaterAt, dieAt, age });
 
+test('estoque: painel, aviso de estoque baixo uma vez e volta a avisar depois de repor', () => {
+  const state = newState();
+  applyUpdate(state, { supplies: { tanks: 579, kits: 65, age: 0 } }, at(1, 9));
+  const field = renderPanel(state, [], at(1, 9)).embeds[0].fields.find((f) => f.name.includes('Estoque'));
+  assert.equal(field.value, `**579** tanques de ceruleum\n**65** kits de reparo\nContado <t:${at(1, 9)}:R>`);
+  assert.deepEqual(pendingAlerts(state, at(1, 9)), []);
+
+  applyUpdate(state, { supplies: { tanks: 100, kits: 65, age: 0 } }, at(1, 10));
+  const [low] = pendingAlerts(state, at(1, 10));
+  assert.equal(alertPayload(low, '9').content, '<@&9> ⛽ Estoque baixo: restam **100 tanques de ceruleum**.');
+  markSent(state, low);
+  applyUpdate(state, { supplies: { tanks: 90, kits: 65, age: 0 } }, at(1, 11));
+  assert.deepEqual(pendingAlerts(state, at(1, 11)), []);
+
+  // Uma contagem mais antiga não vence a mais nova.
+  applyUpdate(state, { supplies: { tanks: 579, kits: 65, age: 7200 } }, at(1, 12));
+  assert.equal(state.supplies.tanks, 90);
+
+  applyUpdate(state, { supplies: { tanks: 500, kits: 65, age: 0 } }, at(1, 12));
+  applyUpdate(state, { supplies: { tanks: 110, kits: 10, age: 0 } }, at(1, 13));
+  const [again] = pendingAlerts(state, at(1, 13));
+  assert.equal(alertPayload(again, '').content, '⛽ Estoque baixo: restam **110 tanques de ceruleum** e **10 kits de reparo**.');
+  assert.equal(isValidUpdate({ supplies: { tanks: -1, kits: 0, age: 0 } }), false);
+});
+
 test('plantas: lembrete 1 hora antes, aviso na hora e painel, por plot', () => {
   const state = newState();
   applyUpdate(state, { plots: [plot('a', 'Vaso 1', at(2, 9)), plot('b', 'Vaso 2', at(2, 9, 10)), plot('c', 'Canteiro', at(2, 15))] }, at(1, 9));

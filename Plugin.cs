@@ -91,6 +91,7 @@ public sealed class Plugin : IDalamudPlugin
         Diagnostics.Write($"Plugin {Version} iniciado");
 
         Sync = new SyncClient(Config, SaveConfig, Diagnostics.Write);
+        Diagnostics.Write($"Itens do estoque: {LookupItem(Supplies.CeruleumTank)?.Name ?? "?"} e {LookupItem(Supplies.RepairMaterials)?.Name ?? "?"}");
 
         // No jogo, cada ação da FC é um status com o mesmo nome-base, sem o nível.
         companyActions = DataManager.GetExcelSheet<CompanyAction>()
@@ -292,7 +293,10 @@ public sealed class Plugin : IDalamudPlugin
         {
             ReadWheels(now);
             ReadActiveBuffs(now);
+            ReadSupplies(now);
         }
+
+        Sync.ReportSupplies(Config.Supplies.Tanks, Config.Supplies.Kits, Config.Supplies.ChangedAt);
 
         foreach (var (key, plot) in Config.Plots.Where(p => p.Value.WateredAt != 0))
         {
@@ -521,6 +525,35 @@ public sealed class Plugin : IDalamudPlugin
     {
         var item = DataManager.GetExcelSheet<Item>().GetRowOrDefault(itemId);
         return item == null ? null : (item.Value.Name.ToString(), item.Value.PriceLow);
+    }
+
+    private void ReadSupplies(long now)
+    {
+        var record = Config.Supplies;
+        var changed = false;
+        foreach (var (page, count) in Supplies.ReadChest())
+        {
+            if (record.ChestPages.TryGetValue(page, out var known) && known.Tanks == count.Tanks && known.Kits == count.Kits)
+                continue;
+
+            Diagnostics.Write($"Baú da FC, página {page}: {count.Tanks} tanques, {count.Kits} kits de reparo");
+            record.ChestPages[page] = new SupplyPage { Tanks = count.Tanks, Kits = count.Kits };
+            changed = true;
+        }
+
+        if (Supplies.ReadBags() is { } bags && (bags.Tanks != record.Bags.Tanks || bags.Kits != record.Bags.Kits))
+        {
+            Diagnostics.Write($"Inventário: {bags.Tanks} tanques, {bags.Kits} kits de reparo");
+            record.Bags = new SupplyPage { Tanks = bags.Tanks, Kits = bags.Kits };
+            changed = true;
+        }
+
+        if (!changed)
+            return;
+
+        record.ChangedAt = now;
+        SaveConfig();
+        Diagnostics.Write($"Estoque total: {record.Tanks} tanques, {record.Kits} kits de reparo (páginas do baú vistas: {string.Join(", ", record.ChestPages.Keys.Order())})");
     }
 
     private unsafe void ReadWheels(long now)

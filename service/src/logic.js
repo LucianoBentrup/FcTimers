@@ -19,6 +19,9 @@ export const HISTORY_DAYS = 7;
 // A lista de itens fica fora do painel para a mensagem do webhook ficar leve. O código continua aqui para um bot no futuro.
 export const SHOW_ITEMS = false;
 const MAX_SUBMARINES = 4;
+// Abaixo disso sai um aviso de estoque baixo, uma vez, até o estoque voltar a subir.
+export const LOW_TANKS = 120;
+export const LOW_KITS = 20;
 
 // Até a versão 0.6.0 o plugin enviava uma 5ª posição, que repete um dos 4 submarinos.
 export const isRealSlot = (slot) => Number(slot) < MAX_SUBMARINES;
@@ -27,7 +30,7 @@ const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 
 const gilFormat = new Intl.NumberFormat('pt-BR');
 
 export const newState = () => ({
-  subs: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, plots: {}, alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
+  subs: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, plots: {}, supplies: null, alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
 });
 
 // O lembrete sai 1 hora antes. Se o serviço só puder enviar com menos de 30 minutos restando, ele não sai.
@@ -62,8 +65,13 @@ export function pendingAlerts(state, now) {
   const dying = plots.map((p) => ({ ...p, step: deathWarningDue(p, now) })).filter((p) => p.step);
   if (dying.length > 0) alerts.push({ kind: 'plotDying', plots: dying });
 
+  const supplies = state.supplies;
+  if (supplies && !supplies.lowWarned && isLow(supplies)) alerts.push({ kind: 'suppliesLow', supplies });
+
   return alerts;
 }
+
+const isLow = (supplies) => supplies.tanks < LOW_TANKS || supplies.kits < LOW_KITS;
 
 // Plots com horário de rega, sem os que morreram há muito tempo ou foram retirados.
 export function activePlots(state, now) {
@@ -96,6 +104,7 @@ export function markSent(state, alert) {
     if (alert.kind === 'plotReminder' && plot.nextWaterAt === sent.nextWaterAt) plot.reminded = plot.nextWaterAt;
     if (alert.kind === 'plotDying' && plot.dieAt === sent.dieAt) plot.warned = sent.step;
   }
+  if (alert.kind === 'suppliesLow' && state.supplies) state.supplies.lowWarned = true;
 }
 
 export const alertDeleteAt = (sentAt) => sentAt + ALERT_LIFETIME;
@@ -109,6 +118,12 @@ export function alertPayload(alert, roleId) {
     subReminder: () => `Lembrete: Em 1 hora os submarinos estarão prontos para coleta (${joinNames(alert.subs)}).`,
     plotReady: () => `🌱 A plantação já pode ser regada (${joinNames(alert.plots)})!`,
     plotReminder: () => `Lembrete: Em 1 hora a plantação estará disponível para regar (${joinNames(alert.plots)}).`,
+    suppliesLow: () => {
+      const low = [];
+      if (alert.supplies.tanks < LOW_TANKS) low.push(`**${gilFormat.format(alert.supplies.tanks)} tanques de ceruleum**`);
+      if (alert.supplies.kits < LOW_KITS) low.push(`**${gilFormat.format(alert.supplies.kits)} kits de reparo**`);
+      return `⛽ Estoque baixo: restam ${joinList(low)}.`;
+    },
     plotDying: () => `⚠️ Se ninguém regar, ${alert.plots.length > 1 ? 'morrem' : 'morre'}: ${joinList(alert.plots.map((p) => `**${p.name}** <t:${p.dieAt}:R>`))}!`,
   };
   const text = texts[alert.kind]();
@@ -148,6 +163,8 @@ export function isValidUpdate(body) {
   if (!Array.isArray(plots) || plots.length > MAX_PLOTS) return false;
   if (!plots.every((p) => isPlot(p) && isName(p.key) && isName(p.name))) return false;
   if (body.garden != null && !isPlot(body.garden)) return false;
+  const supplies = body.supplies;
+  if (supplies != null && !(isAge(supplies.age) && isTime(supplies.tanks) && isTime(supplies.kits))) return false;
   if (body.buffs == null) return true;
   return isAge(body.buffs.age) && Array.isArray(body.buffs.slots) && body.buffs.slots.length <= 16
     && body.buffs.slots.every((b) => b && isSlot(b.slot) && isTime(b.itemId) && isName(b.name) && isTime(b.hours));
@@ -191,6 +208,17 @@ export function applyUpdate(state, body, now) {
       reminded: same ? existing.reminded : 0,
       warned: existing?.dieAt === dieAt ? existing.warned ?? 0 : 0,
     };
+  }
+
+  // O estoque vale a partir de quando a contagem mudou, então a mais nova sempre vence.
+  if (body.supplies) {
+    const observedAt = now - body.supplies.age;
+    if (!state.supplies || observedAt >= state.supplies.observedAt) {
+      const { tanks, kits } = body.supplies;
+      const supplies = { tanks, kits, observedAt, lowWarned: false };
+      supplies.lowWarned = isLow(supplies) && (state.supplies?.lowWarned ?? false);
+      state.supplies = supplies;
+    }
   }
 
   if (body.buffs) {
@@ -270,6 +298,15 @@ function renderPlots(plots, now) {
   return lines.join('\n');
 }
 
+function suppliesText(supplies) {
+  const mark = (value, low) => (value < low ? `⚠️ **${gilFormat.format(value)}**` : `**${gilFormat.format(value)}**`);
+  return [
+    `${mark(supplies.tanks, LOW_TANKS)} tanques de ceruleum`,
+    `${mark(supplies.kits, LOW_KITS)} kits de reparo`,
+    `Contado <t:${supplies.observedAt}:R>`,
+  ].join('\n');
+}
+
 // O painel é sempre montado a partir do estado salvo e de todas as viagens do dia.
 export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
   const [, month, day] = dayOf(now).split('-');
@@ -322,6 +359,7 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
       fields: [
         { name: '🚢 Submarinos', value: subs.join('\n') || 'Nenhum dado ainda.' },
         { name: '⚙️ Buffs', value: buffs.join('\n') || 'Nenhum dado ainda.' },
+        ...(state.supplies ? [{ name: '⛽ Estoque', value: suppliesText(state.supplies) }] : []),
         { name: '🌱 Plantação', value: plotLines },
         { name: `💰 Loot de hoje (${day}/${month})`, value: [`**${gilFormat.format(total)} gil**`, ...subLoot].join('\n') },
         ...(showItems ? [{ name: '📦 Itens de hoje', value: itemLines.join('\n') }] : []),
@@ -363,6 +401,7 @@ export function publicState(state, voyages, now) {
     buffsObservedAt: state.buffsObservedAt,
     activeBuffs: state.activeBuffs,
     plots: state.plots ?? {},
+    supplies: state.supplies ? { tanks: state.supplies.tanks, kits: state.supplies.kits, observedAt: state.supplies.observedAt } : null,
     voyages,
   };
 }

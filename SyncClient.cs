@@ -27,6 +27,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private sealed record PendingBuffs(List<BuffReading> Slots, DateTime ReadAt);
     private sealed record PendingActive(List<ActiveBuffReading> Buffs, DateTime ReadAt);
     private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, DateTime ReadAt);
+    private sealed record PendingSupplies(int Tanks, int Kits, DateTime ReadAt);
     private sealed record SendResult(bool Success, string Status);
 
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(20) };
@@ -39,6 +40,9 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private PendingActive? pendingActive;
     private readonly Dictionary<string, string> lastPlots = [];
     private readonly Dictionary<string, PendingPlot> pendingPlots = [];
+    private long lastSupplies;
+    private PendingSupplies? pendingSupplies;
+    private PendingSupplies? sendingSupplies;
     private DateTime nextAttempt = DateTime.MinValue;
     private DateTime nextVoyageScan = DateTime.MinValue;
 
@@ -122,6 +126,16 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime);
     }
 
+    // Vale a partir de quando a contagem mudou, e não do envio, para uma contagem antiga não vencer uma nova.
+    public void ReportSupplies(int tanks, int kits, long changedAt)
+    {
+        if (!Enabled || changedAt == 0 || changedAt == lastSupplies)
+            return;
+
+        lastSupplies = changedAt;
+        pendingSupplies = new PendingSupplies(tanks, kits, DateTimeOffset.FromUnixTimeSeconds(changedAt).UtcDateTime);
+    }
+
     // Manda o log de diagnóstico ao serviço, que guarda só o último de cada personagem.
     public bool SendLog(string character, string text)
     {
@@ -195,13 +209,14 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             nextVoyageScan = sendingVoyages.Count == MaxVoyagesPerRequest ? DateTime.MinValue : DateTime.UtcNow + VoyageScanDelay;
         }
 
-        if (pendingSubs.Count == 0 && pendingBuffs == null && pendingActive == null && pendingPlots.Count == 0 && sendingVoyages.Count == 0)
+        if (pendingSubs.Count == 0 && pendingBuffs == null && pendingActive == null && pendingPlots.Count == 0 && pendingSupplies == null && sendingVoyages.Count == 0)
             return;
 
         sendingSubs = pendingSubs.Values.ToList();
         sendingBuffs = pendingBuffs;
         sendingActive = pendingActive;
         sendingPlots = pendingPlots.Values.ToList();
+        sendingSupplies = pendingSupplies;
         sending = SendAsync(BuildBody(DateTime.UtcNow), config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim());
     }
 
@@ -220,6 +235,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
                 age = Age(sendingActive.ReadAt, now),
                 buffs = sendingActive.Buffs.Select(b => new { name = b.Name, seconds = b.Seconds }),
             },
+            supplies = sendingSupplies == null ? null : new { tanks = sendingSupplies.Tanks, kits = sendingSupplies.Kits, age = Age(sendingSupplies.ReadAt, now) },
             plots = sendingPlots.Select(p => new { key = p.Key, name = p.Name, nextWaterAt = p.NextWaterAt, dieAt = p.DieAt, age = Age(p.ReadAt, now) }),
             voyages = sendingVoyages.Select(v =>
             {
@@ -330,6 +346,9 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
         if (ReferenceEquals(pendingActive, sendingActive))
             pendingActive = null;
+
+        if (ReferenceEquals(pendingSupplies, sendingSupplies))
+            pendingSupplies = null;
 
         foreach (var plot in sendingPlots.Where(p => ReferenceEquals(pendingPlots.GetValueOrDefault(p.Key), p)))
             pendingPlots.Remove(plot.Key);
