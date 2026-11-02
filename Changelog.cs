@@ -15,7 +15,8 @@ public static class Changelog
             [
                 "Ceruleum tank and repair material stock, counted from the FC chest and the inventory, with how many rounds and full repairs it covers.",
                 "Submarine rank, experience, build, route and part condition in the main window and the Discord panel.",
-                "Discord alerts when a submarine needs repair (below 30%) and when stock falls below 120 tanks or 20 repair materials.",
+                "Discord alerts when a submarine needs repair (below 30%), when stock falls below 2 rounds of tanks or 20 repair materials, and when a voyage unlocks a new sector.",
+                "Market board prices from Universalis: items worth more on the market count at the market price, with a Discord alert for drops worth 100,000 gil or more. The world defaults to the character's home world and can be changed in Settings.",
                 "English translation. The language can be changed in Settings.",
             ]),
             ("Changed",

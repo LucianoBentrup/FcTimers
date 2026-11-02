@@ -112,19 +112,22 @@ public class MainWindow : Window
 
         foreach (var day in days)
         {
-            var total = LootLedger.Total(day);
-            var label = $"{day.Key:dd/MM}: {L.DayTotal($"{total:N0}", L.Voyages(day.Count()))}###{day.Key:yyyyMMdd}";
+            var all = day.SelectMany(v => v.Items).ToList();
+            var total = all.Sum(i => i.Best);
+            var market = all.Where(i => i.IsMarket).Sum(i => i.Best);
+            var extra = market > 0 ? $" ({L.IncludesMarket($"{market:N0}")})" : string.Empty;
+            var label = $"{day.Key:dd/MM}: {L.DayTotal($"{(market > 0 ? "≈ " : string.Empty)}{total:N0}", L.Voyages(day.Count()))}{extra}###{day.Key:yyyyMMdd}";
             var flags = day.Key == today ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
             if (!ImGui.CollapsingHeader(label, flags))
                 continue;
 
-            var items = day.SelectMany(v => v.Items)
+            var items = all
                 .GroupBy(i => i.Name)
-                .Select(g => (Name: g.Key, Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Value)))
+                .Select(g => (Name: g.Key, Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Best), Market: g.Any(i => i.IsMarket)))
                 .OrderByDescending(i => i.Value);
 
             foreach (var item in items)
-                ImGui.TextUnformatted($"{item.Count}x {item.Name}: {item.Value:N0} gil");
+                ImGui.TextUnformatted($"{item.Count}x {item.Name}: {item.Value:N0} gil{(item.Market ? $" ({L.MarketTag})" : string.Empty)}");
         }
     }
 
@@ -210,6 +213,21 @@ public class MainWindow : Window
             config.Language = Languages[current].Code;
             plugin.SaveConfig();
         }
+
+        ImGui.Spacing();
+        ImGui.TextUnformatted(L.Market);
+        ImGui.Separator();
+        var worlds = plugin.MarketWorlds();
+        var options = worlds.Prepend(L.MarketAuto(config.HomeWorld.Length > 0 ? config.HomeWorld : "?")).ToArray();
+        var selected = config.MarketWorld.Length == 0 ? 0 : Math.Max(0, worlds.IndexOf(config.MarketWorld) + 1);
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.Combo("##market", ref selected, options, options.Length))
+        {
+            config.MarketWorld = selected == 0 ? string.Empty : worlds[selected - 1];
+            plugin.SaveConfig();
+        }
+
+        ImGui.TextDisabled(L.MarketHint);
 
         ImGui.Spacing();
         ImGui.TextUnformatted(L.Characters);

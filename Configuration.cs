@@ -105,6 +105,11 @@ public class Configuration : IPluginConfiguration
     // "pt" ou "en". Vazio: segue o idioma do Dalamud.
     public string Language { get; set; } = string.Empty;
 
+    // Mundo ou data center dos preços do market. Vazio: o mundo de origem do último personagem marcado.
+    public string MarketWorld { get; set; } = string.Empty;
+    public string HomeWorld { get; set; } = string.Empty;
+    public uint HomeDataCenter { get; set; }
+
     // Versão cujo changelog já foi mostrado.
     public string LastChangelogVersion { get; set; } = string.Empty;
 

@@ -35,6 +35,11 @@ public static class L
     public static string NoVoyages => T("Nenhuma viagem registrada ainda.", "No voyages recorded yet.");
     public static string Voyages(int count) => count == 1 ? T("1 viagem", "1 voyage") : T($"{count} viagens", $"{count} voyages");
     public static string DayTotal(string total, string voyages) => T($"{total} gil em {voyages}", $"{total} gil in {voyages}");
+    public static string IncludesMarket(string value) => T($"inclui {value} gil de market", $"includes {value} gil from the market board");
+    public static string MarketTag => T("market", "market");
+    public static string Market => T("Preços do market", "Market prices");
+    public static string MarketAuto(string world) => T($"Automático ({world})", $"Automatic ({world})");
+    public static string MarketHint => T("Itens que valem mais no market contam pelo preço do market (média das vendas recentes no Universalis).", "Items worth more on the market board count at the market price (average of recent sales on Universalis).");
 
     // Buffs
     public static string Wheels => T("Mesa da roda", "Wheel stand");

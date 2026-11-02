@@ -13,7 +13,8 @@ public readonly record struct BuffReading(int Slot, uint ItemId, string Name, in
 
 // Envia ao serviço só o que acabou de ser lido do jogo. Roda sempre na thread do jogo,
 // e só a requisição HTTP fica em segundo plano.
-public sealed class SyncClient(Configuration config, Action save, Action<string> log) : IDisposable
+// isMarketable diz se o item pode ir para o market; marketWorld é o mundo ou data center dos preços.
+public sealed class SyncClient(Configuration config, Action save, Action<string> log, Func<uint, bool> isMarketable, Func<string> marketWorld) : IDisposable
 {
     private const int MaxVoyagesPerRequest = 50;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
@@ -261,7 +262,9 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
                     slot = LootLedger.SlotOf(v.Key),
                     subName = voyage.SubName,
                     returnTime = voyage.ReturnTime,
-                    items = voyage.Items.Select(i => new { itemId = i.ItemId, name = i.Name, count = i.Count, value = i.Value }),
+                    world = marketWorld(),
+                    unlocked = voyage.Unlocked,
+                    items = voyage.Items.Select(i => new { itemId = i.ItemId, name = i.Name, count = i.Count, value = i.Value, market = isMarketable(i.ItemId) }),
                 };
             }),
         };

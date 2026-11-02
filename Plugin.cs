@@ -97,7 +97,7 @@ public sealed class Plugin : IDalamudPlugin
             () => Config.DetailedLog);
         Diagnostics.Write($"Plugin {Version} iniciado");
 
-        Sync = new SyncClient(Config, SaveConfig, Diagnostics.Write);
+        Sync = new SyncClient(Config, SaveConfig, Diagnostics.Write, IsMarketable, () => MarketWorld);
         Diagnostics.Write($"Itens do estoque: {LookupItem(Supplies.CeruleumTank)?.Name ?? "?"} e {LookupItem(Supplies.RepairMaterials)?.Name ?? "?"}");
 
         // No jogo, cada ação da FC é um status com o mesmo nome-base, sem o nível.
@@ -344,6 +344,14 @@ public sealed class Plugin : IDalamudPlugin
             return false;
 
         var name = player.Name.TextValue;
+        var home = player.HomeWorld.ValueNullable;
+        if (home is { } world && (world.Name.ToString() != Config.HomeWorld || world.DataCenter.RowId != Config.HomeDataCenter))
+        {
+            Config.HomeWorld = world.Name.ToString();
+            Config.HomeDataCenter = world.DataCenter.RowId;
+            SaveConfig();
+        }
+
         if (!Config.Characters.TryGetValue(id, out var character))
         {
             character = new CharacterRecord { Name = name };
@@ -475,7 +483,7 @@ public sealed class Plugin : IDalamudPlugin
             return true;
         }
 
-        var voyage = SubmarineLoot.Read(sub, name, returnTime, LookupItem);
+        var voyage = SubmarineLoot.Read(sub, name, returnTime, LookupItem, SectorName);
         if (voyage != null && LootLedger.Upsert(Config.Voyages, LootLedger.VoyageKey(key, returnTime), voyage))
             Diagnostics.Write($"{name}: viagem de {DiagnosticLog.Time(returnTime)} salva, {voyage.Items.Count} itens, {LootLedger.Total([voyage]):N0} gil");
 
@@ -561,6 +569,25 @@ public sealed class Plugin : IDalamudPlugin
         if (characterEnabled && id is CropTendedMessage or SeedsPlantedMessage)
             WaterTargetedPlot($"mensagem do jogo {id}");
     }
+
+    public string MarketWorld => Config.MarketWorld.Length > 0 ? Config.MarketWorld : Config.HomeWorld;
+
+    // Mundos públicos do data center do personagem, para escolher onde ver os preços.
+    public List<string> MarketWorlds()
+    {
+        var worlds = DataManager.GetExcelSheet<World>()
+            .Where(w => w.IsPublic && w.DataCenter.RowId == Config.HomeDataCenter && Config.HomeDataCenter != 0)
+            .Select(w => w.Name.ToString()).Order().ToList();
+        if (DataManager.GetExcelSheet<WorldDCGroupType>().GetRowOrDefault(Config.HomeDataCenter) is { } dataCenter)
+            worlds.Add(dataCenter.Name.ToString());
+        return worlds;
+    }
+
+    private static bool IsMarketable(uint itemId)
+        => DataManager.GetExcelSheet<Item>().GetRowOrDefault(itemId) is { } item && !item.IsUntradable && item.ItemSearchCategory.RowId != 0;
+
+    private static string? SectorName(uint point)
+        => DataManager.GetExcelSheet<SubmarineExploration>().GetRowOrDefault(point)?.Destination.ToString();
 
     private static (string Name, uint Price)? LookupItem(uint itemId)
     {

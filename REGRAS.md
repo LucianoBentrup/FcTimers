@@ -50,7 +50,17 @@
 - A contagem vale a partir de quando mudou. Uma contagem mais antiga nunca passa por cima de uma mais nova de outro membro.
 - O painel mostra o estoque só depois da primeira contagem, com um ⚠️ no que estiver baixo.
 - Com os detalhes dos subs, o estoque mostra quantas rodadas os tanques aguentam (tanques ÷ soma dos tanques de cada rota) e quantos reparos completos os kits pagam.
-- Com menos de 120 tanques ou 20 kits, sai um aviso marcando @Subs, uma vez só. Ele volta a avisar depois que o estoque for reposto e cair de novo.
+- Com menos de 2 rodadas de tanques (ou 120 tanques, enquanto as rotas não são conhecidas) ou 20 kits, sai um aviso marcando @Subs, uma vez só. Ele volta a avisar depois que o estoque for reposto e cair de novo.
+
+## Market
+- O plugin marca os itens do loot que podem ir para o market e manda junto o mundo dos preços: o mundo de origem do personagem, ou o escolhido em Configurações (mundos do mesmo data center ou o data center inteiro).
+- O serviço busca no Universalis a média das vendas recentes de cada item e guarda o preço por 6 horas. O preço fica gravado na viagem, então não muda depois.
+- Cada item conta pelo maior valor entre o NPC e o market. O total do dia mostra "≈" e quanto vem do market quando algum item conta pelo market.
+- Item de market que vale 100 mil gil ou mais gera um aviso 💎, uma vez por viagem.
+- Se o Universalis falhar, o painel sai normalmente e o preço é buscado de novo na próxima atualização.
+
+## Setor novo
+- Quando uma viagem desbloqueia um setor, sai um aviso 🗺️ com o nome do setor. Viagens com mais de 1 dia não geram aviso.
 
 ## Loot rápido
 - O jogo guarda na memória o loot da última viagem coletada de cada sub. O plugin salva o loot quando ele muda, lendo a cada frame dentro da oficina.

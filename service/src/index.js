@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
-  alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, markSent, mergeVoyage, newState, nextEvent, pendingAlerts,
-  publicState, recentDays, renderPanel, voyageKey,
+  alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, MARKET_CACHE, markSent, mergeVoyage, needsPrice, newState,
+  nextEvent, parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, renderPanel, sectorNotice, voyageKey,
 } from './logic.js';
 
 const DEBOUNCE_MS = 2000;
@@ -9,6 +9,15 @@ const RETRY_MS = 60000;
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_LOGS = 10;
 const MAX_LOG_NAME = 40;
+// Viagens de até 1 dia atrás ainda geram aviso de setor novo e de item de market.
+const NOTICE_WINDOW = 86400;
+const UNIVERSALIS = 'https://universalis.app/api/v2';
+
+function addNotice(state, notice, returnTime, now) {
+  if (!notice || now - returnTime > NOTICE_WINDOW) return;
+  state.notices ??= [];
+  if (!state.notices.some((n) => n.id === notice.id)) state.notices.push(notice);
+}
 
 const json = (body, status = 200) => Response.json(body, { status });
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -100,8 +109,10 @@ export class FcState extends DurableObject {
     const changes = { state };
     for (const incoming of (body.voyages ?? []).filter((v) => isRealSlot(v.slot))) {
       const key = voyageKey(incoming);
-      const merged = mergeVoyage(changes[key] ?? (await storage.get(key)), incoming);
+      const existing = changes[key] ?? (await storage.get(key));
+      const merged = mergeVoyage(existing, incoming);
       if (merged) changes[key] = merged;
+      if (merged && !existing) addNotice(state, sectorNotice(merged), merged.returnTime, nowSeconds());
     }
     await storage.put(changes);
 
@@ -143,6 +154,7 @@ export class FcState extends DurableObject {
     const now = nowSeconds();
     let retryAt = null;
     try {
+      await this.priceVoyages(now);
       retryAt = await this.publish(now);
       const alertRetryAt = await this.sendAlerts(now);
       await this.deleteOldAlerts(now);
@@ -207,6 +219,75 @@ export class FcState extends DurableObject {
     const latest = (await this.ctx.storage.get('state')) ?? newState();
     latest.alerts = (latest.alerts ?? []).filter((a) => !removed.includes(a.id));
     await this.ctx.storage.put('state', latest);
+  }
+
+  // Busca no Universalis o preço dos itens de market das viagens recentes. Uma falha não impede o painel de sair.
+  async priceVoyages(now) {
+    const storage = this.ctx.storage;
+    const pending = [];
+    for (const day of recentDays(now, 2)) {
+      for (const [key, voyage] of await storage.list({ prefix: `voyage:${day}:` })) {
+        if (needsPrice(voyage) && !voyage.priceChecked) pending.push([key, voyage]);
+      }
+    }
+    if (pending.length === 0) return;
+
+    const state = (await storage.get('state')) ?? newState();
+    const changes = {};
+    for (const world of new Set(pending.map(([, v]) => v.world))) {
+      const voyages = pending.filter(([, v]) => v.world === world);
+      const ids = [...new Set(voyages.flatMap(([, v]) => v.items.filter((i) => i.market).map((i) => i.itemId)))];
+      const prices = await this.prices(world, ids, now);
+      if (!prices) continue;
+      for (const [key, voyage] of voyages) {
+        const { voyage: priced, notice } = priceVoyage(voyage, prices);
+        changes[key] = { ...priced, priceChecked: true };
+        addNotice(state, notice, voyage.returnTime, now);
+      }
+    }
+
+    if (Object.keys(changes).length === 0) return;
+    const latest = (await storage.get('state')) ?? newState();
+    latest.notices = [...(latest.notices ?? []), ...(state.notices ?? []).filter((n) => !(latest.notices ?? []).some((l) => l.id === n.id))];
+    await storage.put({ ...changes, state: latest });
+  }
+
+  // Preço por unidade, guardado por 6 horas para não consultar o Universalis a cada viagem. Null se a consulta falhar.
+  async prices(world, ids, now) {
+    const storage = this.ctx.storage;
+    const prices = {};
+    const missing = [];
+    for (const id of ids) {
+      const cached = await storage.get(`price:${world}:${id}`);
+      if (cached && now - cached.at < MARKET_CACHE) {
+        if (cached.price > 0) prices[id] = cached.price;
+      } else {
+        missing.push(id);
+      }
+    }
+    if (missing.length === 0) return prices;
+
+    try {
+      const fields = 'items.itemID,items.averagePrice,items.averagePriceNQ,items.minPrice,itemID,averagePrice,averagePriceNQ,minPrice';
+      const response = await fetch(`${UNIVERSALIS}/${encodeURIComponent(world)}/${missing.join(',')}?listings=0&entries=20&fields=${fields}`, {
+        headers: { 'User-Agent': 'FcTimers (github.com/LucianoBentrup/FcTimers)' },
+      });
+      if (!response.ok) {
+        console.error(`Universalis respondeu ${response.status}`);
+        return null;
+      }
+      const found = parseUniversalis(await response.json());
+      const cache = {};
+      for (const id of missing) {
+        cache[`price:${world}:${id}`] = { price: found[id] ?? 0, at: now };
+        if (found[id] != null) prices[id] = found[id];
+      }
+      await storage.put(cache);
+      return prices;
+    } catch (error) {
+      console.error('Falha ao consultar o Universalis', error);
+      return null;
+    }
   }
 
   // Devolve quando tentar de novo, ou null se o painel ficou certo.

@@ -20,8 +20,13 @@ export const HISTORY_DAYS = 7;
 export const SHOW_ITEMS = false;
 const MAX_SUBMARINES = 4;
 // Abaixo disso sai um aviso de estoque baixo, uma vez, até o estoque voltar a subir.
+// Com as rotas conhecidas, o limite de tanques é de 2 rodadas; sem elas, 120 tanques.
 export const LOW_TANKS = 120;
+export const LOW_ROUNDS = 2;
 export const LOW_KITS = 20;
+// Item que vale mais no market do que no NPC gera aviso a partir deste valor.
+export const MARKET_ALERT = 100000;
+export const MARKET_CACHE = 6 * 3600;
 // Desgaste da peça mais gasta: abaixo de 50% aparece no painel, abaixo de 30% sai o aviso de reparo.
 export const REPAIR_SHOW = 50;
 export const REPAIR_LOW = 30;
@@ -33,7 +38,7 @@ const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 
 const gilFormat = new Intl.NumberFormat('pt-BR');
 
 export const newState = () => ({
-  subs: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, plots: {}, supplies: null, alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
+  subs: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, plots: {}, supplies: null, notices: [], alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
 });
 
 // O lembrete sai 1 hora antes. Se o serviço só puder enviar com menos de 30 minutos restando, ele não sai.
@@ -72,14 +77,19 @@ export function pendingAlerts(state, now) {
   if (worn.length > 0) alerts.push({ kind: 'repairNeeded', subs: worn, supplies: state.supplies });
 
   const supplies = state.supplies;
-  if (supplies && !supplies.lowWarned && isLow(supplies)) alerts.push({ kind: 'suppliesLow', supplies });
+  if (supplies && !supplies.lowWarned && isLow(supplies, state)) alerts.push({ kind: 'suppliesLow', supplies, lowTanks: lowTanksOf(state) });
+
+  // Avisos de uma vez só que nascem de uma viagem: item caro de market e setor novo.
+  for (const notice of state.notices ?? []) alerts.push({ kind: notice.kind, notice });
 
   return alerts;
 }
 
 const needsRepair = (sub) => sub.details?.condition != null && sub.details.condition < REPAIR_LOW;
 
-const isLow = (supplies) => supplies.tanks < LOW_TANKS || supplies.kits < LOW_KITS;
+const tanksPerRound = (state) => Object.values(state.subs).reduce((sum, s) => sum + (s.details?.tanks ?? 0), 0);
+const lowTanksOf = (state) => (tanksPerRound(state) > 0 ? LOW_ROUNDS * tanksPerRound(state) : LOW_TANKS);
+const isLow = (supplies, state) => supplies.tanks < lowTanksOf(state) || supplies.kits < LOW_KITS;
 
 // Plots com horário de rega, sem os que morreram há muito tempo ou foram retirados.
 export function activePlots(state, now) {
@@ -118,6 +128,7 @@ export function markSent(state, alert) {
     if (alert.kind === 'plotDying' && plot.dieAt === sent.dieAt) plot.warned = sent.step;
   }
   if (alert.kind === 'suppliesLow' && state.supplies) state.supplies.lowWarned = true;
+  if (alert.notice) state.notices = (state.notices ?? []).filter((n) => n.id !== alert.notice.id);
 }
 
 export const alertDeleteAt = (sentAt) => sentAt + ALERT_LIFETIME;
@@ -139,10 +150,16 @@ export function alertPayload(alert, roleId) {
     },
     suppliesLow: () => {
       const low = [];
-      if (alert.supplies.tanks < LOW_TANKS) low.push(`**${gilFormat.format(alert.supplies.tanks)} tanques de ceruleum**`);
+      if (alert.supplies.tanks < alert.lowTanks) low.push(`**${gilFormat.format(alert.supplies.tanks)} tanques de ceruleum**`);
       if (alert.supplies.kits < LOW_KITS) low.push(`**${gilFormat.format(alert.supplies.kits)} kits de reparo**`);
       return `⛽ Estoque baixo: restam ${joinList(low)}.`;
     },
+    marketDrop: () => {
+      const { notice } = alert;
+      const items = joinList(notice.items.map((i) => `${i.count}x ${i.name} ≈ ${gilFormat.format(i.marketValue)} gil`));
+      return `💎 **${notice.subName}** trouxe item de market: ${items} (${notice.world}).`;
+    },
+    sectorUnlocked: () => `🗺️ **${alert.notice.subName}** desbloqueou ${joinList(alert.notice.sectors.map((s) => `**${s}**`))}!`,
     plotDying: () => `⚠️ Se ninguém regar, ${alert.plots.length > 1 ? 'morrem' : 'morre'}: ${joinList(alert.plots.map((p) => `**${p.name}** <t:${p.dieAt}:R>`))}!`,
   };
   const text = texts[alert.kind]();
@@ -166,7 +183,10 @@ const isAge = (v) => Number.isFinite(v) && v >= 0;
 function isVoyage(v) {
   return v && isSlot(v.slot) && isName(v.subName) && isTime(v.returnTime) && v.returnTime > 0
     && Array.isArray(v.items) && v.items.length > 0 && v.items.length <= 16
-    && v.items.every((i) => i && isTime(i.itemId) && isName(i.name) && isTime(i.count) && isTime(i.value));
+    && v.items.every((i) => i && isTime(i.itemId) && isName(i.name) && isTime(i.count) && isTime(i.value)
+      && (i.market == null || typeof i.market === 'boolean'))
+    && (v.world == null || (typeof v.world === 'string' && v.world.length <= 32))
+    && (v.unlocked == null || (Array.isArray(v.unlocked) && v.unlocked.length <= 5 && v.unlocked.every(isName)));
 }
 
 const isShort = (v) => typeof v === 'string' && v.length <= 32;
@@ -248,7 +268,7 @@ export function applyUpdate(state, body, now) {
     if (!state.supplies || observedAt >= state.supplies.observedAt) {
       const { tanks, kits } = body.supplies;
       const supplies = { tanks, kits, observedAt, lowWarned: false };
-      supplies.lowWarned = isLow(supplies) && (state.supplies?.lowWarned ?? false);
+      supplies.lowWarned = isLow(supplies, state) && (state.supplies?.lowWarned ?? false);
       state.supplies = supplies;
     }
   }
@@ -296,10 +316,60 @@ export function applyUpdate(state, body, now) {
 
 // A mesma viagem vira um único registro. Só é substituída por uma leitura com pelo menos tantos itens.
 export function mergeVoyage(existing, incoming) {
-  const voyage = { slot: incoming.slot, subName: incoming.subName, returnTime: incoming.returnTime, items: incoming.items };
+  const items = incoming.items.map((i) => ({ itemId: i.itemId, name: i.name, count: i.count, value: i.value, ...(i.market ? { market: true } : {}) }));
+  const voyage = {
+    slot: incoming.slot,
+    subName: incoming.subName,
+    returnTime: incoming.returnTime,
+    items,
+    ...(incoming.world ? { world: incoming.world } : {}),
+    ...(incoming.unlocked?.length ? { unlocked: incoming.unlocked } : {}),
+  };
   if (!existing) return voyage;
   if (incoming.items.length < existing.items.length) return null;
-  return JSON.stringify(existing.items) === JSON.stringify(incoming.items) ? null : voyage;
+  const same = (a, b) => a.length === b.length && a.every((x, n) => x.itemId === b[n].itemId && x.count === b[n].count && x.value === b[n].value);
+  // A mesma viagem reenviada mantém os preços que o serviço já buscou.
+  if (same(existing.items, items)) {
+    const gained = items.some((i, n) => i.market && !existing.items[n].market) || (voyage.world && !existing.world);
+    if (!gained) return null;
+    return { ...existing, items: existing.items.map((i, n) => ({ ...i, ...(items[n].market ? { market: true } : {}) })), world: existing.world ?? voyage.world };
+  }
+  return voyage;
+}
+
+// Vale o maior entre o NPC e o market.
+export const bestValue = (item) => Math.max(item.value, item.marketValue ?? 0);
+
+// Viagem com item de market ainda sem preço.
+export const needsPrice = (voyage) => Boolean(voyage.world) && voyage.items.some((i) => i.market && i.marketValue == null);
+
+// Preço por unidade de cada item, a partir da resposta do Universalis. Usa a média das vendas recentes.
+export function parseUniversalis(json) {
+  const entries = json?.items ? Object.values(json.items) : json?.itemID ? [json] : [];
+  const prices = {};
+  for (const entry of entries) {
+    const price = entry.averagePriceNQ || entry.averagePrice || entry.minPrice || 0;
+    if (entry.itemID && price > 0) prices[entry.itemID] = price;
+  }
+  return prices;
+}
+
+// Coloca o valor de market nos itens e devolve o aviso, se algum item de market passar do limite.
+export function priceVoyage(voyage, prices) {
+  const items = voyage.items.map((i) => (i.market && i.marketValue == null && prices[i.itemId] != null
+    ? { ...i, marketValue: Math.round(prices[i.itemId] * i.count) }
+    : i));
+  const priced = { ...voyage, items };
+  const rich = items.filter((i) => i.marketValue != null && i.marketValue > i.value && i.marketValue >= MARKET_ALERT);
+  const notice = rich.length === 0 ? null : {
+    id: `market:${voyage.slot}:${voyage.returnTime}`, kind: 'marketDrop', subName: voyage.subName, world: voyage.world, items: rich,
+  };
+  return { voyage: priced, notice };
+}
+
+export function sectorNotice(voyage) {
+  if (!voyage.unlocked?.length) return null;
+  return { id: `sector:${voyage.slot}:${voyage.returnTime}`, kind: 'sectorUnlocked', subName: voyage.subName, sectors: voyage.unlocked };
 }
 
 function subLine(sub, now) {
@@ -343,7 +413,7 @@ function renderPlots(plots, now) {
 }
 
 // Quantas rodadas dos subs os tanques aguentam, e quantos reparos completos os kits pagam.
-function suppliesText(supplies, subs = []) {
+function suppliesText(supplies, subs = [], lowTanks = LOW_TANKS) {
   const mark = (value, low) => (value < low ? `⚠️ **${gilFormat.format(value)}**` : `**${gilFormat.format(value)}**`);
   const known = subs.filter((s) => s.details);
   const tanksPerRound = known.reduce((sum, s) => sum + s.details.tanks, 0);
@@ -351,7 +421,7 @@ function suppliesText(supplies, subs = []) {
   const rounds = tanksPerRound > 0 ? ` (≈ ${Math.floor(supplies.tanks / tanksPerRound)} rodadas)` : '';
   const repairs = kitsPerRepair > 0 ? ` (≈ ${Math.floor(supplies.kits / kitsPerRepair)} reparos completos)` : '';
   return [
-    `${mark(supplies.tanks, LOW_TANKS)} tanques de ceruleum${rounds}`,
+    `${mark(supplies.tanks, lowTanks)} tanques de ceruleum${rounds}`,
     `${mark(supplies.kits, LOW_KITS)} kits de reparo${repairs}`,
     `Contado <t:${supplies.observedAt}:R>`,
   ].join('\n');
@@ -360,7 +430,8 @@ function suppliesText(supplies, subs = []) {
 // O painel é sempre montado a partir do estado salvo e de todas as viagens do dia.
 export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
   const [, month, day] = dayOf(now).split('-');
-  const total = todayVoyages.reduce((sum, v) => sum + v.items.reduce((s, i) => s + i.value, 0), 0);
+  const total = todayVoyages.reduce((sum, v) => sum + v.items.reduce((s, i) => s + bestValue(i), 0), 0);
+  const market = todayVoyages.reduce((sum, v) => sum + v.items.reduce((s, i) => s + (bestValue(i) > i.value ? bestValue(i) : 0), 0), 0);
 
   const perSub = new Map();
   const perItem = new Map();
@@ -368,10 +439,10 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
     const sub = perSub.get(voyage.slot) ?? { name: voyage.subName, value: 0 };
     sub.name = voyage.subName;
     for (const item of voyage.items) {
-      sub.value += item.value;
+      sub.value += bestValue(item);
       const entry = perItem.get(item.itemId) ?? { name: item.name, count: 0, value: 0 };
       entry.count += item.count;
-      entry.value += item.value;
+      entry.value += bestValue(item);
       perItem.set(item.itemId, entry);
     }
     perSub.set(voyage.slot, sub);
@@ -410,9 +481,12 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
       fields: [
         { name: '🚢 Submarinos', value: subs.join('\n') || 'Nenhum dado ainda.' },
         { name: '⚙️ Buffs', value: buffs.join('\n') || 'Nenhum dado ainda.' },
-        ...(state.supplies ? [{ name: '⛽ Estoque', value: suppliesText(state.supplies, subList) }] : []),
+        ...(state.supplies ? [{ name: '⛽ Estoque', value: suppliesText(state.supplies, subList, lowTanksOf(state)) }] : []),
         { name: '🌱 Plantação', value: plotLines },
-        { name: `💰 Loot de hoje (${day}/${month})`, value: [`**${gilFormat.format(total)} gil**`, ...subLoot].join('\n') },
+        { name: `💰 Loot de hoje (${day}/${month})`, value: [
+          `**${market > 0 ? '≈ ' : ''}${gilFormat.format(total)} gil**${market > 0 ? ` (inclui 🏷️ ${gilFormat.format(market)} de market)` : ''}`,
+          ...subLoot,
+        ].join('\n') },
         ...(showItems ? [{ name: '📦 Itens de hoje', value: itemLines.join('\n') }] : []),
         { name: '✨ Buffs ativos', value: activeLines.join('\n') },
       ],

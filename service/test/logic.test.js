@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  alertDeleteAt, alertPayload, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, newState, nextEvent, nextMidnight, pendingAlerts, publicState,
-  recentDays, renderPanel, voyageKey,
+  alertDeleteAt, alertPayload, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, needsPrice, newState, nextEvent, nextMidnight,
+  parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, renderPanel, sectorNotice, voyageKey,
 } from '../src/logic.js';
 
 const at = (day, hour, minute = 0) => Math.floor(Date.UTC(2026, 10, day, hour + 3, minute) / 1000);
@@ -282,6 +282,53 @@ test('detalhes dos subs: rank no nome, build e rota no topo, desgaste e aviso de
   // Plugin antigo sem detalhes não apaga o que já se sabe.
   applyUpdate(state, { subs: [{ slot: 2, name: 'Sub2', returnTime: at(2, 15), age: 0 }] }, at(1, 14));
   assert.equal(state.subs[2].details.rank, 130);
+});
+
+test('market: preço do Universalis, maior valor no total e aviso de item caro', () => {
+  assert.deepEqual(parseUniversalis({ items: { 5: { itemID: 5, averagePriceNQ: 20000, minPrice: 25000 }, 6: { itemID: 6, averagePriceNQ: 0, minPrice: 900 } } }), { 5: 20000, 6: 900 });
+  assert.deepEqual(parseUniversalis({ itemID: 7, averagePriceNQ: 0, averagePrice: 0, minPrice: 0 }), {});
+
+  const incoming = {
+    slot: 2, subName: 'Tatl', returnTime: at(1, 6), world: 'Behemoth', unlocked: ['Deep-sea Site 9'],
+    items: [
+      { itemId: 5, name: 'Rose Gold Ingot', count: 19, value: 1900, market: true },
+      { itemId: 8, name: 'Extravagant Salvaged Earring', count: 4, value: 120000 },
+    ],
+  };
+  assert.equal(isValidUpdate({ voyages: [incoming] }), true);
+  assert.equal(isValidUpdate({ voyages: [{ ...incoming, world: 'x'.repeat(40) }] }), false);
+  const voyage = mergeVoyage(null, incoming);
+  assert.equal(needsPrice(voyage), true);
+
+  const { voyage: priced, notice } = priceVoyage(voyage, { 5: 20000 });
+  assert.equal(priced.items[0].marketValue, 380000);
+  assert.equal(priced.items[1].marketValue, undefined);
+  assert.equal(needsPrice(priced), false);
+
+  // Reenviar a mesma viagem não apaga o preço.
+  assert.equal(mergeVoyage(priced, incoming), null);
+
+  const state = newState();
+  state.notices.push(notice, sectorNotice(voyage));
+  const alerts = pendingAlerts(state, at(1, 7));
+  assert.equal(alertPayload(alerts[0], '').content, '💎 **Tatl** trouxe item de market: 19x Rose Gold Ingot ≈ 380.000 gil (Behemoth).');
+  assert.equal(alertPayload(alerts[1], '').content, '🗺️ **Tatl** desbloqueou **Deep-sea Site 9**!');
+  alerts.forEach((a) => markSent(state, a));
+  assert.deepEqual(pendingAlerts(state, at(1, 7)), []);
+
+  const loot = renderPanel(state, [priced], at(1, 12)).embeds[0].fields.find((f) => f.name.includes('Loot')).value;
+  assert.equal(loot, '**≈ 500.000 gil** (inclui 🏷️ 380.000 de market)\n**Tatl**: 500.000 gil');
+});
+
+test('estoque baixo em rodadas quando as rotas são conhecidas', () => {
+  const state = newState();
+  const details = { rank: 130, exp: 0, build: 'SSUC', route: 'J > O > R > Z', tanks: 21, kits: 24, condition: 90 };
+  applyUpdate(state, { subs: [0, 1, 2, 3].map((slot) => ({ slot, name: `Sub${slot}`, returnTime: at(2, 15), age: 0, details })) }, at(1, 9));
+  applyUpdate(state, { supplies: { tanks: 160, kits: 65, age: 0 } }, at(1, 9));
+  const [low] = pendingAlerts(state, at(1, 9));
+  assert.equal(alertPayload(low, '').content, '⛽ Estoque baixo: restam **160 tanques de ceruleum**.');
+  applyUpdate(state, { supplies: { tanks: 168 + 30, kits: 65, age: 0 } }, at(1, 10));
+  assert.deepEqual(pendingAlerts(state, at(1, 10)), []);
 });
 
 test('estoque: painel, aviso de estoque baixo uma vez e volta a avisar depois de repor', () => {

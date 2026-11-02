@@ -11,6 +11,13 @@ public class LootItem
     public string Name { get; set; } = string.Empty;
     public int Count { get; set; }
     public long Value { get; set; }
+
+    // Valor no market para a quantidade toda, calculado pelo serviço quando a viagem chega. Null: sem preço.
+    public long? MarketValue { get; set; }
+
+    // Conta o maior entre o NPC e o market.
+    public bool IsMarket => MarketValue > Value;
+    public long Best => IsMarket ? MarketValue!.Value : Value;
 }
 
 [Serializable]
@@ -19,6 +26,9 @@ public class VoyageRecord
     public string SubName { get; set; } = string.Empty;
     public long ReturnTime { get; set; }
     public List<LootItem> Items { get; set; } = [];
+
+    // Setores desbloqueados nesta viagem.
+    public List<string> Unlocked { get; set; } = [];
 }
 
 // Regras do loot:

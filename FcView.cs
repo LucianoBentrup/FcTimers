@@ -80,6 +80,7 @@ public sealed class RemoteVoyage
     public string SubName { get; set; } = string.Empty;
     public long ReturnTime { get; set; }
     public List<LootItem> Items { get; set; } = [];
+    public List<string> Unlocked { get; set; } = [];
 }
 
 public readonly record struct SubView(int Slot, string Name, long ReturnTime, SubDetails? Details);
@@ -166,7 +167,9 @@ public sealed class FcView
         var voyages = new Dictionary<(int, long), VoyageView>();
         void AddVoyage(int slot, VoyageRecord voyage)
         {
-            if (!voyages.TryGetValue((slot, voyage.ReturnTime), out var known) || voyage.Items.Count > known.Voyage.Items.Count)
+            // Com a mesma quantidade de itens, vale a leitura que já tem o preço do market.
+            if (!voyages.TryGetValue((slot, voyage.ReturnTime), out var known) || voyage.Items.Count > known.Voyage.Items.Count
+                || (voyage.Items.Count == known.Voyage.Items.Count && voyage.Items.Any(i => i.MarketValue != null) && known.Voyage.Items.All(i => i.MarketValue == null)))
                 voyages[(slot, voyage.ReturnTime)] = new VoyageView(slot, voyage);
         }
 
@@ -175,7 +178,7 @@ public sealed class FcView
         foreach (var voyage in remote?.Voyages ?? [])
         {
             if (voyage.Slot < LootLedger.MaxSubmarines)
-                AddVoyage(voyage.Slot, new VoyageRecord { SubName = voyage.SubName, ReturnTime = voyage.ReturnTime, Items = voyage.Items });
+                AddVoyage(voyage.Slot, new VoyageRecord { SubName = voyage.SubName, ReturnTime = voyage.ReturnTime, Items = voyage.Items, Unlocked = voyage.Unlocked });
         }
 
         return new FcView

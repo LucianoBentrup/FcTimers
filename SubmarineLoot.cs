@@ -31,16 +31,20 @@ public static unsafe class SubmarineLoot
         HousingWorkshopSubmersibleSubData* sub,
         string name,
         long returnTime,
-        Func<uint, (string Name, uint Price)?> lookup)
+        Func<uint, (string Name, uint Price)?> lookup,
+        Func<uint, string?> sectorName)
     {
         var items = new List<LootItem>();
+        var unlocked = new List<string>();
         foreach (ref readonly var sector in sub->GatheredData)
         {
             Add(items, sector.ItemIdPrimary, sector.ItemCountPrimary, sector.ItemHQPrimary, lookup);
             Add(items, sector.ItemIdAdditional, sector.ItemCountAdditional, sector.ItemHQAdditional, lookup);
+            if (sector.UnlockedPoint != 0 && sectorName(sector.UnlockedPoint) is { Length: > 0 } unlockedName)
+                unlocked.Add(unlockedName);
         }
 
-        return items.Count == 0 ? null : new VoyageRecord { SubName = name, ReturnTime = returnTime, Items = items };
+        return items.Count == 0 ? null : new VoyageRecord { SubName = name, ReturnTime = returnTime, Items = items, Unlocked = unlocked };
     }
 
     private static void Add(List<LootItem> items, uint itemId, ushort count, bool hq, Func<uint, (string Name, uint Price)?> lookup)
