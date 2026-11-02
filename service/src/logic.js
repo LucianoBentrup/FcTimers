@@ -262,16 +262,10 @@ function plotText(plot, now) {
   return '✅ Pronta para regar.';
 }
 
-// Plots regados juntos (até 15 minutos de diferença) dividem a mesma linha, com o horário do primeiro.
+// Cada plot tem a sua linha, com o próprio horário.
 function renderPlots(plots, now) {
   if (plots.length === 0) return 'Nenhum dado ainda.';
-  const groups = [];
-  for (const plot of plots) {
-    const last = groups.at(-1);
-    if (last && plot.nextWaterAt - last[0].nextWaterAt <= REMINDER_GROUP) last.push(plot);
-    else groups.push([plot]);
-  }
-  const lines = groups.map((group) => `**${shorten(group.map((p) => p.name).join(', '))}**: ${plotText(group[0], now)}`);
+  const lines = plots.map((plot) => `**${shorten(plot.name)}**: ${plotText(plot, now)}`);
   if (lines.length > MAX_PLOT_LINES) return [...lines.slice(0, MAX_PLOT_LINES), `e mais ${lines.length - MAX_PLOT_LINES}`].join('\n');
   return lines.join('\n');
 }

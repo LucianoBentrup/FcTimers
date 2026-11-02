@@ -254,7 +254,7 @@ test('plantas: lembrete 1 hora antes, aviso na hora e painel, por plot', () => {
   const state = newState();
   applyUpdate(state, { plots: [plot('a', 'Vaso 1', at(2, 9)), plot('b', 'Vaso 2', at(2, 9, 10)), plot('c', 'Canteiro', at(2, 15))] }, at(1, 9));
   assert.equal(renderPanel(state, [], at(1, 9)).embeds[0].fields[2].value,
-    `**Vaso 1, Vaso 2**: regar <t:${at(2, 9)}:R> (<t:${at(2, 9)}:t>)\n**Canteiro**: regar <t:${at(2, 15)}:R> (<t:${at(2, 15)}:t>)`);
+    `**Vaso 1**: regar <t:${at(2, 9)}:R> (<t:${at(2, 9)}:t>)\n**Vaso 2**: regar <t:${at(2, 9, 10)}:R> (<t:${at(2, 9, 10)}:t>)\n**Canteiro**: regar <t:${at(2, 15)}:R> (<t:${at(2, 15)}:t>)`);
   const [reminder] = pendingAlerts(state, at(2, 8));
   assert.equal(alertPayload(reminder, '9').content, '<@&9> Lembrete: Em 1 hora a plantação estará disponível para regar (**Vaso 1** e **Vaso 2**).');
   markSent(state, reminder);

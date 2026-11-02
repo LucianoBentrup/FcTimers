@@ -33,7 +33,7 @@
 - Na mão, "Reguei todos agora" ou `/fct regar` registram a rega em todos os plots conhecidos.
 - O próximo horário de regar é 24 horas depois da última rega de cada plot, e o de morrer, 48 horas. Pela wiki, a planta precisa de rega 1 vez por dia; sem rega, as que murcham mais rápido ficam roxas em 24 horas e morrem 24 horas depois. Outras sementes só murcham em 36 ou 48 horas, então o aviso pode chegar antes do necessário, nunca depois.
 - Em cada plot, a rega mais recente entre os membros vale, e a de um PC nunca passa por cima de uma mais nova de outro.
-- No painel, plots com até 15 minutos de diferença dividem a mesma linha. Os avisos juntam os plots que ficam prontos juntos.
+- No painel, cada plot tem a sua linha, com o próprio horário. Os avisos juntam os plots que ficam prontos juntos.
 - Um plot que morreu há mais de 2 dias some do painel e dos avisos.
 
 ## Loot rápido
