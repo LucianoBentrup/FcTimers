@@ -285,8 +285,8 @@ public sealed class Plugin : IDalamudPlugin
                 key,
                 plot.Name,
                 plot.WateredAt,
-                plot.WateredAt + (Config.WaterIntervalHours * 3600L),
-                plot.WateredAt + (Config.DieAfterHours * 3600L));
+                plot.NextWaterAt,
+                plot.DieAt);
         }
 
         if (DateTime.UtcNow >= autoLogAt)

@@ -108,26 +108,6 @@ public class MainWindow : Window
             plugin.WaterAll("botão Reguei todos agora");
         ImGui.SameLine();
         ImGui.TextDisabled("ou /fct regar. Cada plot também é registrado sozinho ao regar.");
-
-        if (!ImGui.TreeNode("Tempos da rega"))
-            return;
-
-        var interval = config.WaterIntervalHours;
-        if (ImGui.InputInt("Horas até poder regar de novo", ref interval) && interval is >= 1 and <= 240)
-        {
-            config.WaterIntervalHours = interval;
-            plugin.SaveConfig();
-        }
-
-        var die = config.DieAfterHours;
-        if (ImGui.InputInt("Horas até morrer sem rega", ref die) && die is >= 1 and <= 480)
-        {
-            config.DieAfterHours = die;
-            plugin.SaveConfig();
-        }
-
-        ImGui.TextDisabled("Contados a partir da última rega. Valores ainda a confirmar no jogo.");
-        ImGui.TreePop();
     }
 
     private static string PlotState(PlotView plot, long now)

@@ -40,10 +40,18 @@ public class GardenRecord
 [Serializable]
 public class PlotRecord
 {
+    // Pela wiki, a planta precisa de rega pelo menos 1 vez por dia. Sem rega, as que murcham mais rápido
+    // ficam roxas em 24 horas e morrem 24 horas depois. O plugin não sabe a semente, então usa o caso mais curto.
+    public const long WaterIntervalSeconds = 24 * 3600;
+    public const long DieAfterSeconds = 48 * 3600;
+
     public string Name { get; set; } = string.Empty;
 
     // Horário da última rega deste plot registrada neste PC.
     public long WateredAt { get; set; }
+
+    public long NextWaterAt => WateredAt + WaterIntervalSeconds;
+    public long DieAt => WateredAt + DieAfterSeconds;
 }
 
 [Serializable]
@@ -89,8 +97,4 @@ public class Configuration : IPluginConfiguration
 
     // Chave: território, ward, plot da casa e posição do plot ou vaso. "geral" quando não dá para saber qual foi.
     public Dictionary<string, PlotRecord> Plots { get; set; } = [];
-    public int WaterIntervalHours { get; set; } = 24;
-
-    // Sem rega, a planta morre este tempo depois da última. Valor a confirmar no jogo.
-    public int DieAfterHours { get; set; } = 48;
 }

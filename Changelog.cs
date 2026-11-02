@@ -9,6 +9,10 @@ public static class Changelog
 {
     public static readonly (string Version, string[] Notes)[] Entries =
     [
+        ("0.7.2",
+        [
+            "Watering times are now fixed: water again 24 hours after the last watering, and the plant is counted as dying 48 hours after it. The setting in the window was removed.",
+        ]),
         ("0.7.1",
         [
             "New \"Enviar log\" button: sends the diagnostic log to the FC service, so it can be checked without copying and pasting.",

@@ -117,7 +117,7 @@ public sealed class FcView
         var plots = new Dictionary<string, (PlotView View, long WateredAt)>();
         foreach (var (key, plot) in config.Plots.Where(p => p.Value.WateredAt != 0))
         {
-            var view = new PlotView(key, plot.Name, plot.WateredAt + (config.WaterIntervalHours * 3600L), plot.WateredAt + (config.DieAfterHours * 3600L));
+            var view = new PlotView(key, plot.Name, plot.NextWaterAt, plot.DieAt);
             plots[key] = (view, plot.WateredAt);
         }
 
