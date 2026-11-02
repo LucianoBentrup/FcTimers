@@ -418,8 +418,9 @@ function suppliesText(supplies, subs = [], lowTanks = LOW_TANKS) {
   const known = subs.filter((s) => s.details);
   const tanksPerRound = known.reduce((sum, s) => sum + s.details.tanks, 0);
   const kitsPerRepair = Math.max(0, ...known.map((s) => s.details.kits));
-  const rounds = tanksPerRound > 0 ? ` (≈ ${Math.floor(supplies.tanks / tanksPerRound)} rodadas)` : '';
-  const repairs = kitsPerRepair > 0 ? ` (≈ ${Math.floor(supplies.kits / kitsPerRepair)} reparos completos)` : '';
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const rounds = tanksPerRound > 0 ? ` (≈ ${plural(Math.floor(supplies.tanks / tanksPerRound), 'rodada', 'rodadas')})` : '';
+  const repairs = kitsPerRepair > 0 ? ` (≈ ${plural(Math.floor(supplies.kits / kitsPerRepair), 'reparo completo', 'reparos completos')})` : '';
   return [
     `${mark(supplies.tanks, lowTanks)} tanques de ceruleum${rounds}`,
     `${mark(supplies.kits, LOW_KITS)} kits de reparo${repairs}`,
