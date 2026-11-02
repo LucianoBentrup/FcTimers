@@ -248,7 +248,8 @@ test('sem tempo para o lembrete, só sai o aviso de pronto', () => {
   assert.equal(pendingAlerts(state, at(1, 10, 20))[0].kind, 'subReady');
 });
 
-const plot = (key, name, nextWaterAt, dieAt = 0, age = 0) => ({ key, name, nextWaterAt, dieAt, age });
+// Vasos de dentro de casa, que aparecem com nome nos avisos.
+const plot = (key, name, nextWaterAt, dieAt = 0, age = 0) => ({ key, name, nextWaterAt, dieAt, age, indoor: true });
 
 test('detalhes dos subs: rank no nome, build e rota no topo, desgaste e aviso de reparo', () => {
   const state = newState();
@@ -326,9 +327,46 @@ test('estoque baixo em rodadas quando as rotas são conhecidas', () => {
   applyUpdate(state, { subs: [0, 1, 2, 3].map((slot) => ({ slot, name: `Sub${slot}`, returnTime: at(2, 15), age: 0, details })) }, at(1, 9));
   applyUpdate(state, { supplies: { tanks: 160, kits: 65, age: 0 } }, at(1, 9));
   const [low] = pendingAlerts(state, at(1, 9));
-  assert.equal(alertPayload(low, '').content, '⛽ Estoque baixo: restam **160 tanques de ceruleum**.');
+  assert.equal(alertPayload(low, '').content, '⛽ Estoque baixo: restam **160 tanques de ceruleum** (≈ 7 viagens, 1 rodada).');
   applyUpdate(state, { supplies: { tanks: 168 + 30, kits: 65, age: 0 } }, at(1, 10));
   assert.deepEqual(pendingAlerts(state, at(1, 10)), []);
+});
+
+test('canteiros de fora não aparecem pelo nome nos avisos', () => {
+  const state = newState();
+  const outside = (key, name) => ({ key, name, nextWaterAt: at(2, 9), dieAt: at(3, 9), age: 0, indoor: false });
+  applyUpdate(state, { plots: [outside('f1', 'Garden Patch 1'), outside('f2', 'Garden Patch 2'), plot('v1', 'Vaso 1', at(2, 9), at(3, 9))] }, at(1, 9));
+  const [ready] = pendingAlerts(state, at(2, 9));
+  assert.equal(alertPayload(ready, '').content, '🌱 A plantação já pode ser regada (**Vaso 1** e os canteiros de fora)!');
+  delete state.plots.v1;
+  const [dying] = pendingAlerts(state, at(3, 6)).filter((a) => a.kind === 'plotDying');
+  assert.equal(alertPayload(dying, '').content, `⚠️ Se ninguém regar, a plantação morre <t:${at(3, 9)}:R>!`);
+  assert.equal(alertPayload({ kind: 'plotReady', plots: Object.entries(state.plots).map(([key, p]) => ({ key, ...p })) }, '').content,
+    '🌱 A plantação já pode ser regada!');
+});
+
+test('lembrete de sub e de vaso esquecidos, uma vez só', () => {
+  const state = newState();
+  applyUpdate(state, { subs: [{ slot: 0, name: 'Navi', returnTime: at(1, 10), age: 0 }, { slot: 1, name: 'Ciela', returnTime: at(1, 10), age: 0 }] }, at(1, 9));
+  pendingAlerts(state, at(1, 10)).forEach((a) => markSent(state, a));
+  // Ciela saiu de novo; Navi ficou parada.
+  applyUpdate(state, { subs: [{ slot: 1, name: 'Ciela', returnTime: at(2, 10), age: 0 }] }, at(1, 11));
+  assert.equal(nextEvent(state, at(1, 11)), at(1, 12));
+  const [late] = pendingAlerts(state, at(1, 12));
+  assert.equal(alertPayload(late, '').content, '⏰ **Navi** voltou há mais de 2 horas e ainda não saiu de novo.');
+  markSent(state, late);
+  assert.deepEqual(pendingAlerts(state, at(1, 13)), []);
+
+  // Dois vasos da mesma casa: só o Vaso 1 foi regado depois que os dois podiam ser regados.
+  const house = (n) => `339:5:12:0:${n}`;
+  applyUpdate(state, { plots: [plot(house(1), 'Vaso 1', at(2, 9), at(3, 9)), plot(house(2), 'Vaso 2', at(2, 9), at(3, 9))] }, at(1, 9));
+  pendingAlerts(state, at(2, 9)).forEach((a) => markSent(state, a));
+  applyUpdate(state, { plots: [plot(house(1), 'Vaso 1', at(3, 10), at(4, 10))] }, at(2, 10));
+  assert.deepEqual(pendingAlerts(state, at(2, 10)).filter((a) => a.kind === 'plotForgotten'), []);
+  const [forgotten] = pendingAlerts(state, at(2, 10, 15)).filter((a) => a.kind === 'plotForgotten');
+  assert.equal(alertPayload(forgotten, '').content, '🌱 **Vaso 2** ficou sem regar? Os outros vasos já foram regados.');
+  markSent(state, forgotten);
+  assert.deepEqual(pendingAlerts(state, at(2, 11)).filter((a) => a.kind === 'plotForgotten'), []);
 });
 
 test('estoque: painel, aviso de estoque baixo uma vez e volta a avisar depois de repor', () => {

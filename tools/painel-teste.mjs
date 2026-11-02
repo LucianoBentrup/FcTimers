@@ -25,9 +25,9 @@ applyUpdate(state, {
   activeBuffs: { age: 0, buffs: [{ name: 'Meat and Mead II', seconds: 86392 }, { name: 'The Heat of Battle II', seconds: 50000 }] },
   // Dois vasos prontos para regar que morrem em 2h30, e um canteiro regado depois.
   plots: [
-    { key: 'v1', name: 'Vaso 1', nextWaterAt: hours(-21.5), dieAt: hours(2.5), age: 0 },
-    { key: 'v2', name: 'Vaso 2', nextWaterAt: hours(-21.4), dieAt: hours(2.6), age: 0 },
-    { key: 'c1', name: 'Canteiro 1', nextWaterAt: hours(5), dieAt: hours(29), age: 0 },
+    { key: 'casa:0:v1', name: 'Vaso 1', nextWaterAt: hours(-21.5), dieAt: hours(2.5), age: 0, indoor: true },
+    { key: 'casa:0:v2', name: 'Vaso 2', nextWaterAt: hours(-21.4), dieAt: hours(2.6), age: 0, indoor: true },
+    { key: 'fora:c1', name: 'Canteiro 1', nextWaterAt: hours(5), dieAt: hours(29), age: 0 },
   ],
   supplies: { tanks: 150, kits: 65, age: 0 },
 }, now);
@@ -49,17 +49,20 @@ const today = [
 ];
 
 const subs = Object.values(state.subs);
-const lowTanks = 2 * subs.reduce((sum, s) => sum + s.details.tanks, 0);
+const perRound = subs.reduce((sum, s) => sum + s.details.tanks, 0);
+const plots = state.plots;
 const messages = {
   panel: renderPanel(state, today, now),
   alerts: [
     { kind: 'subReminder', subs: [state.subs[0], state.subs[1]] },
     { kind: 'subReady', subs: [state.subs[3]] },
-    { kind: 'plotReminder', plots: [state.plots.c1] },
-    { kind: 'plotReady', plots: [state.plots.v1, state.plots.v2] },
-    { kind: 'plotDying', plots: [state.plots.v1, state.plots.v2] },
+    { kind: 'subForgotten', subs: [state.subs[3]] },
+    { kind: 'plotReminder', plots: [plots['fora:c1']] },
+    { kind: 'plotReady', plots: [plots['casa:0:v1'], plots['casa:0:v2']] },
+    { kind: 'plotDying', plots: [plots['casa:0:v1'], plots['casa:0:v2']] },
+    { kind: 'plotForgotten', plots: [plots['casa:0:v2']] },
     { kind: 'repairNeeded', subs: [state.subs[3]], supplies: state.supplies },
-    { kind: 'suppliesLow', supplies: state.supplies, lowTanks },
+    { kind: 'suppliesLow', supplies: state.supplies, lowTanks: 2 * perRound, perRound, perVoyage: perRound / subs.length },
     { kind: 'marketDrop', notice: tatl.notice },
     { kind: 'sectorUnlocked', notice: sectorNotice(tatl.voyage) },
   ].map((alert) => {

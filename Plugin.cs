@@ -66,7 +66,7 @@ public sealed class Plugin : IDalamudPlugin
     private HashSet<string> seenBuffs = [];
     private bool characterEnabled;
     private bool inWorkshop;
-    private (string Key, string Name, DateTime SeenAt)? lastHousingObject;
+    private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
     private string lastScan = string.Empty;
     private DateTime nextScan = DateTime.MinValue;
@@ -246,13 +246,15 @@ public sealed class Plugin : IDalamudPlugin
         // Se o alvo já sumiu quando a mensagem chega, vale o último objeto da casa cujo menu foi aberto há pouco.
         var housing = ReadHousingTarget();
         if (housing == null && lastHousingObject is { } recent && DateTime.UtcNow - recent.SeenAt < TimeSpan.FromMinutes(2))
-            housing = (recent.Key, recent.Name);
+            housing = (recent.Key, recent.Name, recent.Indoor);
 
         string key;
         string name;
-        if (housing is var (housingKey, baseName))
+        var indoor = false;
+        if (housing is var (housingKey, baseName, inside))
         {
             key = housingKey;
+            indoor = inside;
             name = Config.Plots.TryGetValue(key, out var known)
                 ? known.Name
                 : $"{baseName} {Config.Plots.Values.Count(p => p.Name.StartsWith(baseName, StringComparison.Ordinal)) + 1}";
@@ -269,13 +271,14 @@ public sealed class Plugin : IDalamudPlugin
             Config.Plots[key] = plot;
         }
 
+        plot.Indoor = indoor;
         plot.WateredAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         SaveConfig();
-        Diagnostics.Write($"Rega registrada em {plot.Name} ({source}, chave {key})");
+        Diagnostics.Write($"Rega registrada em {plot.Name} ({source}, {(indoor ? "dentro de casa" : "fora")}, chave {key})");
     }
 
-    // Chave e nome do objeto da casa selecionado agora, ou null se o alvo não for um objeto da casa.
-    private unsafe (string Key, string Name)? ReadHousingTarget()
+    // Chave, nome e se está dentro de casa (sala ou quarto privado), ou null se o alvo não for um objeto da casa.
+    private unsafe (string Key, string Name, bool Indoor)? ReadHousingTarget()
     {
         var target = TargetManager.Target;
         var manager = HousingManager.Instance();
@@ -284,7 +287,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var position = target.Position;
         var key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{position.X:F1}:{position.Y:F1}:{position.Z:F1}";
-        return (key, target.Name.TextValue);
+        return (key, target.Name.TextValue, manager->IsInside());
     }
 
     private void OnUpdate(IFramework framework)
@@ -316,7 +319,8 @@ public sealed class Plugin : IDalamudPlugin
                 plot.Name,
                 plot.WateredAt,
                 plot.NextWaterAt,
-                plot.DieAt);
+                plot.DieAt,
+                plot.Indoor);
         }
 
         if (DateTime.UtcNow >= autoLogAt)
@@ -540,8 +544,8 @@ public sealed class Plugin : IDalamudPlugin
         if (target == null || target.ObjectKind is not (ObjectKind.HousingEventObject or ObjectKind.EventObj))
             return;
 
-        if (ReadHousingTarget() is var (key, name))
-            lastHousingObject = (key, name, DateTime.UtcNow);
+        if (ReadHousingTarget() is var (key, name, indoor))
+            lastHousingObject = (key, name, indoor, DateTime.UtcNow);
 
         var addon = (AtkUnitBase*)args.Addon.Address;
         var texts = new List<string>();

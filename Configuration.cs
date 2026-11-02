@@ -93,6 +93,9 @@ public class PlotRecord
     // Horário da última rega deste plot registrada neste PC.
     public long WateredAt { get; set; }
 
+    // Vaso dentro de casa ou de quarto privado. Só esses aparecem pelo nome nos avisos do Discord.
+    public bool Indoor { get; set; }
+
     public long NextWaterAt => WateredAt + WaterIntervalSeconds;
     public long DieAt => WateredAt + DieAfterSeconds;
 }

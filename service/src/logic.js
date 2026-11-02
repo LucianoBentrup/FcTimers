@@ -27,6 +27,10 @@ export const LOW_KITS = 20;
 // Item que vale mais no market do que no NPC gera aviso a partir deste valor.
 export const MARKET_ALERT = 100000;
 export const MARKET_CACHE = 6 * 3600;
+// Sub pronto há 2 horas sem sair de novo ganha um lembrete. Um vaso fica "esquecido" quando outro vaso
+// da mesma casa foi regado há 15 minutos ou mais depois de ele já poder ser regado.
+export const FORGOTTEN_SUB = 2 * 3600;
+export const FORGOTTEN_PLOT = 900;
 // Desgaste da peça mais gasta: abaixo de 50% aparece no painel, abaixo de 30% sai o aviso de reparo.
 export const REPAIR_SHOW = 50;
 export const REPAIR_LOW = 30;
@@ -73,16 +77,34 @@ export function pendingAlerts(state, now) {
   const dying = plots.map((p) => ({ ...p, step: deathWarningDue(p, now) })).filter((p) => p.step);
   if (dying.length > 0) alerts.push({ kind: 'plotDying', plots: dying });
 
+  const late = subs.filter((s) => s.returnTime <= now - FORGOTTEN_SUB && s.notified === s.returnTime && s.forgotten !== s.returnTime);
+  if (late.length > 0) alerts.push({ kind: 'subForgotten', subs: late });
+
+  const forgotten = plots.filter((p) => isForgotten(p, plots, now));
+  if (forgotten.length > 0) alerts.push({ kind: 'plotForgotten', plots: forgotten });
+
   const worn = subs.filter((s) => needsRepair(s) && !s.repairWarned);
   if (worn.length > 0) alerts.push({ kind: 'repairNeeded', subs: worn, supplies: state.supplies });
 
   const supplies = state.supplies;
-  if (supplies && !supplies.lowWarned && isLow(supplies, state)) alerts.push({ kind: 'suppliesLow', supplies, lowTanks: lowTanksOf(state) });
+  if (supplies && !supplies.lowWarned && isLow(supplies, state)) {
+    const known = Object.values(state.subs).filter((s) => s.details?.tanks > 0);
+    const perRound = tanksPerRound(state);
+    alerts.push({ kind: 'suppliesLow', supplies, lowTanks: lowTanksOf(state), perRound, perVoyage: known.length > 0 ? perRound / known.length : 0 });
+  }
 
   // Avisos de uma vez só que nascem de uma viagem: item caro de market e setor novo.
   for (const notice of state.notices ?? []) alerts.push({ kind: notice.kind, notice });
 
   return alerts;
+}
+
+// Só vasos de dentro de casa têm nome confiável; os canteiros de fora são regados todos juntos.
+const houseOf = (key) => key.split(':').slice(0, 4).join(':');
+function isForgotten(plot, plots, now) {
+  if (!plot.indoor || plot.nextWaterAt > now || plot.forgotten === plot.nextWaterAt) return false;
+  return plots.some((other) => other.key !== plot.key && other.indoor && houseOf(other.key) === houseOf(plot.key)
+    && other.observedAt > plot.nextWaterAt && other.observedAt <= now - FORGOTTEN_PLOT);
 }
 
 const needsRepair = (sub) => sub.details?.condition != null && sub.details.condition < REPAIR_LOW;
@@ -118,6 +140,7 @@ export function markSent(state, alert) {
     const sub = Object.values(state.subs).find((s) => s.name === sent.name && s.returnTime === sent.returnTime);
     if (!sub) continue;
     if (alert.kind === 'subReady') sub.notified = sub.returnTime;
+    else if (alert.kind === 'subForgotten') sub.forgotten = sub.returnTime;
     else sub.reminded = sub.returnTime;
   }
   for (const sent of alert.plots ?? []) {
@@ -126,6 +149,7 @@ export function markSent(state, alert) {
     if (alert.kind === 'plotReady' && plot.nextWaterAt === sent.nextWaterAt) plot.notified = plot.nextWaterAt;
     if (alert.kind === 'plotReminder' && plot.nextWaterAt === sent.nextWaterAt) plot.reminded = plot.nextWaterAt;
     if (alert.kind === 'plotDying' && plot.dieAt === sent.dieAt) plot.warned = sent.step;
+    if (alert.kind === 'plotForgotten' && plot.nextWaterAt === sent.nextWaterAt) plot.forgotten = plot.nextWaterAt;
   }
   if (alert.kind === 'suppliesLow' && state.supplies) state.supplies.lowWarned = true;
   if (alert.notice) state.notices = (state.notices ?? []).filter((n) => n.id !== alert.notice.id);
@@ -135,13 +159,24 @@ export const alertDeleteAt = (sentAt) => sentAt + ALERT_LIFETIME;
 
 const joinList = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} e ${names.at(-1)}` : names[0]);
 const joinNames = (list) => joinList(list.map((s) => `**${s.name}**`));
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// Nomes só dos vasos de dentro de casa. Os canteiros de fora são regados juntos, então não vale listar.
+function plotNames(plots) {
+  const names = plots.filter((p) => p.indoor).map((p) => `**${p.name}**`);
+  if (names.length === 0) return '';
+  if (plots.some((p) => !p.indoor)) names.push('os canteiros de fora');
+  return ` (${joinList(names)})`;
+}
 
 export function alertPayload(alert, roleId) {
   const texts = {
     subReady: () => `🚢 ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'}!`,
     subReminder: () => `Lembrete: Em 1 hora os submarinos estarão prontos para coleta (${joinNames(alert.subs)}).`,
-    plotReady: () => `🌱 A plantação já pode ser regada (${joinNames(alert.plots)})!`,
-    plotReminder: () => `Lembrete: Em 1 hora a plantação estará disponível para regar (${joinNames(alert.plots)}).`,
+    plotReady: () => `🌱 A plantação já pode ser regada${plotNames(alert.plots)}!`,
+    plotReminder: () => `Lembrete: Em 1 hora a plantação estará disponível para regar${plotNames(alert.plots)}.`,
+    plotForgotten: () => `🌱 ${joinNames(alert.plots)} ${alert.plots.length > 1 ? 'ficaram' : 'ficou'} sem regar? Os outros vasos já foram regados.`,
+    subForgotten: () => `⏰ ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'} há mais de 2 horas e ainda não ${alert.subs.length > 1 ? 'saíram' : 'saiu'} de novo.`,
     repairNeeded: () => {
       const subs = joinList(alert.subs.map((s) => `**${s.name}** (${percent(s.details.condition)})`));
       const kits = alert.subs.reduce((sum, s) => sum + (s.details.kits ?? 0), 0);
@@ -150,7 +185,12 @@ export function alertPayload(alert, roleId) {
     },
     suppliesLow: () => {
       const low = [];
-      if (alert.supplies.tanks < alert.lowTanks) low.push(`**${gilFormat.format(alert.supplies.tanks)} tanques de ceruleum**`);
+      if (alert.supplies.tanks < alert.lowTanks) {
+        const lasts = alert.perVoyage > 0
+          ? ` (≈ ${plural(Math.floor(alert.supplies.tanks / alert.perVoyage), 'viagem', 'viagens')}, ${plural(Math.floor(alert.supplies.tanks / alert.perRound), 'rodada', 'rodadas')})`
+          : '';
+        low.push(`**${gilFormat.format(alert.supplies.tanks)} tanques de ceruleum**${lasts}`);
+      }
       if (alert.supplies.kits < LOW_KITS) low.push(`**${gilFormat.format(alert.supplies.kits)} kits de reparo**`);
       return `⛽ Estoque baixo: restam ${joinList(low)}.`;
     },
@@ -160,7 +200,14 @@ export function alertPayload(alert, roleId) {
       return `💎 **${notice.subName}** trouxe item de market: ${items} (${notice.world}).`;
     },
     sectorUnlocked: () => `🗺️ **${alert.notice.subName}** desbloqueou ${joinList(alert.notice.sectors.map((s) => `**${s}**`))}!`,
-    plotDying: () => `⚠️ Se ninguém regar, ${alert.plots.length > 1 ? 'morrem' : 'morre'}: ${joinList(alert.plots.map((p) => `**${p.name}** <t:${p.dieAt}:R>`))}!`,
+    plotDying: () => {
+      const named = alert.plots.filter((p) => p.indoor).map((p) => `**${p.name}** <t:${p.dieAt}:R>`);
+      const outside = alert.plots.filter((p) => !p.indoor);
+      const outsideDies = Math.min(...outside.map((p) => p.dieAt));
+      if (named.length === 0) return `⚠️ Se ninguém regar, a plantação morre <t:${outsideDies}:R>!`;
+      if (outside.length > 0) named.push(`os canteiros de fora <t:${outsideDies}:R>`);
+      return `⚠️ Se ninguém regar, ${alert.plots.length > 1 ? 'morrem' : 'morre'}: ${joinList(named)}!`;
+    },
   };
   const text = texts[alert.kind]();
   return {
@@ -208,7 +255,8 @@ export function isValidUpdate(body) {
   if (active != null && !(isAge(active.age) && Array.isArray(active.buffs) && active.buffs.length <= 16
     && active.buffs.every((b) => b && isName(b.name) && (b.seconds === null || isTime(b.seconds))))) return false;
   const plots = body.plots ?? [];
-  const isPlot = (p) => p && isAge(p.age) && isTime(p.nextWaterAt) && (p.dieAt == null || isTime(p.dieAt));
+  const isPlot = (p) => p && isAge(p.age) && isTime(p.nextWaterAt) && (p.dieAt == null || isTime(p.dieAt))
+    && (p.indoor == null || typeof p.indoor === 'boolean');
   if (!Array.isArray(plots) || plots.length > MAX_PLOTS) return false;
   if (!plots.every((p) => isPlot(p) && isName(p.key) && isName(p.name))) return false;
   if (body.garden != null && !isPlot(body.garden)) return false;
@@ -259,6 +307,8 @@ export function applyUpdate(state, body, now) {
       notified: same ? existing.notified : (nextWaterAt <= now ? nextWaterAt : 0),
       reminded: same ? existing.reminded : 0,
       warned: existing?.dieAt === dieAt ? existing.warned ?? 0 : 0,
+      forgotten: same ? existing.forgotten ?? 0 : 0,
+      indoor: update.indoor ?? existing?.indoor ?? false,
     };
   }
 
@@ -418,7 +468,6 @@ function suppliesText(supplies, subs = [], lowTanks = LOW_TANKS) {
   const known = subs.filter((s) => s.details);
   const tanksPerRound = known.reduce((sum, s) => sum + s.details.tanks, 0);
   const kitsPerRepair = Math.max(0, ...known.map((s) => s.details.kits));
-  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const rounds = tanksPerRound > 0 ? ` (≈ ${plural(Math.floor(supplies.tanks / tanksPerRound), 'rodada', 'rodadas')})` : '';
   const repairs = kitsPerRepair > 0 ? ` (≈ ${plural(Math.floor(supplies.kits / kitsPerRepair), 'reparo completo', 'reparos completos')})` : '';
   return [
@@ -510,6 +559,8 @@ export function nextEvent(state, now) {
     ...timed,
     ...timed.map((t) => t - REMINDER_LEAD),
     ...plots.filter((p) => p.dieAt > 0).flatMap((p) => [p.dieAt, ...DEATH_WARNINGS.map((before) => p.dieAt - before)]),
+    ...Object.values(state.subs).filter((s) => s.returnTime > 0).map((s) => s.returnTime + FORGOTTEN_SUB),
+    ...plots.filter((p) => p.indoor).map((p) => p.observedAt + FORGOTTEN_PLOT),
     ...Object.values(state.buffs).map((b) => b.readyTime),
     ...(state.activeBuffs?.buffs ?? []).map((b) => b.endTime ?? 0),
     ...(state.alerts ?? []).map((a) => a.deleteAt),

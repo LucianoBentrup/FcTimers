@@ -27,7 +27,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private sealed record PendingSub(int Slot, string Name, long ReturnTime, SubDetails? Details, DateTime ReadAt);
     private sealed record PendingBuffs(List<BuffReading> Slots, DateTime ReadAt);
     private sealed record PendingActive(List<ActiveBuffReading> Buffs, DateTime ReadAt);
-    private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, DateTime ReadAt);
+    private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, bool Indoor, DateTime ReadAt);
     private sealed record PendingSupplies(int Tanks, int Kits, DateTime ReadAt);
     private sealed record SendResult(bool Success, string Status);
 
@@ -117,14 +117,14 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
     // A leitura da rega vale a partir do horário em que a planta foi regada, e não do envio.
     // Assim uma rega antiga deste PC nunca passa por cima de uma rega mais nova de outro membro.
-    public void ReportPlot(string key, string name, long wateredAt, long nextWaterAt, long dieAt)
+    public void ReportPlot(string key, string name, long wateredAt, long nextWaterAt, long dieAt, bool indoor)
     {
-        var signature = $"{name}|{nextWaterAt}|{dieAt}";
+        var signature = $"{name}|{nextWaterAt}|{dieAt}|{indoor}";
         if (!Enabled || wateredAt == 0 || lastPlots.GetValueOrDefault(key) == signature)
             return;
 
         lastPlots[key] = signature;
-        pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime);
+        pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, indoor, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime);
     }
 
     // Vale a partir de quando a contagem mudou, e não do envio, para uma contagem antiga não vencer uma nova.
@@ -253,7 +253,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
                 buffs = sendingActive.Buffs.Select(b => new { name = b.Name, seconds = b.Seconds }),
             },
             supplies = sendingSupplies == null ? null : new { tanks = sendingSupplies.Tanks, kits = sendingSupplies.Kits, age = Age(sendingSupplies.ReadAt, now) },
-            plots = sendingPlots.Select(p => new { key = p.Key, name = p.Name, nextWaterAt = p.NextWaterAt, dieAt = p.DieAt, age = Age(p.ReadAt, now) }),
+            plots = sendingPlots.Select(p => new { key = p.Key, name = p.Name, nextWaterAt = p.NextWaterAt, dieAt = p.DieAt, indoor = p.Indoor, age = Age(p.ReadAt, now) }),
             voyages = sendingVoyages.Select(v =>
             {
                 var voyage = config.Voyages[v.Key];
