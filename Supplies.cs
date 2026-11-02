@@ -29,8 +29,10 @@ public static class Supplies
         InventoryType.Inventory4,
     ];
 
-    // Só as páginas que o jogo carregou. Página 1 a 5.
-    public static unsafe Dictionary<int, SupplyCount> ReadChest()
+    // Só as páginas que o jogo carregou com itens. Página 1 a 5.
+    // Ao abrir o baú, o jogo marca a página como carregada antes de preencher, então página vazia é ignorada
+    // e entra em emptyPages. Uma página de verdade vazia não muda o estoque.
+    public static unsafe Dictionary<int, SupplyCount> ReadChest(List<int> emptyPages)
     {
         var pages = new Dictionary<int, SupplyCount>();
         var manager = InventoryManager.Instance();
@@ -43,19 +45,24 @@ public static class Supplies
             if (container == null || !container->IsLoaded)
                 continue;
 
-            int tanks = 0, kits = 0;
+            int tanks = 0, kits = 0, filled = 0;
             for (var slot = 0; slot < container->Size; slot++)
             {
                 var item = container->GetInventorySlot(slot);
-                if (item == null)
+                if (item == null || item->ItemId == 0)
                     continue;
+
+                filled++;
                 if (item->ItemId == CeruleumTank)
                     tanks += item->Quantity;
                 else if (item->ItemId == RepairMaterials)
                     kits += item->Quantity;
             }
 
-            pages[i + 1] = new SupplyCount(tanks, kits);
+            if (filled == 0)
+                emptyPages.Add(i + 1);
+            else
+                pages[i + 1] = new SupplyCount(tanks, kits);
         }
 
         return pages;

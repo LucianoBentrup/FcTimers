@@ -67,6 +67,7 @@ public sealed class Plugin : IDalamudPlugin
     private bool characterEnabled;
     private bool inWorkshop;
     private (string Key, string Name, DateTime SeenAt)? lastHousingObject;
+    private string lastEmptyPages = string.Empty;
     private DateTime autoLogAt = DateTime.MaxValue;
     private DateTime lastAutoLog = DateTime.MinValue;
 
@@ -531,7 +532,17 @@ public sealed class Plugin : IDalamudPlugin
     {
         var record = Config.Supplies;
         var changed = false;
-        foreach (var (page, count) in Supplies.ReadChest())
+        var emptyPages = new List<int>();
+        var chest = Supplies.ReadChest(emptyPages);
+        var empty = string.Join(", ", emptyPages);
+        if (empty != lastEmptyPages)
+        {
+            lastEmptyPages = empty;
+            if (empty.Length > 0)
+                Diagnostics.Write($"Baú da FC: página(s) {empty} carregada(s) sem itens, ignorada(s)");
+        }
+
+        foreach (var (page, count) in chest)
         {
             if (record.ChestPages.TryGetValue(page, out var known) && known.Tanks == count.Tanks && known.Kits == count.Kits)
                 continue;
