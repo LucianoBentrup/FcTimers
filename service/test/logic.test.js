@@ -369,6 +369,21 @@ test('lembrete de sub e de vaso esquecidos, uma vez só', () => {
   assert.deepEqual(pendingAlerts(state, at(2, 11)).filter((a) => a.kind === 'plotForgotten'), []);
 });
 
+test('buff da mesa pronto avisa uma vez, e buff visto já pronto não avisa', () => {
+  const state = newState();
+  applyUpdate(state, { buffs: { age: 0, slots: [{ slot: 0, itemId: 1, name: 'Grade 3 Wheel of Confrontation', hours: 2 }] } }, at(1, 9));
+  assert.deepEqual(pendingAlerts(state, at(1, 10)), []);
+  const [ready] = pendingAlerts(state, at(1, 11));
+  assert.equal(alertPayload(ready, '').content, '⚙️ **Grade 3 Wheel of Confrontation** está pronto!');
+  markSent(state, ready);
+  applyUpdate(state, { buffs: { age: 0, slots: [{ slot: 0, itemId: 1, name: 'Grade 3 Wheel of Confrontation', hours: 2 }] } }, at(1, 12));
+  assert.deepEqual(pendingAlerts(state, at(1, 12)), []);
+
+  const fresh = newState();
+  applyUpdate(fresh, { buffs: { age: 0, slots: [{ slot: 0, itemId: 1, name: 'Wheel', hours: 0 }] } }, at(1, 9));
+  assert.deepEqual(pendingAlerts(fresh, at(1, 9)), []);
+});
+
 test('estoque: painel, aviso de estoque baixo uma vez e volta a avisar depois de repor', () => {
   const state = newState();
   applyUpdate(state, { supplies: { tanks: 579, kits: 65, age: 0 } }, at(1, 9));

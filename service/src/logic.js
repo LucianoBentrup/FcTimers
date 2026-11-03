@@ -77,6 +77,9 @@ export function pendingAlerts(state, now) {
   const dying = plots.map((p) => ({ ...p, step: deathWarningDue(p, now) })).filter((p) => p.step);
   if (dying.length > 0) alerts.push({ kind: 'plotDying', plots: dying });
 
+  const wheels = Object.values(state.buffs).filter((b) => b.readyTime > 0 && b.readyTime <= now && b.notified !== b.readyTime);
+  if (wheels.length > 0) alerts.push({ kind: 'wheelReady', wheels });
+
   const late = subs.filter((s) => s.returnTime <= now - FORGOTTEN_SUB && s.notified === s.returnTime && s.forgotten !== s.returnTime);
   if (late.length > 0) alerts.push({ kind: 'subForgotten', subs: late });
 
@@ -143,6 +146,10 @@ export function markSent(state, alert) {
     else if (alert.kind === 'subForgotten') sub.forgotten = sub.returnTime;
     else sub.reminded = sub.returnTime;
   }
+  for (const sent of alert.wheels ?? []) {
+    const wheel = Object.values(state.buffs).find((b) => b.name === sent.name && b.readyTime === sent.readyTime);
+    if (wheel) wheel.notified = wheel.readyTime;
+  }
   for (const sent of alert.plots ?? []) {
     const plot = state.plots?.[sent.key];
     if (!plot) continue;
@@ -176,6 +183,7 @@ export function alertPayload(alert, roleId) {
     plotReady: () => `🌱 A plantação já pode ser regada${plotNames(alert.plots)}!`,
     plotReminder: () => `Lembrete: Em 1 hora a plantação estará disponível para regar${plotNames(alert.plots)}.`,
     plotForgotten: () => `🌱 ${joinNames(alert.plots)} ${alert.plots.length > 1 ? 'ficaram' : 'ficou'} sem regar? Os outros vasos já foram regados.`,
+    wheelReady: () => `⚙️ ${joinNames(alert.wheels)} ${alert.wheels.length > 1 ? 'estão prontos' : 'está pronto'}!`,
     subForgotten: () => `⏰ ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'} há mais de 2 horas e ainda não ${alert.subs.length > 1 ? 'saíram' : 'saiu'} de novo.`,
     repairNeeded: () => {
       const subs = joinList(alert.subs.map((s) => `**${s.name}** (${percent(s.details.condition)})`));
@@ -331,12 +339,10 @@ export function applyUpdate(state, body, now) {
         const existing = state.buffs[slot.slot];
         // A mesa só informa horas inteiras, então o horário só muda quando esse número muda.
         const unchanged = existing && existing.itemId === slot.itemId && existing.hours === slot.hours;
-        buffs[slot.slot] = {
-          itemId: slot.itemId,
-          name: slot.name,
-          hours: slot.hours,
-          readyTime: unchanged ? existing.readyTime : observedAt + (slot.hours * 3600),
-        };
+        const readyTime = unchanged ? existing.readyTime : observedAt + (slot.hours * 3600);
+        // Buff visto pela primeira vez já pronto não gera aviso atrasado.
+        const notified = existing?.readyTime === readyTime ? existing.notified ?? 0 : (readyTime <= now ? readyTime : 0);
+        buffs[slot.slot] = { itemId: slot.itemId, name: slot.name, hours: slot.hours, readyTime, notified };
       }
       state.buffs = buffs;
       state.buffsObservedAt = observedAt;

@@ -12,6 +12,7 @@
 - Quando um submarino volta, sai o aviso de pronto. Submarinos que voltam juntos entram no mesmo aviso.
 - Plantação, por plot: lembrete 1 hora antes de poder regar, aviso quando pode regar, e um aviso 3, 2 e 1 hora antes de morrer.
 - Cada viagem e cada rega avisa uma vez só. Algo visto pela primeira vez quando já estava pronto não gera aviso.
+- Quando um buff da mesa da roda fica pronto, sai um aviso marcando @Subs, uma vez só. Buff visto pela primeira vez já pronto não gera aviso.
 - Lembrete de esquecido: um sub que voltou há mais de 2 horas e não saiu de novo ganha um lembrete, uma vez por viagem. Um vaso de dentro de casa ganha um lembrete quando outro vaso da mesma casa foi regado há 15 minutos ou mais e ele, que já podia ser regado, não foi.
 - Nos avisos de plantação, só os vasos de dentro de casa ou de quarto privado aparecem pelo nome. Os canteiros de fora são regados juntos, então aparecem como "a plantação" ou "os canteiros de fora".
 - O aviso de estoque baixo diz quantas viagens e rodadas os tanques ainda aguentam.

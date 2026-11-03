@@ -57,6 +57,7 @@ const messages = {
     { kind: 'subReminder', subs: [state.subs[0], state.subs[1]] },
     { kind: 'subReady', subs: [state.subs[3]] },
     { kind: 'subForgotten', subs: [state.subs[3]] },
+    { kind: 'wheelReady', wheels: Object.values(state.buffs) },
     { kind: 'plotReminder', plots: [plots['fora:c1']] },
     { kind: 'plotReady', plots: [plots['casa:0:v1'], plots['casa:0:v2']] },
     { kind: 'plotDying', plots: [plots['casa:0:v1'], plots['casa:0:v2']] },
