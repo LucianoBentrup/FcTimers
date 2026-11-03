@@ -149,6 +149,22 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         return true;
     }
 
+    // Para quando o plugin está fechando: envia na hora e espera um pouco, sem travar o jogo.
+    public void SendLogNow(string character, string text, TimeSpan wait)
+    {
+        if (!Enabled)
+            return;
+
+        var body = JsonSerializer.Serialize(new { character, text });
+        try
+        {
+            SendLogAsync(body, config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim()).Wait(wait);
+        }
+        catch (AggregateException)
+        {
+        }
+    }
+
     private async Task<string> SendLogAsync(string body, string url, string key)
     {
         try

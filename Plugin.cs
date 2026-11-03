@@ -71,8 +71,7 @@ public sealed class Plugin : IDalamudPlugin
     private string lastScan = string.Empty;
     private DateTime nextScan = DateTime.MinValue;
     private DateTime autoLogAt = DateTime.MaxValue;
-    private DateTime lastAutoLog = DateTime.MinValue;
-    private DateTime nextRegularLog = DateTime.UtcNow.AddMinutes(5);
+    private DateTime firstQueuedLog = DateTime.MaxValue;
     private int uploadedLines;
 
     public Configuration Config { get; }
@@ -160,6 +159,14 @@ public sealed class Plugin : IDalamudPlugin
         CommandManager.RemoveHandler(Command);
         dtrEntry.Remove();
         windowSystem.RemoveAllWindows();
+
+        // Fechando o jogo logo depois de uma coleta: o log que ainda não foi enviado vai agora, esperando no máximo 3 segundos.
+        if (autoLogAt != DateTime.MaxValue && Diagnostics.Written != uploadedLines)
+        {
+            Diagnostics.Write("Enviando o log ao serviço (automático, plugin fechando)");
+            Sync.SendLogNow(CurrentCharacterName(), LogText(), TimeSpan.FromSeconds(3));
+        }
+
         Sync.Dispose();
     }
 
@@ -230,6 +237,7 @@ public sealed class Plugin : IDalamudPlugin
             plot.WateredAt = now;
         SaveConfig();
         Diagnostics.Write($"Rega registrada em todos os plots ({source})");
+        QueueLogUpload();
     }
 
     public void RemovePlot(string key)
@@ -277,6 +285,7 @@ public sealed class Plugin : IDalamudPlugin
         plot.WateredAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         SaveConfig();
         Diagnostics.Write($"Rega registrada em {plot.Name} ({source}, {(indoor ? "dentro de casa" : "fora")}, chave {key})");
+        QueueLogUpload();
     }
 
     // Chave, nome e se está dentro de casa (sala ou quarto privado), ou null se o alvo não for um objeto da casa.
@@ -325,19 +334,12 @@ public sealed class Plugin : IDalamudPlugin
                 plot.Indoor);
         }
 
-        if (DateTime.UtcNow >= autoLogAt)
+        if (DateTime.UtcNow >= autoLogAt && !Sync.SendingLog)
         {
             autoLogAt = DateTime.MaxValue;
-            lastAutoLog = DateTime.UtcNow;
-            SendLog("automático, loot não lido");
-        }
-
-        // Fora isso, o log vai sozinho a cada 30 minutos, se tiver linhas novas desde o último envio.
-        if (characterEnabled && DateTime.UtcNow >= nextRegularLog)
-        {
-            nextRegularLog = DateTime.UtcNow.AddMinutes(30);
+            firstQueuedLog = DateTime.MaxValue;
             if (Diagnostics.Written != uploadedLines)
-                SendLog("automático, a cada 30 minutos");
+                SendLog("automático, depois de uma ação importante");
         }
 
         L.English = LanguageCode == "en";
@@ -499,7 +501,10 @@ public sealed class Plugin : IDalamudPlugin
 
         var voyage = SubmarineLoot.Read(sub, name, returnTime, LookupItem, SectorName);
         if (voyage != null && LootLedger.Upsert(Config.Voyages, LootLedger.VoyageKey(key, returnTime), voyage))
+        {
             Diagnostics.Write($"{name}: viagem de {DiagnosticLog.Time(returnTime)} salva, {voyage.Items.Count} itens, {LootLedger.Total([voyage]):N0} gil");
+            QueueLogUpload();
+        }
 
         return true;
     }
@@ -507,22 +512,27 @@ public sealed class Plugin : IDalamudPlugin
     public string LogText()
         => Diagnostics.Text($"FC Timers {Version} | fuso UTC{DateTimeOffset.Now:zzz} | gerado {DateTime.Now:dd/MM HH:mm}");
 
+    private string CurrentCharacterName()
+        => Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name : "Desconhecido";
+
     public void SendLog(string source)
     {
-        var name = Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name : "Desconhecido";
-        if (!Sync.SendLog(name, LogText()))
+        if (!Sync.SendLog(CurrentCharacterName(), LogText()))
             return;
 
         Diagnostics.Write($"Enviando o log ao serviço ({source})");
         uploadedLines = Diagnostics.Written;
     }
 
-    // Quando um loot se perde, o log vai sozinho ao serviço, uns segundos depois para incluir o que vier em seguida.
-    // No máximo um envio automático a cada 10 minutos.
+    // Depois de uma ação importante (loot salvo ou perdido, sub saindo, rega, estoque, peças), o log vai sozinho
+    // ao serviço 20 segundos depois, para pegar o que vier em seguida. Ações em sequência entram no mesmo envio,
+    // que nunca espera mais de 2 minutos.
     private void QueueLogUpload()
     {
-        if (autoLogAt == DateTime.MaxValue && DateTime.UtcNow - lastAutoLog > TimeSpan.FromMinutes(10))
-            autoLogAt = DateTime.UtcNow.AddSeconds(30);
+        var now = DateTime.UtcNow;
+        if (firstQueuedLog == DateTime.MaxValue)
+            firstQueuedLog = now;
+        autoLogAt = now - firstQueuedLog < TimeSpan.FromMinutes(2) ? now.AddSeconds(20) : autoLogAt;
     }
 
     private void LogReturnChange(string key, string name, long previous, long current, long now)
@@ -530,13 +540,11 @@ public sealed class Plugin : IDalamudPlugin
         if (current > now && previous != 0 && previous <= now)
         {
             if (Config.Voyages.ContainsKey(LootLedger.VoyageKey(key, previous)))
-                Diagnostics.Detail($"{name}: saiu de novo, volta {DiagnosticLog.Time(current)}");
+                Diagnostics.Write($"{name}: saiu de novo, volta {DiagnosticLog.Time(current)}");
             else
-            {
                 Diagnostics.Write($"{name}: saiu de novo, volta {DiagnosticLog.Time(current)}. O loot da viagem de {DiagnosticLog.Time(previous)} ainda não foi lido.");
-                QueueLogUpload();
-            }
 
+            QueueLogUpload();
             return;
         }
 
@@ -618,7 +626,10 @@ public sealed class Plugin : IDalamudPlugin
         var text = $"{name}: rank {current.Rank} ({current.ExpPercent}%), {current.Build}, rota {current.Route} "
             + $"({current.TanksPerVoyage} tanques), peças {current.Condition?.ToString("0.#") ?? "?"}%, reparo {current.RepairKits} kits";
         if (previous == null || previous with { ExpPercent = current.ExpPercent } != current)
+        {
             Diagnostics.Write(text);
+            QueueLogUpload();
+        }
         else
             Diagnostics.Detail(text);
     }
@@ -660,6 +671,7 @@ public sealed class Plugin : IDalamudPlugin
         record.ChangedAt = now;
         SaveConfig();
         Diagnostics.Write($"Estoque total: {record.Tanks} tanques, {record.Kits} kits de reparo (páginas do baú vistas: {string.Join(", ", record.ChestPages.Keys.Order())})");
+        QueueLogUpload();
     }
 
     private unsafe void ReadWheels(long now)

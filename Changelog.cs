@@ -9,6 +9,13 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.8.2",
+        [
+            ("Changed",
+            [
+                "The diagnostic log is sent automatically about 20 seconds after important actions (collections, submarines leaving, watering, supply and part changes) and when the game closes, instead of every 30 minutes.",
+            ]),
+        ]),
         ("0.8.1",
         [
             ("Changed",

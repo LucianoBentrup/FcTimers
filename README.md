@@ -27,5 +27,5 @@ Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda de buf
 
 ## Log de diagnóstico
 - Na janela do `/fct`, seção **Diagnóstico**: **Copiar log** copia para colar no Discord, e **Enviar log** guarda no serviço da FC.
-- O plugin envia o log sozinho a cada 30 minutos, quando tem linhas novas, e logo depois de um loot de submarino se perder (no máximo uma vez a cada 10 minutos).
+- O plugin envia o log sozinho uns 20 segundos depois de ações importantes (coleta, sub saindo, rega, estoque, peças) e ao fechar o jogo. Ações em sequência entram no mesmo envio.
 - O serviço guarda só o último log de cada personagem, até 10 personagens. O log não inclui a chave da FC.
