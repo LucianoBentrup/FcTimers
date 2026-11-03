@@ -3,7 +3,7 @@
     "Author": "Luciano",
     "Name": "FC Timers",
     "InternalName": "FcTimers",
-    "AssemblyVersion": "0.8.0.0",
+    "AssemblyVersion": "0.8.1.0",
     "Description": "Mostra na barra do sistema quando os submarinos e a roda da FC ficam prontos. Apenas exibe informações.",
     "ApplicableVersion": "any",
     "Tags": [
@@ -24,6 +24,6 @@
     "DownloadLinkTesting": "https://raw.githubusercontent.com/LucianoBentrup/FcTimers/main/dist/latest.zip",
     "IsHide": false,
     "IsTestingExclusive": false,
-    "LastUpdate": 1793658698
+    "LastUpdate": 1793737163
   }
 ]

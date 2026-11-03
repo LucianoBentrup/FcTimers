@@ -72,6 +72,8 @@ public sealed class Plugin : IDalamudPlugin
     private DateTime nextScan = DateTime.MinValue;
     private DateTime autoLogAt = DateTime.MaxValue;
     private DateTime lastAutoLog = DateTime.MinValue;
+    private DateTime nextRegularLog = DateTime.UtcNow.AddMinutes(5);
+    private int uploadedLines;
 
     public Configuration Config { get; }
     public SyncClient Sync { get; }
@@ -330,6 +332,14 @@ public sealed class Plugin : IDalamudPlugin
             SendLog("automático, loot não lido");
         }
 
+        // Fora isso, o log vai sozinho a cada 30 minutos, se tiver linhas novas desde o último envio.
+        if (characterEnabled && DateTime.UtcNow >= nextRegularLog)
+        {
+            nextRegularLog = DateTime.UtcNow.AddMinutes(30);
+            if (Diagnostics.Written != uploadedLines)
+                SendLog("automático, a cada 30 minutos");
+        }
+
         L.English = LanguageCode == "en";
         Sync.WindowOpen = mainWindow.IsOpen;
         Sync.Tick();
@@ -500,8 +510,11 @@ public sealed class Plugin : IDalamudPlugin
     public void SendLog(string source)
     {
         var name = Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name : "Desconhecido";
-        if (Sync.SendLog(name, LogText()))
-            Diagnostics.Write($"Enviando o log ao serviço ({source})");
+        if (!Sync.SendLog(name, LogText()))
+            return;
+
+        Diagnostics.Write($"Enviando o log ao serviço ({source})");
+        uploadedLines = Diagnostics.Written;
     }
 
     // Quando um loot se perde, o log vai sozinho ao serviço, uns segundos depois para incluir o que vier em seguida.

@@ -31,10 +31,14 @@ public sealed class DiagnosticLog
         }
     }
 
+    // Quantas linhas foram escritas desde que o plugin abriu, para saber se há novidade para enviar.
+    public int Written { get; private set; }
+
     public void Write(string message)
     {
         var line = $"{DateTime.Now:dd/MM HH:mm:ss} {message}";
         lines.Add(line);
+        Written++;
         echo(message);
 
         try

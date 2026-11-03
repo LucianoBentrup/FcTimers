@@ -9,6 +9,14 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.8.1",
+        [
+            ("Changed",
+            [
+                "The diagnostic log is sent to the FC service automatically every 30 minutes when it has new entries, in addition to right after missed loot.",
+                "Submarine alerts that arrive minutes apart are grouped into a single Discord message.",
+            ]),
+        ]),
         ("0.8.0",
         [
             ("Added",

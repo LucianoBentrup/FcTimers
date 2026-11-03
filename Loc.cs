@@ -74,7 +74,7 @@ public static class L
     public static string SendLog => T("Enviar log", "Send log");
     public static string Copied => T("Copiado. Cole no Discord.", "Copied. Paste it on Discord.");
     public static string LogHasNoKey => T("O log não inclui a chave da FC.", "The log never includes the FC key.");
-    public static string SendLogHint => T("Enviar log guarda o log no serviço da FC. Ele também vai sozinho se um loot se perder.", "Send log stores the log on the FC service. It is also sent automatically if loot is missed.");
+    public static string SendLogHint => T("Enviar log guarda o log no serviço da FC. Ele também vai sozinho a cada 30 minutos, quando tem novidade, e logo depois de um loot se perder.", "Send log stores the log on the FC service. It is also sent automatically every 30 minutes when there is something new, and right after loot is missed.");
 
     // Chat e barra do jogo
     public static string SubReturned(string name) => T($"Submarino {name} voltou!", $"Submarine {name} is back!");
