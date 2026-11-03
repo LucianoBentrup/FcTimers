@@ -53,8 +53,9 @@ export function pendingAlerts(state, now) {
   const subs = Object.values(state.subs).filter((s) => s.returnTime > 0);
   const alerts = [];
 
-  const ready = subs.filter((s) => s.returnTime <= now && s.notified !== s.returnTime);
-  if (ready.length > 0) alerts.push({ kind: 'subReady', subs: ready });
+  // Subs que voltam até 15 minutos um do outro saem num aviso só, quando o último voltar.
+  const ready = waitGroup(subs.filter((s) => s.notified !== s.returnTime), (s) => s.returnTime, now);
+  if (ready) alerts.push({ kind: 'subReady', subs: ready });
 
   // Quem volta até 15 minutos depois entra no mesmo lembrete.
   if (subs.some((s) => reminderDue(s.returnTime, s.reminded, now))) {
@@ -80,8 +81,9 @@ export function pendingAlerts(state, now) {
   const wheels = Object.values(state.buffs).filter((b) => b.readyTime > 0 && b.readyTime <= now && b.notified !== b.readyTime);
   if (wheels.length > 0) alerts.push({ kind: 'wheelReady', wheels });
 
-  const late = subs.filter((s) => s.returnTime <= now - FORGOTTEN_SUB && s.notified === s.returnTime && s.forgotten !== s.returnTime);
-  if (late.length > 0) alerts.push({ kind: 'subForgotten', subs: late });
+  const parked = subs.filter((s) => s.notified === s.returnTime && s.forgotten !== s.returnTime);
+  const late = waitGroup(parked, (s) => s.returnTime + FORGOTTEN_SUB, now);
+  if (late) alerts.push({ kind: 'subForgotten', subs: late });
 
   const forgotten = plots.filter((p) => isForgotten(p, plots, now));
   if (forgotten.length > 0) alerts.push({ kind: 'plotForgotten', plots: forgotten });
@@ -100,6 +102,35 @@ export function pendingAlerts(state, now) {
   for (const notice of state.notices ?? []) alerts.push({ kind: notice.kind, notice });
 
   return alerts;
+}
+
+// O grupo começa no primeiro que já chegou na hora e inclui quem chega até 15 minutos depois.
+// Só sai quando o último do grupo chegar, então quem chega junto nunca gera um aviso para cada um.
+function waitGroup(items, timeOf, now) {
+  const due = items.filter((i) => timeOf(i) <= now);
+  if (due.length === 0) return null;
+  const start = Math.min(...due.map(timeOf));
+  const group = items.filter((i) => timeOf(i) >= start && timeOf(i) <= start + REMINDER_GROUP);
+  return group.every((i) => timeOf(i) <= now) ? group : null;
+}
+
+// Avisos de sub dos últimos 8 horas, agrupados de novo, para trocar avisos repetidos no canal por um só.
+export function recentSubAlerts(state, now) {
+  const subs = Object.values(state.subs).filter((s) => s.returnTime > 0 && s.returnTime > now - ALERT_LIFETIME);
+  const groups = (list, timeOf) => {
+    const result = [];
+    let pending = [...list].filter((s) => timeOf(s) <= now).sort((a, b) => timeOf(a) - timeOf(b));
+    while (pending.length > 0) {
+      const start = timeOf(pending[0]);
+      result.push(pending.filter((s) => timeOf(s) <= start + REMINDER_GROUP));
+      pending = pending.filter((s) => timeOf(s) > start + REMINDER_GROUP);
+    }
+    return result;
+  };
+  return [
+    ...groups(subs.filter((s) => s.notified === s.returnTime), (s) => s.returnTime).map((g) => ({ kind: 'subReady', subs: g })),
+    ...groups(subs.filter((s) => s.forgotten === s.returnTime), (s) => s.returnTime + FORGOTTEN_SUB).map((g) => ({ kind: 'subForgotten', subs: g })),
+  ];
 }
 
 // Só vasos de dentro de casa têm nome confiável; os canteiros de fora são regados todos juntos.

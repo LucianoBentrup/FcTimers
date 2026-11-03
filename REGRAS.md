@@ -9,7 +9,7 @@
 - Todo aviso marca o cargo @Subs e é apagado 8 horas depois de enviado.
 - 1 hora antes de um submarino voltar: "Lembrete: Em 1 hora os submarinos estarão prontos para coleta", com os nomes. Quem volta até 15 minutos depois entra no mesmo lembrete.
 - Se faltar menos de 30 minutos quando o serviço puder enviar o lembrete, ele não sai, e só sai o aviso de pronto.
-- Quando um submarino volta, sai o aviso de pronto. Submarinos que voltam juntos entram no mesmo aviso.
+- Quando um submarino volta, sai o aviso de pronto. Submarinos que voltam até 15 minutos um do outro entram no mesmo aviso, que sai quando o último voltar. O lembrete de esquecido segue a mesma regra.
 - Plantação, por plot: lembrete 1 hora antes de poder regar, aviso quando pode regar, e um aviso 3, 2 e 1 hora antes de morrer.
 - Cada viagem e cada rega avisa uma vez só. Algo visto pela primeira vez quando já estava pronto não gera aviso.
 - Quando um buff da mesa da roda fica pronto, sai um aviso marcando @Subs, uma vez só. Buff visto pela primeira vez já pronto não gera aviso.

@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, MARKET_CACHE, markSent, mergeVoyage, needsPrice, newState,
-  nextEvent, parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, renderPanel, sectorNotice, voyageKey,
+  nextEvent, parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
 } from './logic.js';
 
 const DEBOUNCE_MS = 2000;
@@ -33,7 +33,7 @@ export default {
     if (!isAuthorized(request, env)) return json({ error: 'unauthorized' }, 401);
 
     const { pathname } = new URL(request.url);
-    const allowed = (request.method === 'POST' && ['/update', '/repost', '/log'].includes(pathname))
+    const allowed = (request.method === 'POST' && ['/update', '/repost', '/log', '/regroup'].includes(pathname))
       || (request.method === 'GET' && ['/history', '/state', '/logs'].includes(pathname));
     if (!allowed) return json({ error: 'not found' }, 404);
 
@@ -47,6 +47,7 @@ export class FcState extends DurableObject {
     switch (`${request.method} ${new URL(request.url).pathname}`) {
       case 'POST /update': return this.handleUpdate(request);
       case 'POST /repost': return this.handleRepost();
+      case 'POST /regroup': return this.handleRegroup();
       case 'POST /log': return this.handleLog(request);
       case 'GET /state': return this.handleState();
       case 'GET /logs': return this.handleLogs();
@@ -140,6 +141,36 @@ export class FcState extends DurableObject {
     return json({ ok: true });
   }
 
+  // Apaga todos os avisos ainda no canal e manda de novo, agrupados, só os de sub das últimas 8 horas.
+  // Os avisos refeitos mostram o @Subs sem notificar de novo.
+  async handleRegroup() {
+    const storage = this.ctx.storage;
+    const now = nowSeconds();
+    const state = (await storage.get('state')) ?? newState();
+    // Avisos antigos, sem o tipo gravado, também são trocados.
+    const removed = [];
+    for (const alert of (state.alerts ?? []).filter((a) => !a.kind || a.kind === 'subReady' || a.kind === 'subForgotten')) {
+      const response = await fetch(`${this.webhook()}/messages/${alert.id}`, { method: 'DELETE' });
+      if (response.ok || response.status === 404) removed.push(alert.id);
+      await new Promise((resolve) => { setTimeout(resolve, 300); });
+    }
+
+    const sent = [];
+    for (const alert of recentSubAlerts(state, now)) {
+      const payload = { ...alertPayload(alert, this.env.ROLE_ID), allowed_mentions: { parse: [], roles: [] } };
+      const response = await fetch(`${this.webhook()}?wait=true`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      if (response.ok) sent.push({ id: (await response.json()).id, deleteAt: alertDeleteAt(now), kind: alert.kind });
+      await new Promise((resolve) => { setTimeout(resolve, 600); });
+    }
+
+    const latest = (await storage.get('state')) ?? newState();
+    latest.alerts = [...(latest.alerts ?? []).filter((a) => !removed.includes(a.id)), ...sent];
+    await storage.put('state', latest);
+    return json({ ok: true, removed: removed.length, sent: sent.length });
+  }
+
   async handleHistory(request) {
     const day = new URL(request.url).searchParams.get('day') ?? dayOf(nowSeconds());
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: 'invalid day' }, 400);
@@ -198,7 +229,7 @@ export class FcState extends DurableObject {
       // O estado pode ter mudado durante o envio. Marca só o que entrou neste aviso.
       const latest = (await this.ctx.storage.get('state')) ?? newState();
       markSent(latest, alert);
-      latest.alerts = [...(latest.alerts ?? []), { id, deleteAt: alertDeleteAt(now) }];
+      latest.alerts = [...(latest.alerts ?? []), { id, deleteAt: alertDeleteAt(now), kind: alert.kind }];
       await this.ctx.storage.put('state', latest);
     }
     return null;

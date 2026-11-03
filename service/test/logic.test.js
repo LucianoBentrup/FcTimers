@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   alertDeleteAt, alertPayload, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, needsPrice, newState, nextEvent, nextMidnight,
-  parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, renderPanel, sectorNotice, voyageKey,
+  parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
 } from '../src/logic.js';
 
 const at = (day, hour, minute = 0) => Math.floor(Date.UTC(2026, 10, day, hour + 3, minute) / 1000);
@@ -367,6 +367,28 @@ test('lembrete de sub e de vaso esquecidos, uma vez só', () => {
   assert.equal(alertPayload(forgotten, '').content, '🌱 **Vaso 2** ficou sem regar? Os outros vasos já foram regados.');
   markSent(state, forgotten);
   assert.deepEqual(pendingAlerts(state, at(2, 11)).filter((a) => a.kind === 'plotForgotten'), []);
+});
+
+test('subs que voltam com segundos ou minutos de diferença saem num aviso só', () => {
+  const state = newState();
+  const back = [at(1, 14, 58), at(1, 14, 58) + 10, at(1, 14, 58) + 20, at(1, 15, 9)];
+  applyUpdate(state, { subs: back.map((returnTime, slot) => ({ slot, name: `Sub${slot}`, returnTime, age: 0 })) }, at(1, 13));
+  pendingAlerts(state, at(1, 14)).forEach((a) => markSent(state, a));
+  assert.deepEqual(pendingAlerts(state, back[0]).filter((a) => a.kind === 'subReady'), []);
+  assert.deepEqual(pendingAlerts(state, back[2]).filter((a) => a.kind === 'subReady'), []);
+  const [ready] = pendingAlerts(state, back[3]).filter((a) => a.kind === 'subReady');
+  assert.equal(alertPayload(ready, '').content, '🚢 **Sub0**, **Sub1**, **Sub2** e **Sub3** voltaram!');
+  markSent(state, ready);
+
+  // O lembrete de esquecido também sai um só.
+  assert.deepEqual(pendingAlerts(state, back[0] + 7200).filter((a) => a.kind === 'subForgotten'), []);
+  const [late] = pendingAlerts(state, back[3] + 7200).filter((a) => a.kind === 'subForgotten');
+  assert.equal(late.subs.length, 4);
+  markSent(state, late);
+  assert.deepEqual(pendingAlerts(state, back[3] + 7300), []);
+
+  // Os avisos refeitos para limpar o canal saem agrupados.
+  assert.deepEqual(recentSubAlerts(state, back[3] + 7300).map((a) => `${a.kind}:${a.subs.length}`), ['subReady:4', 'subForgotten:4']);
 });
 
 test('buff da mesa pronto avisa uma vez, e buff visto já pronto não avisa', () => {
