@@ -9,6 +9,14 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.8.5",
+        [
+            ("Fixed",
+            [
+                "Garden patch names no longer carry the game's icon character, which showed up as a box on Discord.",
+                "Opening a garden patch menu renames an automatically named patch to its number from the game (\"Canteiro 2\").",
+            ]),
+        ]),
         ("0.8.4",
         [
             ("Changed",

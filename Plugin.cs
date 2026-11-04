@@ -230,7 +230,14 @@ public sealed class Plugin : IDalamudPlugin
                 plot.Name = $"Canteiro {plot.Name.Trim()}".Trim();
         }
 
-        Config.Version = 9;
+        // A 0.8.3 guardava o ícone do jogo no nome dos canteiros de fora ("\uE034 1").
+        if (Config.Version < 10)
+        {
+            foreach (var plot in Config.Plots.Values.Where(p => IsUnnamed(p.Name)))
+                plot.Name = $"Canteiro {CleanName(plot.Name)}".Trim();
+        }
+
+        Config.Version = 10;
         SaveConfig();
     }
 
@@ -329,7 +336,7 @@ public sealed class Plugin : IDalamudPlugin
         var position = target.Position;
         var coordinates = string.Join(':', new[] { position.X, position.Y, position.Z }.Select(v => v.ToString("F1", CultureInfo.InvariantCulture)));
         var key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{coordinates}";
-        return (key, target.Name.TextValue, manager->IsInside());
+        return (key, CleanName(target.Name.TextValue), manager->IsInside());
     }
 
     private void OnUpdate(IFramework framework)
@@ -617,7 +624,17 @@ public sealed class Plugin : IDalamudPlugin
         if (ReadHousingTarget() is var (key, name, indoor))
         {
             var patch = texts.Select(t => PatchPattern.Match(t)).FirstOrDefault(m => m.Success);
-            lastHousingObject = (key, patch != null ? $"Canteiro {patch.Groups[1].Value}" : name, indoor, DateTime.UtcNow);
+            var label = patch != null ? $"Canteiro {patch.Groups[1].Value}" : name;
+            lastHousingObject = (key, label, indoor, DateTime.UtcNow);
+
+            // Só de abrir o menu, um canteiro já conhecido com nome automático ganha o nome certo.
+            if (patch != null && Config.Plots.TryGetValue(key, out var known) && known.Name != label
+                && (IsUnnamed(known.Name) || AutoName.IsMatch(known.Name)))
+            {
+                Diagnostics.Write($"Plot renomeado: {CleanName(known.Name)} -> {label} (chave {key})");
+                known.Name = label;
+                SaveConfig();
+            }
         }
 
         Diagnostics.Write($"Menu de {target.Name.TextValue} ({target.ObjectKind}): {string.Join(" | ", texts)}");
@@ -627,7 +644,11 @@ public sealed class Plugin : IDalamudPlugin
     private static readonly Regex PatchPattern = new(@"(\d+)(?:st|nd|rd|th) Patch", RegexOptions.Compiled);
 
     // Nome vazio ou só um número, das versões que não sabiam o nome dos canteiros de fora.
-    private static bool IsUnnamed(string name) => name.Trim().All(char.IsDigit);
+    private static bool IsUnnamed(string name) => CleanName(name).All(char.IsDigit);
+
+    // O jogo põe ícones (caracteres de uso privado) no nome de alguns objetos, que o Discord mostra como "▯".
+    private static string CleanName(string name)
+        => new string(name.Where(c => char.GetUnicodeCategory(c) is not (UnicodeCategory.PrivateUse or UnicodeCategory.Control or UnicodeCategory.Format)).ToArray()).Trim();
 
     private void OnLogMessage(ILogMessage message)
     {

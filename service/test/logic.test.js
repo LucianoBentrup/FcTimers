@@ -403,6 +403,13 @@ test('mesmo canteiro com vírgula e ponto vira um só, e o plot geral some quand
   assert.equal(panel, `**Canteiro 2**: regar <t:${at(2, 21)}:R> (<t:${at(2, 21)}:t>)`);
 });
 
+test('ícone do jogo no nome do canteiro não aparece no painel', () => {
+  const state = newState();
+  applyUpdate(state, { plots: [{ key: 'f1', name: '\uE034 1', nextWaterAt: at(2, 9), dieAt: at(3, 9), age: 0 }] }, at(1, 9));
+  const panel = renderPanel(state, [], at(1, 10)).embeds[0].fields.find((f) => f.name.includes('Plantação')).value;
+  assert.equal(panel, `**1**: regar <t:${at(2, 9)}:R> (<t:${at(2, 9)}:t>)`);
+});
+
 test('buff da mesa pronto avisa uma vez, e buff visto já pronto não avisa', () => {
   const state = newState();
   applyUpdate(state, { buffs: { age: 0, slots: [{ slot: 0, itemId: 1, name: 'Grade 3 Wheel of Confrontation', hours: 2 }] } }, at(1, 9));

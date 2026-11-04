@@ -203,7 +203,7 @@ export function markSent(state, alert) {
 export const alertDeleteAt = (sentAt) => sentAt + ALERT_LIFETIME;
 
 const joinList = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} e ${names.at(-1)}` : names[0]);
-const joinNames = (list) => joinList(list.map((s) => `**${s.name}**`));
+const joinNames = (list) => joinList(list.map((s) => `**${cleanName(s.name)}**`));
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // Nomes só dos vasos de dentro de casa. Os canteiros de fora são regados juntos, então não vale listar.
@@ -496,7 +496,12 @@ function buffLine(buff, now) {
 }
 
 const bySlot = (record) => Object.keys(record).map(Number).sort((a, b) => a - b).map((slot) => record[slot]);
-const shorten = (name) => (name.length > MAX_NAME_SHOWN ? `${name.slice(0, MAX_NAME_SHOWN - 1)}…` : name);
+// Tira os ícones do jogo (caracteres de uso privado), que o Discord mostra como "▯".
+const cleanName = (name) => name.replace(/[\uE000-\uF8FF]/g, '').trim() || 'Canteiro';
+const shorten = (raw) => {
+  const name = cleanName(raw);
+  return name.length > MAX_NAME_SHOWN ? `${name.slice(0, MAX_NAME_SHOWN - 1)}…` : name;
+};
 
 function plotText(plot, now) {
   if (plot.nextWaterAt > now) return `regar <t:${plot.nextWaterAt}:R> (<t:${plot.nextWaterAt}:t>)`;
