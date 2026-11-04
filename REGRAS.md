@@ -33,6 +33,9 @@
 - Sem horário conhecido, o painel mostra `?` e o horário da leitura. O nível ausente fica só com o nome-base.
 
 ## Plantação
+- Os canteiros de fora não têm nome no alvo do jogo; o nome vem do menu ("6th Bed, 2nd Patch" vira "Canteiro 2"). Um nome dado na janela do `/fct` não é trocado.
+- A posição na chave sai sempre com ponto, para a chave ser igual em todos os PCs. Chaves antigas com vírgula viram uma só, ficando a rega mais recente.
+- O plot geral "Plantação" some do painel e da janela quando algum canteiro identificado é regado depois dele.
 - Cada plot ou vaso tem o seu horário. Ele é identificado pela casa (território, ward e plot), pelo quarto privado quando houver e pela posição do objeto, que só muda se alguém mover o plot.
 - O plugin registra a rega quando o jogo mostra "This crop is doing well." (mensagem 4017) ou ao plantar (4015), no plot que estiver selecionado. Sem plot selecionado, a rega vai para o plot geral "Plantação". Ainda falta confirmar no jogo que essas mensagens só aparecem nesses momentos.
 - Na mão, "Reguei todos agora" ou `/fct regar` registram a rega em todos os plots conhecidos.

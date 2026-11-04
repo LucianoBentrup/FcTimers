@@ -148,9 +148,16 @@ const lowTanksOf = (state) => (tanksPerRound(state) > 0 ? LOW_ROUNDS * tanksPerR
 const isLow = (supplies, state) => supplies.tanks < lowTanksOf(state) || supplies.kits < LOW_KITS;
 
 // Plots com horário de rega, sem os que morreram há muito tempo ou foram retirados.
+const plotKey = (key) => key.replace(/,/g, '.');
+
+// O plot geral ("Plantação") vem de regas que não sabiam qual canteiro foi. Some quando algum canteiro
+// identificado é regado depois dele.
 export function activePlots(state, now) {
-  return Object.entries(state.plots ?? {})
-    .map(([key, plot]) => ({ key, ...plot }))
+  const all = Object.entries(state.plots ?? {}).map(([key, plot]) => ({ key, ...plot }));
+  const general = all.find((p) => p.key === 'geral');
+  const superseded = general && all.some((p) => p.key !== 'geral' && p.observedAt > general.observedAt);
+  return all
+    .filter((p) => !(superseded && p.key === 'geral'))
     .filter((p) => p.nextWaterAt > 0 && !(p.dieAt > 0 && p.dieAt < now - PLOT_STALE))
     .sort((a, b) => a.nextWaterAt - b.nextWaterAt || a.name.localeCompare(b.name));
 }
@@ -328,9 +335,16 @@ export function applyUpdate(state, body, now) {
 
   // A rega de cada plot vale a partir do horário em que foi regado, então a mais nova sempre vence.
   // O formato com uma rega só vira o plot "Plantação".
-  const plotUpdates = [...(body.plots ?? [])];
-  if (body.garden) plotUpdates.push({ ...body.garden, key: 'geral', name: 'Plantação' });
+  // Até a 0.8.2 a posição na chave seguia o idioma do PC (vírgula ou ponto). A chave fica sempre com ponto,
+  // e as duas versões do mesmo canteiro viram uma, ficando a rega mais recente.
   state.plots ??= {};
+  for (const [key, plot] of Object.entries(state.plots).filter(([k]) => k.includes(','))) {
+    delete state.plots[key];
+    const fixed = plotKey(key);
+    if (!state.plots[fixed] || state.plots[fixed].observedAt < plot.observedAt) state.plots[fixed] = plot;
+  }
+  const plotUpdates = (body.plots ?? []).map((p) => ({ ...p, key: plotKey(p.key) }));
+  if (body.garden) plotUpdates.push({ ...body.garden, key: 'geral', name: 'Plantação' });
   for (const update of plotUpdates) {
     const observedAt = now - update.age;
     const existing = state.plots[update.key];

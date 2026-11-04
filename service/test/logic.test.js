@@ -391,6 +391,18 @@ test('subs que voltam com segundos ou minutos de diferença saem num aviso só',
   assert.deepEqual(recentSubAlerts(state, back[3] + 7300).map((a) => `${a.kind}:${a.subs.length}`), ['subReady:4', 'subForgotten:4']);
 });
 
+test('mesmo canteiro com vírgula e ponto vira um só, e o plot geral some quando um canteiro é regado depois', () => {
+  const state = newState();
+  const outside = (key, nextWaterAt) => ({ key, name: 'Canteiro 2', nextWaterAt, dieAt: nextWaterAt + 86400, age: 0, indoor: false });
+  applyUpdate(state, { garden: { nextWaterAt: at(2, 9), dieAt: at(3, 9), age: 0 } }, at(1, 9));
+  applyUpdate(state, { plots: [outside('340:25:26:0:-102.5:31.5:-51.1', at(2, 6))] }, at(1, 6));
+  applyUpdate(state, { plots: [outside('340:25:26:0:-102,5:31,5:-51,1', at(2, 21))] }, at(1, 21));
+  assert.deepEqual(Object.keys(state.plots).sort(), ['340:25:26:0:-102.5:31.5:-51.1', 'geral']);
+  assert.equal(state.plots['340:25:26:0:-102.5:31.5:-51.1'].nextWaterAt, at(2, 21));
+  const panel = renderPanel(state, [], at(1, 22)).embeds[0].fields.find((f) => f.name.includes('Plantação')).value;
+  assert.equal(panel, `**Canteiro 2**: regar <t:${at(2, 21)}:R> (<t:${at(2, 21)}:t>)`);
+});
+
 test('buff da mesa pronto avisa uma vez, e buff visto já pronto não avisa', () => {
   const state = newState();
   applyUpdate(state, { buffs: { age: 0, slots: [{ slot: 0, itemId: 1, name: 'Grade 3 Wheel of Confrontation', hours: 2 }] } }, at(1, 9));

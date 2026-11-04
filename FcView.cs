@@ -158,6 +158,10 @@ public sealed class FcView
 
         var staleBefore = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - PlotStaleSeconds;
 
+        // O plot geral some quando algum canteiro identificado é regado depois dele, como no painel.
+        if (plots.TryGetValue("geral", out var general) && plots.Any(p => p.Key != "geral" && p.Value.WateredAt > general.WateredAt))
+            plots.Remove("geral");
+
         var stock = config.Supplies;
         SupplyView? supplies = stock.ChangedAt == 0 ? null : new SupplyView(stock.Tanks, stock.Kits, stock.ChangedAt);
         if (remote?.Supplies is { } shared && Local(shared.ObservedAt) > (supplies?.ObservedAt ?? 0))

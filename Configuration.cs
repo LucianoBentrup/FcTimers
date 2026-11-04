@@ -103,7 +103,7 @@ public class PlotRecord
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 8;
+    public int Version { get; set; } = 9;
 
     // "pt" ou "en". Vazio: segue o idioma do Dalamud.
     public string Language { get; set; } = string.Empty;

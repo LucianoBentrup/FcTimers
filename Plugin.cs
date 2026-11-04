@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.Chat;
@@ -209,7 +211,23 @@ public sealed class Plugin : IDalamudPlugin
         if (Config.Version < 8 && Config.Language.Length == 0)
             Config.Language = "pt";
 
-        Config.Version = 8;
+        // Até a 0.8.2 a posição na chave do plot seguia o idioma do PC (vírgula ou ponto), e um mesmo canteiro
+        // tinha chaves diferentes em cada PC. Fica a rega mais recente de cada canteiro.
+        if (Config.Version < 9)
+        {
+            foreach (var (oldKey, plot) in Config.Plots.Where(p => p.Key.Contains(',')).ToList())
+            {
+                Config.Plots.Remove(oldKey);
+                var newKey = oldKey.Replace(',', '.');
+                if (!Config.Plots.TryGetValue(newKey, out var other) || other.WateredAt < plot.WateredAt)
+                    Config.Plots[newKey] = plot;
+            }
+
+            foreach (var plot in Config.Plots.Values.Where(p => IsUnnamed(p.Name)))
+                plot.Name = $"Canteiro {plot.Name.Trim()}".Trim();
+        }
+
+        Config.Version = 9;
         SaveConfig();
     }
 
@@ -254,9 +272,13 @@ public sealed class Plugin : IDalamudPlugin
     private unsafe void WaterTargetedPlot(string source)
     {
         // Se o alvo já sumiu quando a mensagem chega, vale o último objeto da casa cujo menu foi aberto há pouco.
+        // O menu também dá o nome do canteiro ("2nd Patch"), que o alvo não tem.
         var housing = ReadHousingTarget();
-        if (housing == null && lastHousingObject is { } recent && DateTime.UtcNow - recent.SeenAt < TimeSpan.FromMinutes(2))
-            housing = (recent.Key, recent.Name, recent.Indoor);
+        var recent = lastHousingObject is { } last && DateTime.UtcNow - last.SeenAt < TimeSpan.FromMinutes(2) ? last : default((string Key, string Name, bool Indoor, DateTime SeenAt)?);
+        if (housing == null && recent is { } fallback)
+            housing = (fallback.Key, fallback.Name, fallback.Indoor);
+        if (housing is var (targetKey, _, targetIndoor) && recent is { } menu && menu.Key == targetKey)
+            housing = (targetKey, menu.Name, targetIndoor);
 
         string key;
         string name;
@@ -265,9 +287,12 @@ public sealed class Plugin : IDalamudPlugin
         {
             key = housingKey;
             indoor = inside;
-            name = Config.Plots.TryGetValue(key, out var known)
+            var label = baseName.Trim().Length > 0 ? baseName.Trim() : "Canteiro";
+            // O nome do menu ("Canteiro 2") corrige os nomes automáticos; um nome dado na janela fica.
+            var fromMenu = AutoName.IsMatch(label);
+            name = Config.Plots.TryGetValue(key, out var known) && !IsUnnamed(known.Name) && !(fromMenu && AutoName.IsMatch(known.Name))
                 ? known.Name
-                : $"{baseName} {Config.Plots.Values.Count(p => p.Name.StartsWith(baseName, StringComparison.Ordinal)) + 1}";
+                : fromMenu ? label : $"{label} {Config.Plots.Values.Count(p => p.Name.StartsWith(label, StringComparison.Ordinal)) + 1}";
         }
         else
         {
@@ -281,6 +306,7 @@ public sealed class Plugin : IDalamudPlugin
             Config.Plots[key] = plot;
         }
 
+        plot.Name = name;
         plot.Indoor = indoor;
         plot.WateredAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         SaveConfig();
@@ -296,8 +322,10 @@ public sealed class Plugin : IDalamudPlugin
         if (target == null || manager == null || target.ObjectKind is not (ObjectKind.HousingEventObject or ObjectKind.EventObj))
             return null;
 
+        // A posição sai sempre com ponto, para a chave ser a mesma em PCs com idiomas diferentes.
         var position = target.Position;
-        var key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{position.X:F1}:{position.Y:F1}:{position.Z:F1}";
+        var coordinates = string.Join(':', new[] { position.X, position.Y, position.Z }.Select(v => v.ToString("F1", CultureInfo.InvariantCulture)));
+        var key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{coordinates}";
         return (key, target.Name.TextValue, manager->IsInside());
     }
 
@@ -565,9 +593,6 @@ public sealed class Plugin : IDalamudPlugin
         if (target == null || target.ObjectKind is not (ObjectKind.HousingEventObject or ObjectKind.EventObj))
             return;
 
-        if (ReadHousingTarget() is var (key, name, indoor))
-            lastHousingObject = (key, name, indoor, DateTime.UtcNow);
-
         var addon = (AtkUnitBase*)args.Addon.Address;
         var texts = new List<string>();
         for (var i = 0; i < addon->AtkValuesCount; i++)
@@ -581,8 +606,21 @@ public sealed class Plugin : IDalamudPlugin
             }
         }
 
+        // Os canteiros de fora não têm nome no alvo; o menu diz qual é ("6th Bed, 2nd Patch").
+        if (ReadHousingTarget() is var (key, name, indoor))
+        {
+            var patch = texts.Select(t => PatchPattern.Match(t)).FirstOrDefault(m => m.Success);
+            lastHousingObject = (key, patch != null ? $"Canteiro {patch.Groups[1].Value}" : name, indoor, DateTime.UtcNow);
+        }
+
         Diagnostics.Write($"Menu de {target.Name.TextValue} ({target.ObjectKind}): {string.Join(" | ", texts)}");
     }
+
+    private static readonly Regex AutoName = new(@"^Canteiro \d+$", RegexOptions.Compiled);
+    private static readonly Regex PatchPattern = new(@"(\d+)(?:st|nd|rd|th) Patch", RegexOptions.Compiled);
+
+    // Nome vazio ou só um número, das versões que não sabiam o nome dos canteiros de fora.
+    private static bool IsUnnamed(string name) => name.Trim().All(char.IsDigit);
 
     private void OnLogMessage(ILogMessage message)
     {

@@ -9,6 +9,15 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.8.3",
+        [
+            ("Fixed",
+            [
+                "The same garden patch no longer shows up twice when members use different system languages.",
+                "Outdoor garden patches are named after the game menu (\"Canteiro 2\" for the 2nd Patch) instead of a blank name.",
+                "The general \"Plantação\" entry is hidden once an identified patch is watered after it.",
+            ]),
+        ]),
         ("0.8.2",
         [
             ("Changed",
