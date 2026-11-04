@@ -9,6 +9,13 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.8.4",
+        [
+            ("Changed",
+            [
+                "The diagnostic log records every game message for 30 seconds after a house object menu, to find out how watering an indoor pot is reported.",
+            ]),
+        ]),
         ("0.8.3",
         [
             ("Fixed",

@@ -70,6 +70,7 @@ public sealed class Plugin : IDalamudPlugin
     private bool inWorkshop;
     private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
+    private DateTime gardenWatchUntil = DateTime.MinValue;
     private string lastScan = string.Empty;
     private DateTime nextScan = DateTime.MinValue;
     private DateTime autoLogAt = DateTime.MaxValue;
@@ -141,6 +142,7 @@ public sealed class Plugin : IDalamudPlugin
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
         ChatGui.LogMessage += OnLogMessage;
+        ChatGui.ChatMessageUnhandled += OnChatMessage;
 
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += mainWindow.Toggle;
@@ -155,6 +157,7 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenMainUi -= mainWindow.Toggle;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         ChatGui.LogMessage -= OnLogMessage;
+        ChatGui.ChatMessageUnhandled -= OnChatMessage;
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
         CommandManager.RemoveHandler(ShortCommand);
@@ -606,6 +609,10 @@ public sealed class Plugin : IDalamudPlugin
             }
         }
 
+        // Por 30 segundos depois do menu de um objeto da casa, toda mensagem do jogo vai para o log,
+        // para descobrir qual mensagem a rega de um vaso de dentro de casa mostra.
+        gardenWatchUntil = DateTime.UtcNow.AddSeconds(30);
+
         // Os canteiros de fora não têm nome no alvo; o menu diz qual é ("6th Bed, 2nd Patch").
         if (ReadHousingTarget() is var (key, name, indoor))
         {
@@ -626,11 +633,27 @@ public sealed class Plugin : IDalamudPlugin
     {
         var id = message.LogMessageId;
         if (id < FirstGardenMessage || id > LastGardenMessage)
+        {
+            if (DateTime.UtcNow < gardenWatchUntil)
+                {
+                    Diagnostics.Write($"Mensagem do jogo {id} depois do menu da casa: {message.GameData.ValueNullable?.Text.ToString()}");
+                    QueueLogUpload();
+                }
             return;
+        }
 
         Diagnostics.Write($"Mensagem da horta {id}: {message.GameData.ValueNullable?.Text.ToString()}");
         if (characterEnabled && id is CropTendedMessage or SeedsPlantedMessage)
             WaterTargetedPlot($"mensagem do jogo {id}");
+    }
+
+    private void OnChatMessage(IChatMessage message)
+    {
+        if (DateTime.UtcNow < gardenWatchUntil)
+            {
+                Diagnostics.Write($"Chat {message.LogKind} depois do menu da casa: {message.Message.TextValue}");
+                QueueLogUpload();
+            }
     }
 
     public string MarketWorld => Config.MarketWorld.Length > 0 ? Config.MarketWorld : Config.HomeWorld;
