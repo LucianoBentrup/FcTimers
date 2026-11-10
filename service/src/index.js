@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, MARKET_CACHE, markSent, mergeVoyage, needsPrice, newState,
-  nextEvent, parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
+  applyDalamud, dalamudDue, nextEvent, parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
 } from './logic.js';
 
 const DEBOUNCE_MS = 2000;
@@ -185,6 +185,7 @@ export class FcState extends DurableObject {
     const now = nowSeconds();
     let retryAt = null;
     try {
+      await this.checkDalamud(now);
       await this.priceVoyages(now);
       retryAt = await this.publish(now);
       const alertRetryAt = await this.sendAlerts(now);
@@ -250,6 +251,30 @@ export class FcState extends DurableObject {
     const latest = (await this.ctx.storage.get('state')) ?? newState();
     latest.alerts = (latest.alerts ?? []).filter((a) => !removed.includes(a.id));
     await this.ctx.storage.put('state', latest);
+  }
+
+  // Compara a versão do jogo (Thaliak) com a que o Dalamud suporta (goatcorp). Uma falha só adia a conferência.
+  async checkDalamud(now) {
+    const state = (await this.ctx.storage.get('state')) ?? newState();
+    if (!dalamudDue(state, now)) return;
+    try {
+      const [dalamud, game] = await Promise.all([
+        fetch('https://kamori.goats.dev/Dalamud/Release/VersionInfo?track=release').then((r) => (r.ok ? r.json() : null)),
+        fetch('https://thaliak.xiv.dev/graphql/2022-08-14', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: '{ repository(slug: "4e9a232b") { latestVersion { versionString } } }' }),
+        }).then((r) => (r.ok ? r.json() : null)),
+      ]);
+      const supported = dalamud?.supportedGameVer;
+      const latest = game?.data?.repository?.latestVersion?.versionString;
+      const latestState = (await this.ctx.storage.get('state')) ?? newState();
+      if (supported && latest) applyDalamud(latestState, supported, latest, now);
+      else latestState.dalamud = { ...(latestState.dalamud ?? {}), checkedAt: now };
+      await this.ctx.storage.put('state', latestState);
+    } catch (error) {
+      console.error('Falha ao conferir o Dalamud', error);
+    }
   }
 
   // Busca no Universalis o preço dos itens de market das viagens recentes. Uma falha não impede o painel de sair.

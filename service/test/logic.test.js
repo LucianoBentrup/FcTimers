@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  alertDeleteAt, alertPayload, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, needsPrice, newState, nextEvent, nextMidnight,
+  alertDeleteAt, alertPayload, applyDalamud, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, needsPrice, newState, nextEvent, nextMidnight,
   parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
 } from '../src/logic.js';
 
@@ -408,6 +408,23 @@ test('ícone do jogo no nome do canteiro não aparece no painel', () => {
   applyUpdate(state, { plots: [{ key: 'f1', name: '\uE034 1', nextWaterAt: at(2, 9), dieAt: at(3, 9), age: 0 }] }, at(1, 9));
   const panel = renderPanel(state, [], at(1, 10)).embeds[0].fields.find((f) => f.name.includes('Plantação')).value;
   assert.equal(panel, `**1**: regar <t:${at(2, 9)}:R> (<t:${at(2, 9)}:t>)`);
+});
+
+test('Dalamud atrasado aparece no painel e avisa quando sai um patch e quando o Dalamud alcança', () => {
+  const state = newState();
+  applyDalamud(state, '2026.10.16.0000.0000', '2026.10.16.0000.0000', at(1, 9));
+  assert.deepEqual(state.notices, []);
+  applyDalamud(state, '2026.10.16.0000.0000', '2026.11.03.0000.0000', at(1, 10));
+  const footer = renderPanel(state, [], at(1, 10)).embeds[0].fields.at(-1).value;
+  assert.match(footer, /🧩 ⚠️ Dalamud ainda não saiu para o patch de 03\/11: plugins parados/);
+  const [out] = pendingAlerts(state, at(1, 10));
+  assert.equal(alertPayload(out, '').content, '🧩 Patch novo do jogo (03/11): os plugins, incluindo o FC Timers, param até o Dalamud atualizar.');
+  markSent(state, out);
+  applyDalamud(state, '2026.11.03.0000.0000', '2026.11.03.0000.0000', at(1, 20));
+  const [ready] = pendingAlerts(state, at(1, 20));
+  assert.equal(alertPayload(ready, '').content, '🧩 O Dalamud saiu para o patch de 03/11. O FC Timers volta a funcionar ao abrir o jogo.');
+  assert.match(renderPanel(state, [], at(1, 20)).embeds[0].fields.at(-1).value, /🧩 ✅ Dalamud em dia com o jogo/);
+  assert.equal(nextEvent(state, at(1, 20)) <= at(1, 20) + 1800, true);
 });
 
 test('buff da mesa pronto avisa uma vez, e buff visto já pronto não avisa', () => {

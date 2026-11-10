@@ -31,6 +31,8 @@ export const MARKET_CACHE = 6 * 3600;
 // da mesma casa foi regado há 15 minutos ou mais depois de ele já poder ser regado.
 export const FORGOTTEN_SUB = 2 * 3600;
 export const FORGOTTEN_PLOT = 900;
+// A cada 30 minutos o serviço confere se o Dalamud já saiu para a versão atual do jogo.
+export const DALAMUD_CHECK = 1800;
 // Desgaste da peça mais gasta: abaixo de 50% aparece no painel, abaixo de 30% sai o aviso de reparo.
 export const REPAIR_SHOW = 50;
 export const REPAIR_LOW = 30;
@@ -150,6 +152,34 @@ const isLow = (supplies, state) => supplies.tanks < lowTanksOf(state) || supplie
 // Plots com horário de rega, sem os que morreram há muito tempo ou foram retirados.
 const plotKey = (key) => key.replace(/,/g, '.');
 
+// "2026.11.03.0000.0000" vira "03/11".
+const patchDay = (version) => {
+  const [, month, day] = (version ?? '').split('.');
+  return month && day ? `${day}/${month}` : version;
+};
+
+// Guarda a versão do jogo e a que o Dalamud suporta. Quando um patch sai ou o Dalamud alcança o patch,
+// sai um aviso de uma vez só. Na primeira conferência só guarda, sem avisar.
+export function applyDalamud(state, supportedGame, latestGame, now) {
+  const outdated = supportedGame !== latestGame;
+  const previous = state.dalamud;
+  state.dalamud = { supportedGame, latestGame, outdated, checkedAt: now };
+  if (!previous || previous.outdated === outdated) return;
+  state.notices ??= [];
+  state.notices.push(outdated
+    ? { id: `dalamud:out:${latestGame}`, kind: 'dalamudOutdated', latestGame }
+    : { id: `dalamud:ok:${latestGame}`, kind: 'dalamudReady', latestGame });
+}
+
+export const dalamudDue = (state, now) => !state.dalamud || now - state.dalamud.checkedAt >= DALAMUD_CHECK;
+
+function dalamudLine(dalamud) {
+  if (!dalamud) return null;
+  return dalamud.outdated
+    ? `🧩 ⚠️ Dalamud ainda não saiu para o patch de ${patchDay(dalamud.latestGame)}: plugins parados`
+    : '🧩 ✅ Dalamud em dia com o jogo';
+}
+
 // O plot geral ("Plantação") vem de regas que não sabiam qual canteiro foi. Some quando algum canteiro
 // identificado é regado depois dele.
 export function activePlots(state, now) {
@@ -245,6 +275,8 @@ export function alertPayload(alert, roleId) {
       const items = joinList(notice.items.map((i) => `${i.count}x ${i.name} ≈ ${gilFormat.format(i.marketValue)} gil`));
       return `💎 **${notice.subName}** trouxe item de market: ${items} (${notice.world}).`;
     },
+    dalamudOutdated: () => `🧩 Patch novo do jogo (${patchDay(alert.notice.latestGame)}): os plugins, incluindo o FC Timers, param até o Dalamud atualizar.`,
+    dalamudReady: () => `🧩 O Dalamud saiu para o patch de ${patchDay(alert.notice.latestGame)}. O FC Timers volta a funcionar ao abrir o jogo.`,
     sectorUnlocked: () => `🗺️ **${alert.notice.subName}** desbloqueou ${joinList(alert.notice.sectors.map((s) => `**${s}**`))}!`,
     plotDying: () => {
       const named = alert.plots.filter((p) => p.indoor).map((p) => `**${p.name}** <t:${p.dieAt}:R>`);
@@ -572,7 +604,10 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
       .join('\n'));
     if (buffs.length === 0 || buffs.some((b) => !b.endTime)) activeLines.push(`Lido <t:${active.observedAt}:R>`);
   }
-  if (state.updatedAt) activeLines.push('', `||Atualizado <t:${state.updatedAt}:R>||`);
+  const dalamud = dalamudLine(state.dalamud);
+  if (dalamud || state.updatedAt) activeLines.push('');
+  if (dalamud) activeLines.push(dalamud);
+  if (state.updatedAt) activeLines.push(`||Atualizado <t:${state.updatedAt}:R>||`);
 
   const subList = bySlot(state.subs);
   const subs = [...setupLines(subList), ...subList.map((s) => subLine(s, now))];
@@ -621,6 +656,7 @@ export function nextEvent(state, now) {
     ...(state.activeBuffs?.buffs ?? []).map((b) => b.endTime ?? 0),
     ...(state.alerts ?? []).map((a) => a.deleteAt),
     nextMidnight(now),
+    ...(state.dalamud ? [state.dalamud.checkedAt + DALAMUD_CHECK] : []),
   ];
   return Math.min(...times.filter((t) => t > now));
 }
