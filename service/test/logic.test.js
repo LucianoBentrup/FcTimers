@@ -410,12 +410,12 @@ test('ícone do jogo no nome do canteiro não aparece no painel', () => {
   assert.equal(panel, `**1**: regar <t:${at(2, 9)}:R> (<t:${at(2, 9)}:t>)`);
 });
 
-test('Dalamud fora aparece só no painel, sem aviso', () => {
+test('Dalamud desatualizado aparece só no painel, sem aviso', () => {
   const state = newState();
   applyDalamud(state, '2026.10.16.0000.0000', '2026.10.16.0000.0000', at(1, 9));
   assert.doesNotMatch(renderPanel(state, [], at(1, 9)).embeds[0].fields.at(-1).value, /Dalamud/);
   applyDalamud(state, '2026.10.16.0000.0000', '2026.11.03.0000.0000', at(1, 10));
-  assert.match(renderPanel(state, [], at(1, 10)).embeds[0].fields.at(-1).value, /🧩 ⚠️ Dalamud fora/);
+  assert.match(renderPanel(state, [], at(1, 10)).embeds[0].fields.at(-1).value, /🧩 ⚠️ Dalamud ainda desatualizado/);
   assert.deepEqual(pendingAlerts(state, at(1, 10)), []);
   assert.equal(nextEvent(state, at(1, 10)) <= at(1, 10) + 1800, true);
 });

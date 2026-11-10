@@ -160,7 +160,7 @@ export function applyDalamud(state, supportedGame, latestGame, now) {
 export const dalamudDue = (state, now) => !state.dalamud || now - state.dalamud.checkedAt >= DALAMUD_CHECK;
 
 // Só aparece enquanto o Dalamud está fora; com ele em dia, o painel fica como sempre.
-const dalamudLine = (dalamud) => (dalamud?.outdated ? '🧩 ⚠️ Dalamud fora' : null);
+const dalamudLine = (dalamud) => (dalamud?.outdated ? '🧩 ⚠️ Dalamud ainda desatualizado' : null);
 
 // O plot geral ("Plantação") vem de regas que não sabiam qual canteiro foi. Some quando algum canteiro
 // identificado é regado depois dele.
