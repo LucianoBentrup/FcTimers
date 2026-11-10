@@ -152,33 +152,15 @@ const isLow = (supplies, state) => supplies.tanks < lowTanksOf(state) || supplie
 // Plots com horário de rega, sem os que morreram há muito tempo ou foram retirados.
 const plotKey = (key) => key.replace(/,/g, '.');
 
-// "2026.11.03.0000.0000" vira "03/11".
-const patchDay = (version) => {
-  const [, month, day] = (version ?? '').split('.');
-  return month && day ? `${day}/${month}` : version;
-};
-
-// Guarda a versão do jogo e a que o Dalamud suporta. Quando um patch sai ou o Dalamud alcança o patch,
-// sai um aviso de uma vez só. Na primeira conferência só guarda, sem avisar.
+// Guarda se o Dalamud já suporta a versão atual do jogo. Só aparece no painel, sem aviso.
 export function applyDalamud(state, supportedGame, latestGame, now) {
-  const outdated = supportedGame !== latestGame;
-  const previous = state.dalamud;
-  state.dalamud = { supportedGame, latestGame, outdated, checkedAt: now };
-  if (!previous || previous.outdated === outdated) return;
-  state.notices ??= [];
-  state.notices.push(outdated
-    ? { id: `dalamud:out:${latestGame}`, kind: 'dalamudOutdated', latestGame }
-    : { id: `dalamud:ok:${latestGame}`, kind: 'dalamudReady', latestGame });
+  state.dalamud = { supportedGame, latestGame, outdated: supportedGame !== latestGame, checkedAt: now };
 }
 
 export const dalamudDue = (state, now) => !state.dalamud || now - state.dalamud.checkedAt >= DALAMUD_CHECK;
 
-function dalamudLine(dalamud) {
-  if (!dalamud) return null;
-  return dalamud.outdated
-    ? `🧩 ⚠️ Dalamud ainda não saiu para o patch de ${patchDay(dalamud.latestGame)}: plugins parados`
-    : '🧩 ✅ Dalamud em dia com o jogo';
-}
+// Só aparece enquanto o Dalamud está fora; com ele em dia, o painel fica como sempre.
+const dalamudLine = (dalamud) => (dalamud?.outdated ? '🧩 ⚠️ Dalamud fora' : null);
 
 // O plot geral ("Plantação") vem de regas que não sabiam qual canteiro foi. Some quando algum canteiro
 // identificado é regado depois dele.
@@ -275,8 +257,6 @@ export function alertPayload(alert, roleId) {
       const items = joinList(notice.items.map((i) => `${i.count}x ${i.name} ≈ ${gilFormat.format(i.marketValue)} gil`));
       return `💎 **${notice.subName}** trouxe item de market: ${items} (${notice.world}).`;
     },
-    dalamudOutdated: () => `🧩 Patch novo do jogo (${patchDay(alert.notice.latestGame)}): os plugins, incluindo o FC Timers, param até o Dalamud atualizar.`,
-    dalamudReady: () => `🧩 O Dalamud saiu para o patch de ${patchDay(alert.notice.latestGame)}. O FC Timers volta a funcionar ao abrir o jogo.`,
     sectorUnlocked: () => `🗺️ **${alert.notice.subName}** desbloqueou ${joinList(alert.notice.sectors.map((s) => `**${s}**`))}!`,
     plotDying: () => {
       const named = alert.plots.filter((p) => p.indoor).map((p) => `**${p.name}** <t:${p.dieAt}:R>`);

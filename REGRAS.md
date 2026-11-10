@@ -13,7 +13,7 @@
 - Plantação, por plot: lembrete 1 hora antes de poder regar, aviso quando pode regar, e um aviso 3, 2 e 1 hora antes de morrer.
 - Cada viagem e cada rega avisa uma vez só. Algo visto pela primeira vez quando já estava pronto não gera aviso.
 - Quando um buff da mesa da roda fica pronto, sai um aviso marcando @Subs, uma vez só. Buff visto pela primeira vez já pronto não gera aviso.
-- A cada 30 minutos o serviço compara a versão atual do jogo (Thaliak) com a que o Dalamud suporta (goatcorp). O painel mostra se o Dalamud está em dia, e sai um aviso quando um patch novo deixa os plugins parados e outro quando o Dalamud alcança o patch.
+- A cada 30 minutos o serviço compara a versão atual do jogo (Thaliak) com a que o Dalamud suporta (goatcorp). Enquanto o Dalamud não suporta o patch, o painel mostra "🧩 ⚠️ Dalamud fora", sem aviso nem marcação.
 - Lembrete de esquecido: um sub que voltou há mais de 2 horas e não saiu de novo ganha um lembrete, uma vez por viagem. Um vaso de dentro de casa ganha um lembrete quando outro vaso da mesma casa foi regado há 15 minutos ou mais e ele, que já podia ser regado, não foi.
 - Nos avisos de plantação, só os vasos de dentro de casa ou de quarto privado aparecem pelo nome. Os canteiros de fora são regados juntos, então aparecem como "a plantação" ou "os canteiros de fora".
 - O aviso de estoque baixo diz quantas viagens e rodadas os tanques ainda aguentam.
