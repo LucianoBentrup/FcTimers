@@ -1,10 +1,10 @@
 [
   {
     "Author": "Luciano",
-    "Name": "FC Timers",
+    "Name": "FC Companion",
     "InternalName": "FcTimers",
-    "AssemblyVersion": "0.8.6.0",
-    "Description": "Mostra na barra do sistema quando os submarinos e a roda da FC ficam prontos. Apenas exibe informações.",
+    "AssemblyVersion": "0.9.0.0",
+    "Description": "Acompanha os submarinos, o loot, o estoque, a plantação e os buffs da FC, e mantém um painel compartilhado no Discord. Apenas lê e exibe informações do jogo, sem automatizar nada.",
     "ApplicableVersion": "any",
     "Tags": [
       "fc",
@@ -16,7 +16,7 @@
     "LoadSync": false,
     "CanUnloadAsync": false,
     "LoadPriority": 0,
-    "Punchline": "Timers de submarinos e da roda da FC.",
+    "Punchline": "Subs, loot, estoque, plantação e buffs da FC, com painel no Discord.",
     "AcceptsFeedback": true,
     "RepoUrl": "https://github.com/LucianoBentrup/FcTimers",
     "DownloadLinkInstall": "https://raw.githubusercontent.com/LucianoBentrup/FcTimers/main/dist/latest.zip",
@@ -24,6 +24,6 @@
     "DownloadLinkTesting": "https://raw.githubusercontent.com/LucianoBentrup/FcTimers/main/dist/latest.zip",
     "IsHide": false,
     "IsTestingExclusive": false,
-    "LastUpdate": 1795367322
+    "LastUpdate": 1795377148
   }
 ]
