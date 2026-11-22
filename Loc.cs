@@ -110,6 +110,7 @@ public static class L
     public static string Language => T("Idioma", "Language");
     public static string Characters => T("Personagens que leem e enviam dados", "Characters that read and send data");
     public static string Current => T("atual", "current");
+    public static string UnknownWorld => T("logue para ver o servidor", "log in to see the world");
     public static string SyncEnabled => T("Enviar e receber dados do painel da FC", "Send and receive FC panel data");
     public static string ServiceUrl => T("Endereço do serviço", "Service address");
     public static string ServiceKey => T("Chave da FC", "FC key");

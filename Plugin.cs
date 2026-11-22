@@ -501,15 +501,17 @@ public sealed class Plugin : IDalamudPlugin
             SaveConfig();
         }
 
+        var worldName = home?.Name.ToString() ?? string.Empty;
         if (!Config.Characters.TryGetValue(id, out var character))
         {
-            character = new CharacterRecord { Name = name };
+            character = new CharacterRecord { Name = name, World = worldName };
             Config.Characters[id] = character;
             SaveConfig();
         }
-        else if (character.Name != name)
+        else if (character.Name != name || (worldName.Length > 0 && character.World != worldName))
         {
             character.Name = name;
+            character.World = worldName.Length > 0 ? worldName : character.World;
             SaveConfig();
         }
 

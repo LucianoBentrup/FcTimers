@@ -11,6 +11,9 @@ namespace FcTimers;
 // Configurações numa janela própria, aberta pela engrenagem do instalador do Dalamud ou pela janela principal.
 public sealed class ConfigWindow : Window
 {
+    // Largo o bastante para "Automático (Behemoth)" e nomes de data center.
+    private const float ComboWidth = 230;
+
     private static readonly (string Code, string Name)[] Languages = [("pt", "Português"), ("en", "English")];
 
     private readonly Plugin plugin;
@@ -34,11 +37,14 @@ public sealed class ConfigWindow : Window
     private void DrawGeneral(Configuration config)
     {
         UiKit.Heading(FontAwesomeIcon.User, L.Characters);
-        foreach (var (id, character) in config.Characters.OrderBy(c => c.Value.Name))
+        // Com nomes repetidos, o servidor aparece junto: "Bunny Chan (Behemoth)".
+        var repeated = config.Characters.Values.GroupBy(c => c.Name).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+        foreach (var (id, character) in config.Characters.OrderBy(c => c.Value.Name).ThenBy(c => c.Value.World))
         {
             var enabled = character.Enabled;
-            var mark = id == plugin.CurrentCharacterId ? $" ({L.Current})" : string.Empty;
-            if (ImGui.Checkbox($"{character.Name}{mark}###{id}", ref enabled))
+            var world = repeated.Contains(character.Name) ? $" ({(character.World.Length > 0 ? character.World : L.UnknownWorld)})" : string.Empty;
+            var mark = id == plugin.CurrentCharacterId ? $" · {L.Current}" : string.Empty;
+            if (ImGui.Checkbox($"{character.Name}{world}{mark}###{id}", ref enabled))
             {
                 character.Enabled = enabled;
                 plugin.SaveConfig();
@@ -47,7 +53,7 @@ public sealed class ConfigWindow : Window
 
         ImGui.Spacing();
         var current = Array.FindIndex(Languages, l => l.Code == plugin.LanguageCode);
-        ImGui.SetNextItemWidth(150);
+        ImGui.SetNextItemWidth(ComboWidth);
         if (ImGui.Combo(L.Language, ref current, Languages.Select(l => l.Name).ToArray(), Languages.Length))
         {
             config.Language = Languages[current].Code;
@@ -57,7 +63,7 @@ public sealed class ConfigWindow : Window
         var worlds = plugin.MarketWorlds();
         var options = worlds.Prepend(L.MarketAuto(config.HomeWorld.Length > 0 ? config.HomeWorld : "?")).ToArray();
         var selected = config.MarketWorld.Length == 0 ? 0 : Math.Max(0, worlds.IndexOf(config.MarketWorld) + 1);
-        ImGui.SetNextItemWidth(150);
+        ImGui.SetNextItemWidth(ComboWidth);
         if (ImGui.Combo(L.Market, ref selected, options, options.Length))
         {
             config.MarketWorld = selected == 0 ? string.Empty : worlds[selected - 1];

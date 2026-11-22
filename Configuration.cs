@@ -49,6 +49,9 @@ public class WheelRecord
 public class CharacterRecord
 {
     public string Name { get; set; } = string.Empty;
+
+    // Servidor de origem, guardado ao logar. Aparece quando há personagens com o mesmo nome.
+    public string World { get; set; } = string.Empty;
     public bool Enabled { get; set; }
 }
 
