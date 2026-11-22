@@ -76,6 +76,10 @@ public static class UiKit
             ImGui.SetTooltip(text);
     }
 
+    // Altura de um cartão para caber o título e tantas linhas de conteúdo, mais uma folga.
+    public static float CardHeight(int lines)
+        => (ImGui.GetStyle().WindowPadding.Y * 2) + ((lines + 1) * ImGui.GetTextLineHeightWithSpacing()) + ImGui.GetStyle().ItemSpacing.Y + 6;
+
     // Cartão com borda e título, como os da Visão geral.
     public static void Card(string id, FontAwesomeIcon icon, string title, float height, Action content)
     {

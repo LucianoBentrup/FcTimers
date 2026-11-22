@@ -65,8 +65,8 @@ public static class L
     public static string NoSupplies => T("Nenhum dado ainda. Abra a aba do baú da FC onde ficam os tanques.", "No data yet. Open the FC chest tab where the tanks are kept.");
     public static string Tanks(string count) => T($"Tanques de ceruleum: {count}", $"Ceruleum tanks: {count}");
     public static string Kits(string count) => T($"Kits de reparo: {count}", $"Repair materials: {count}");
-    public static string Rounds(int rounds) => rounds == 1 ? T("≈ 1 rodada", "≈ 1 round") : T($"≈ {rounds} rodadas", $"≈ {rounds} rounds");
-    public static string Repairs(int repairs, int subs) => repairs == 1 ? T($"≈ 1 reparo dos {subs}", $"≈ 1 repair of all {subs}") : T($"≈ {repairs} reparos dos {subs}", $"≈ {repairs} repairs of all {subs}");
+    public static string Rounds(int rounds) => rounds == 1 ? T("~ 1 rodada", "~ 1 round") : T($"~ {rounds} rodadas", $"~ {rounds} rounds");
+    public static string Repairs(int repairs, int subs) => repairs == 1 ? T($"~ 1 reparo dos {subs}", $"~ 1 repair of all {subs}") : T($"~ {repairs} reparos dos {subs}", $"~ {repairs} repairs of all {subs}");
     public static string CountedNow => T("Contado agora, no baú da FC e no inventário.", "Counted just now, from the FC chest and inventory.");
     public static string CountedAgo(string time) => T($"Contado há {time}, no baú da FC e no inventário.", $"Counted {time} ago, from the FC chest and inventory.");
 

@@ -15,7 +15,6 @@ public class MainWindow : Window
     private const double RepairShow = 50;
     private const double RepairLow = 30;
     private const int MaxFieldName = 40;
-    private const float CardHeight = 118;
 
     private readonly Plugin plugin;
     private (string Key, bool Indoor)? newField;
@@ -75,16 +74,25 @@ public class MainWindow : Window
         if (!grid)
             return;
 
+        // A altura de cada linha de cartões acompanha o cartão com mais linhas, para nada ficar cortado.
+        var subsLines = Math.Max(1, view.Subs.Count) + (WorstCondition(view) < RepairShow ? 1 : 0);
+        var lootLines = 1 + view.Voyages.Select(v => v.Voyage).Where(v => LootLedger.DayOf(v, GameTime.PanelZone) == GameTime.Today)
+            .Select(v => v.SubName).Distinct().Count();
+        var gardenLines = Math.Clamp(view.Plots.Count(p => p.NextWaterAt != 0), 1, 4);
+        var buffLines = Math.Max(1, view.Wheels.Count) + 1;
+
+        var top = UiKit.CardHeight(Math.Max(subsLines, lootLines));
+        var middle = UiKit.CardHeight(Math.Max(gardenLines, 4));
         ImGui.TableNextColumn();
-        UiKit.Card("##c-subs", FontAwesomeIcon.Ship, L.TabSubs, CardHeight, () => OverviewSubs(view, now));
+        UiKit.Card("##c-subs", FontAwesomeIcon.Ship, L.TabSubs, top, () => OverviewSubs(view, now));
         ImGui.TableNextColumn();
-        UiKit.Card("##c-loot", FontAwesomeIcon.Coins, L.LootToday, CardHeight, () => OverviewLoot(view));
+        UiKit.Card("##c-loot", FontAwesomeIcon.Coins, L.LootToday, top, () => OverviewLoot(view));
         ImGui.TableNextColumn();
-        UiKit.Card("##c-garden", FontAwesomeIcon.Seedling, L.TabGarden, CardHeight, () => OverviewGarden(view, now));
+        UiKit.Card("##c-garden", FontAwesomeIcon.Seedling, L.TabGarden, middle, () => OverviewGarden(view, now));
         ImGui.TableNextColumn();
-        UiKit.Card("##c-stock", FontAwesomeIcon.GasPump, L.Supplies, CardHeight, () => OverviewSupplies(view, now));
+        UiKit.Card("##c-stock", FontAwesomeIcon.GasPump, L.Supplies, middle, () => OverviewSupplies(view, now));
         ImGui.TableNextColumn();
-        UiKit.Card("##c-buffs", FontAwesomeIcon.Dharmachakra, L.TabBuffs, CardHeight, () => OverviewBuffs(view, now));
+        UiKit.Card("##c-buffs", FontAwesomeIcon.Dharmachakra, L.TabBuffs, UiKit.CardHeight(buffLines), () => OverviewBuffs(view, now));
     }
 
     // Primeira vez: três passos com o que falta, e um botão para cada um.
@@ -143,8 +151,8 @@ public class MainWindow : Window
             UiKit.TimeTooltip(sub.ReturnTime);
         }
 
-        var conditions = view.Subs.Where(s => s.Details?.Condition != null).Select(s => s.Details!.Condition!.Value).ToList();
-        if (conditions.Count > 0 && conditions.Min() is var worst && worst < RepairShow)
+        var worst = WorstCondition(view);
+        if (worst < RepairShow)
         {
             UiKit.Icon(FontAwesomeIcon.Wrench, worst < RepairLow ? UiKit.Bad : UiKit.Soon);
             UiKit.Text(L.Wear($"{Math.Floor(worst)}%"), worst < RepairLow ? UiKit.Bad : UiKit.Soon);
@@ -214,6 +222,10 @@ public class MainWindow : Window
         var active = view.ActiveBuffs.Count(b => b.EndTime == 0 || b.EndTime > now);
         ImGui.TextColored(UiKit.Muted, $"{L.ActiveBuffs}: {active}");
     }
+
+    // Desgaste da peça mais gasta entre todos os subs; 100 quando ainda não foi lido.
+    private static double WorstCondition(FcView view)
+        => view.Subs.Where(s => s.Details?.Condition != null).Select(s => s.Details!.Condition!.Value).DefaultIfEmpty(100).Min();
 
     // Os subs saem e são reparados juntos, então uma rodada e um reparo contam todos.
     private static (int TanksPerRound, int KitsPerRepair, int Subs) Costs(FcView view)
@@ -288,7 +300,7 @@ public class MainWindow : Window
             var total = all.Sum(i => i.Best);
             var market = all.Where(i => i.IsMarket).Sum(i => i.Best);
             var extra = market > 0 ? $" ({L.IncludesMarket($"{market:N0}")})" : string.Empty;
-            var label = $"{day.Key:dd/MM}: {L.DayTotal($"{(market > 0 ? "≈ " : string.Empty)}{total:N0}", L.Voyages(day.Count()))}{extra}###{day.Key:yyyyMMdd}";
+            var label = $"{day.Key:dd/MM}: {L.DayTotal($"{(market > 0 ? "~" : string.Empty)}{total:N0}", L.Voyages(day.Count()))}{extra}###{day.Key:yyyyMMdd}";
             var flags = day.Key == today ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
             if (!ImGui.CollapsingHeader(label, flags))
                 continue;
