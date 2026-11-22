@@ -27,7 +27,7 @@ Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda de buf
 
 ## Comandos no Discord (FC Companion)
 - `/painel`, `/avisos limpar` e `/log`: só para quem gerencia o servidor.
-- `/loot [hoje|semana]`, `/estoque` e `/subs`: para todos. As respostas aparecem só para quem usou o comando.
+- `/loot [hoje|semana]`, `/estoque` e `/subs`: para todos. As respostas aparecem para todo o canal, sem marcar ninguém; só o `/log` e as mensagens de erro ficam visíveis só para quem pediu.
 - Os comandos chegam em `POST /interactions` no serviço, conferidos pela assinatura do app. `tools/registrar-comandos.ps1` registra ou atualiza a lista (pede o Client Secret, que não fica salvo).
 
 ## Log de diagnóstico

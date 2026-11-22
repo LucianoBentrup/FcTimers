@@ -4,7 +4,7 @@ import {
   applyDalamud, dalamudDue, lootSummary, nextEvent, parseUniversalis, subsSummary, suppliesSummary, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
 } from './logic.js';
 import {
-  canManage, COMMAND, commandPath, DEFERRED_REPLY, EPHEMERAL, optionValue, PING, privateReply, REPLY, verifyDiscord,
+  canManage, COMMAND, commandPath, DEFERRED_REPLY, EPHEMERAL, optionValue, PING, privateReply, publicReply, REPLY, verifyDiscord,
 } from './discord.js';
 
 const DEBOUNCE_MS = 2000;
@@ -57,7 +57,7 @@ async function handleInteraction(request, env, ctx) {
   switch (path) {
     case 'painel':
       await internal('repost');
-      return json(privateReply('Painel reenviado no fim do canal.'));
+      return json(publicReply('Painel reenviado no fim do canal.'));
     case 'avisos limpar': {
       // Apagar e reenviar avisos passa dos 3 segundos que o Discord espera: responde já e termina depois.
       const followUp = `https://discord.com/api/v10/webhooks/${env.DISCORD_APP_ID}/${interaction.token}/messages/@original`;
@@ -69,7 +69,7 @@ async function handleInteraction(request, env, ctx) {
           body: JSON.stringify({ content: `Pronto: ${result.removed} avisos apagados, ${result.sent} agrupados enviados.` }),
         });
       })());
-      return json({ type: DEFERRED_REPLY, data: { flags: EPHEMERAL } });
+      return json({ type: DEFERRED_REPLY });
     }
     case 'loot':
     case 'estoque':
@@ -78,7 +78,8 @@ async function handleInteraction(request, env, ctx) {
       const answer = await (await internal('discord', {
         path, periodo: optionValue(interaction, 'periodo'), personagem: optionValue(interaction, 'personagem'),
       })).json();
-      if (!answer.file) return json(privateReply(answer.content));
+      // O log fica só para quem pediu; o resto aparece para todos.
+      if (!answer.file) return json(path === 'log' ? privateReply(answer.content) : publicReply(answer.content));
 
       const form = new FormData();
       form.append('payload_json', JSON.stringify({

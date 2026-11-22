@@ -241,7 +241,7 @@ try {
   });
   const subsReply = await (await interaction(command('subs'))).json();
   assert.equal(subsReply.type, 4);
-  assert.equal(subsReply.data.flags, 64);
+  assert.equal(subsReply.data.flags, undefined);
   assert.match(subsReply.data.content, /Ciela/);
   const blocked = await (await interaction(command('painel'))).json();
   assert.match(blocked.data.content, /Só quem gerencia o servidor/);

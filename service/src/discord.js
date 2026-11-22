@@ -24,11 +24,14 @@ export async function verifyDiscord(publicKeyHex, signatureHex, timestamp, body)
 
 export const canManage = (interaction) => (BigInt(interaction.member?.permissions ?? '0') & MANAGE_GUILD) === MANAGE_GUILD;
 
-// Resposta que só quem usou o comando vê.
+// Resposta que só quem usou o comando vê: erros, falta de permissão e o log.
 export const privateReply = (content, extra = {}) => ({
   type: REPLY,
   data: { content, flags: EPHEMERAL, allowed_mentions: { parse: [] }, ...extra },
 });
+
+// Resposta que todo mundo no canal vê, sem marcar ninguém.
+export const publicReply = (content) => ({ type: REPLY, data: { content, allowed_mentions: { parse: [] } } });
 
 // Nome do comando com o subcomando, se houver: "avisos limpar".
 export function commandPath(interaction) {
