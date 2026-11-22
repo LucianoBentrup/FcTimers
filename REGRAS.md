@@ -35,6 +35,8 @@
 - Sem horário conhecido, o painel mostra `?` e o horário da leitura. O nível ausente fica só com o nome-base.
 
 ## Plantação
+- Na aba Plantação do `/fct`, a seção **Campos** cadastra um canteiro ou vaso: selecione o objeto no jogo e clique em **+** (fica cinza sem um alvo válido ou se o objeto já estiver na lista), dê o nome e salve. A seção só cadastra, renomeia e remove; o estado da rega fica em cima.
+- O nome dado na janela vale para todos os PCs e nunca é trocado pelo nome automático. Remover um campo tira ele de todos os PCs; uma rega antiga de outro PC não traz ele de volta. Campo cadastrado e ainda não regado não aparece no painel.
 - Os canteiros de fora não têm nome no alvo do jogo; o nome vem do menu ("6th Bed, 2nd Patch" vira "Canteiro 2"). Um nome dado na janela do `/fct` não é trocado.
 - A posição na chave sai sempre com ponto, para a chave ser igual em todos os PCs. Chaves antigas com vírgula viram uma só, ficando a rega mais recente.
 - O plot geral "Plantação" some do painel e da janela quando algum canteiro identificado é regado depois dele.

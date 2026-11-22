@@ -55,7 +55,6 @@ public static class L
     public static string FieldName => T("Nome do campo", "Field name");
     public static string Save => T("Salvar", "Save");
     public static string Cancel => T("Cancelar", "Cancel");
-    public static string Watered => T("Reguei", "Watered");
     public static string NoWaterYet => T("sem rega ainda", "not watered yet");
     public static string Inside => T("dentro", "inside");
     public static string Outside => T("fora", "outside");

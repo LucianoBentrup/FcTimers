@@ -22,7 +22,7 @@ public class MainWindow : Window
     private (string Key, bool Indoor)? newField;
     private string newFieldName = string.Empty;
 
-    public MainWindow(Plugin plugin) : base("FC Timers")
+    public MainWindow(Plugin plugin) : base("FC Companion###FC Timers")
     {
         this.plugin = plugin;
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(380, 260) };
@@ -157,53 +157,47 @@ public class MainWindow : Window
             ImGui.TextUnformatted($"{buff.Name}: {(buff.EndTime == 0 ? "?" : Plugin.FormatRemaining(buff.EndTime - now))}");
     }
 
+    // Em cima, o estado da plantação. Embaixo, a seção Campos, que só cadastra, renomeia e remove.
     private void DrawGarden(Configuration config, FcView view, long now)
     {
-        ImGui.TextUnformatted(L.Fields);
-        ImGui.Separator();
-        if (view.Plots.Count == 0 && newField == null)
-            ImGui.TextDisabled(L.NoPlots);
+        var watered = view.Plots.Where(p => p.NextWaterAt != 0).ToList();
+        if (watered.Count == 0)
+            ImGui.TextDisabled(L.NoWaterYet);
 
-        foreach (var plot in view.Plots)
-        {
-            ImGui.PushID(plot.Key);
-            var name = plot.Name;
-            ImGui.SetNextItemWidth(170);
-            if (config.Plots.TryGetValue(plot.Key, out var record))
-            {
-                // O nome só é gravado ao sair do campo de texto, para não mandar um nome por letra digitada.
-                ImGui.InputText("##nome", ref name, MaxFieldName);
-                if (ImGui.IsItemDeactivatedAfterEdit() && name.Trim().Length > 0)
-                    plugin.RenameField(plot.Key, name.Trim());
-            }
-            else
-            {
-                ImGui.TextUnformatted(name);
-            }
+        foreach (var plot in watered)
+            ImGui.TextUnformatted($"{plot.Name}: {PlotState(plot, now)}");
 
-            ImGui.SameLine();
-            ImGui.TextUnformatted(PlotState(plot, now));
-            if (record != null)
-            {
-                ImGui.SameLine();
-                if (ImGui.SmallButton(L.Watered))
-                    plugin.WaterField(plot.Key);
-                ImGui.SameLine();
-                if (ImGui.SmallButton(L.Remove))
-                    plugin.RemovePlot(plot.Key);
-                ImGui.TextDisabled($"   {(record.Indoor ? L.Inside : L.Outside)} · {Coordinates(plot.Key)}");
-            }
-
-            ImGui.PopID();
-        }
-
-        DrawNewField(config);
-
-        ImGui.Spacing();
         if (ImGui.Button(L.WaterAll))
             plugin.WaterAll("botão Reguei todos agora");
         ImGui.SameLine();
         ImGui.TextDisabled(L.WaterAllHint);
+
+        ImGui.Spacing();
+        ImGui.TextUnformatted(L.Fields);
+        ImGui.Separator();
+        if (config.Plots.Count == 0 && newField == null)
+            ImGui.TextDisabled(L.NoPlots);
+
+        foreach (var (key, record) in config.Plots.OrderBy(p => p.Value.Name))
+        {
+            ImGui.PushID(key);
+            var name = record.Name;
+            ImGui.SetNextItemWidth(170);
+
+            // O nome só é gravado ao sair do campo de texto, para não mandar um nome por letra digitada.
+            ImGui.InputText("##nome", ref name, MaxFieldName);
+            if (ImGui.IsItemDeactivatedAfterEdit() && name.Trim().Length > 0)
+                plugin.RenameField(key, name.Trim());
+
+            ImGui.SameLine();
+            ImGui.TextDisabled($"{(record.Indoor ? L.Inside : L.Outside)} · {Coordinates(key)}");
+            ImGui.SameLine();
+            if (ImGui.SmallButton(L.Remove))
+                plugin.RemovePlot(key);
+            ImGui.PopID();
+        }
+
+        DrawNewField(config);
     }
 
     // O "+" só funciona com um canteiro ou vaso da casa selecionado no jogo e que ainda não esteja na lista.

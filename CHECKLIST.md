@@ -45,9 +45,11 @@
 
 ## 0.9: comandos no Discord (ver PLANO-0.9.md)
 - [ ] App do Discord criado, no servidor e com o endereço de interações configurado (Luciano).
-- [ ] Rota `/interactions` com verificação da assinatura do Discord.
-- [ ] Comandos `/painel`, `/avisos limpar`, `/loot`, `/estoque`, `/subs` e `/log`.
-- [ ] Script para registrar os comandos com o Client Secret.
+- [x] Rota `/interactions` com verificação da assinatura do Discord.
+- [x] Comandos `/painel`, `/avisos limpar`, `/loot`, `/estoque`, `/subs` e `/log`.
+- [x] Script para registrar os comandos com o Client Secret.
+- [x] Seção Campos na aba Plantação, com nomes e remoções sincronizados.
+- [x] Nome que aparece: FC Companion.
 
 ## Versão pública (depois da 0.8)
 - [ ] Serviço para várias FCs, cada uma com os próprios dados.

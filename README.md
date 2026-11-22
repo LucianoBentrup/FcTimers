@@ -25,6 +25,11 @@ Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda de buf
 - `tools/reenviar-painel.ps1`: apaga o painel do Discord e manda outro no fim do canal. Pede a chave da FC.
 - `tools/baixar-logs.ps1`: baixa os logs de diagnóstico enviados pelos plugins para `tools/logs`, fora do git. Pede a chave da FC.
 
+## Comandos no Discord (FC Companion)
+- `/painel`, `/avisos limpar` e `/log`: só para quem gerencia o servidor.
+- `/loot [hoje|semana]`, `/estoque` e `/subs`: para todos. As respostas aparecem só para quem usou o comando.
+- Os comandos chegam em `POST /interactions` no serviço, conferidos pela assinatura do app. `tools/registrar-comandos.ps1` registra ou atualiza a lista (pede o Client Secret, que não fica salvo).
+
 ## Log de diagnóstico
 - Na janela do `/fct`, seção **Diagnóstico**: **Copiar log** copia para colar no Discord, e **Enviar log** guarda no serviço da FC.
 - O plugin envia o log sozinho uns 20 segundos depois de ações importantes (coleta, sub saindo, rega, estoque, peças) e ao fechar o jogo. Ações em sequência entram no mesmo envio.

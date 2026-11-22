@@ -128,7 +128,7 @@ public sealed class Plugin : IDalamudPlugin
             SaveConfig();
         }
 
-        dtrEntry = DtrBar.Get("FC Timers");
+        dtrEntry = DtrBar.Get("FC Companion");
         dtrEntry.OnClick = _ => mainWindow.Toggle();
 
         CommandManager.AddHandler(Command, new CommandInfo(OnCommand)
@@ -248,7 +248,7 @@ public sealed class Plugin : IDalamudPlugin
         if (argument is "regar" or "water")
         {
             WaterAll("comando /fct regar");
-            ChatGui.Print(L.WateredAll, "FC Timers");
+            ChatGui.Print(L.WateredAll, "FC Companion");
             return;
         }
 
@@ -317,18 +317,6 @@ public sealed class Plugin : IDalamudPlugin
         plot.NamedAt = now;
         SaveConfig();
         Sync.ReportPlotName(key, name, plot.Indoor, now);
-    }
-
-    // Botão "Reguei" de uma linha: para quando o jogo não mostra a mensagem de rega.
-    public void WaterField(string key)
-    {
-        if (!Config.Plots.TryGetValue(key, out var plot))
-            return;
-
-        plot.WateredAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        SaveConfig();
-        Diagnostics.Write($"Rega registrada em {plot.Name} (botão Reguei, chave {key})");
-        QueueLogUpload();
     }
 
     // Nomes e remoções feitos em outro PC chegam pelo serviço e valem aqui também.
@@ -645,7 +633,7 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     public string LogText()
-        => Diagnostics.Text($"FC Timers {Version} | fuso UTC{DateTimeOffset.Now:zzz} | gerado {DateTime.Now:dd/MM HH:mm}");
+        => Diagnostics.Text($"FC Companion {Version} | fuso UTC{DateTimeOffset.Now:zzz} | gerado {DateTime.Now:dd/MM HH:mm}");
 
     private string CurrentCharacterName()
         => Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name : "Desconhecido";
@@ -1006,7 +994,7 @@ public sealed class Plugin : IDalamudPlugin
                 continue;
 
             if (watched == time)
-                ChatGui.Print(message, "FC Timers");
+                ChatGui.Print(message, "FC Companion");
             changed = true;
         }
 

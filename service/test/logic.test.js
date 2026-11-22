@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   alertDeleteAt, alertPayload, applyDalamud, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, needsPrice, newState, nextEvent, nextMidnight,
-  parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
+  lootSummary, parseUniversalis, pendingAlerts, subsSummary, suppliesSummary, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
 } from '../src/logic.js';
+import { canManage, commandPath, optionValue, verifyDiscord } from '../src/discord.js';
 
 const at = (day, hour, minute = 0) => Math.floor(Date.UTC(2026, 10, day, hour + 3, minute) / 1000);
 const voyage = (slot, returnTime, value, itemId = 1) => ({
@@ -447,6 +448,32 @@ test('campos: cadastro, nome e remoção valem para todos os PCs', () => {
   assert.equal(state.plots[key], undefined);
   assert.equal(publicState(state, [], at(1, 12)).removedPlots[key], at(1, 12));
   assert.equal(isValidUpdate({ plotNames: [{ key, name: 'x'.repeat(41), at: 1 }] }), false);
+});
+
+test('assinatura do Discord e leitura dos comandos', async () => {
+  const keys = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  const publicKey = Buffer.from(await crypto.subtle.exportKey('raw', keys.publicKey)).toString('hex');
+  const body = '{"type":1}';
+  const signature = Buffer.from(await crypto.subtle.sign('Ed25519', keys.privateKey, new TextEncoder().encode(`123${body}`))).toString('hex');
+  assert.equal(await verifyDiscord(publicKey, signature, '123', body), true);
+  assert.equal(await verifyDiscord(publicKey, signature, '124', body), false);
+  assert.equal(await verifyDiscord(publicKey, 'zz', '123', body), false);
+
+  const avisos = { data: { name: 'avisos', options: [{ type: 1, name: 'limpar' }] } };
+  assert.equal(commandPath(avisos), 'avisos limpar');
+  assert.equal(optionValue({ data: { name: 'loot', options: [{ type: 3, name: 'periodo', value: 'semana' }] } }, 'periodo'), 'semana');
+  assert.equal(canManage({ member: { permissions: '32' } }), true);
+  assert.equal(canManage({ member: { permissions: '8' } }), false);
+});
+
+test('respostas de /loot, /estoque e /subs', () => {
+  const state = newState();
+  assert.match(suppliesSummary(state), /Nenhuma contagem/);
+  applyUpdate(state, { subs: [{ slot: 0, name: 'Navi', returnTime: at(2, 9), age: 0, details: { rank: 130, exp: 51, build: 'SSUC', route: 'J > O', tanks: 21, kits: 24, condition: 40 } }] }, at(1, 9));
+  assert.match(subsSummary(state, at(1, 9)), /\*\*Navi\*\* \(R130\): volta .* · 51% para o próximo rank · peças 40%/);
+  const loot = lootSummary([voyage(0, at(1, 6), 300000), voyage(0, at(1, 12), 100000, 2)], 'Loot de hoje (01/11)');
+  assert.match(loot, /^\*\*Loot de hoje \(01\/11\): 400\.000 gil\*\*\n\*\*Sub0\*\*: 400\.000 gil \(2 viagens\)/);
+  assert.match(lootSummary([], 'Loot dos últimos 7 dias'), /Nenhuma viagem/);
 });
 
 test('buff da mesa pronto avisa uma vez, e buff visto já pronto não avisa', () => {

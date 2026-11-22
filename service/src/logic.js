@@ -711,3 +711,43 @@ export function recentDays(now, count = HISTORY_DAYS) {
   for (let t = now; days.size < count; t -= DAY_STEP) days.add(dayOf(t));
   return [...days].reverse();
 }
+
+// Respostas dos comandos do Discord. Reaproveitam as mesmas linhas do painel.
+export function subsSummary(state, now) {
+  const subs = bySlot(state.subs);
+  if (subs.length === 0) return 'Nenhum dado dos submarinos ainda.';
+  return [...setupLines(subs), ...subs.map((s) => {
+    const condition = s.details?.condition;
+    const wear = condition != null ? ` · peças ${percent(condition)}` : '';
+    const exp = s.details ? ` · ${s.details.exp}% para o próximo rank` : '';
+    return `${subLine(s, now).split(' · ')[0]}${exp}${wear}`;
+  })].join('\n');
+}
+
+export const suppliesSummary = (state) => (state.supplies
+  ? suppliesText(state.supplies, bySlot(state.subs), lowTanksOf(state))
+  : 'Nenhuma contagem do estoque ainda. Abra a aba do baú da FC onde ficam os tanques.');
+
+export function lootSummary(voyages, title) {
+  if (voyages.length === 0) return `**${title}**\nNenhuma viagem registrada.`;
+  const total = voyages.reduce((sum, v) => sum + v.items.reduce((s, i) => s + bestValue(i), 0), 0);
+  const perSub = new Map();
+  const perItem = new Map();
+  for (const voyage of voyages) {
+    const sub = perSub.get(voyage.slot) ?? { name: voyage.subName, value: 0, count: 0 };
+    sub.value += voyage.items.reduce((s, i) => s + bestValue(i), 0);
+    sub.count += 1;
+    perSub.set(voyage.slot, sub);
+    for (const item of voyage.items) {
+      const entry = perItem.get(item.itemId) ?? { name: item.name, count: 0, value: 0 };
+      entry.count += item.count;
+      entry.value += bestValue(item);
+      perItem.set(item.itemId, entry);
+    }
+  }
+  const subs = [...perSub.entries()].sort((a, b) => a[0] - b[0])
+    .map(([, s]) => `**${shorten(s.name)}**: ${gilFormat.format(s.value)} gil (${plural(s.count, 'viagem', 'viagens')})`);
+  const top = [...perItem.values()].sort((a, b) => b.value - a.value).slice(0, 5)
+    .map((i) => `${i.count}x ${shorten(i.name)}: ${gilFormat.format(i.value)} gil`);
+  return [`**${title}: ${gilFormat.format(total)} gil**`, ...subs, '', '**Itens que mais renderam**', ...top].join('\n');
+}

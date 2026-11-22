@@ -1,8 +1,11 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, MARKET_CACHE, markSent, mergeVoyage, needsPrice, newState,
-  applyDalamud, dalamudDue, nextEvent, parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
+  applyDalamud, dalamudDue, lootSummary, nextEvent, parseUniversalis, subsSummary, suppliesSummary, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
 } from './logic.js';
+import {
+  canManage, COMMAND, commandPath, DEFERRED_REPLY, EPHEMERAL, optionValue, PING, privateReply, REPLY, verifyDiscord,
+} from './discord.js';
 
 const DEBOUNCE_MS = 2000;
 const RETRY_MS = 60000;
@@ -28,11 +31,74 @@ function isAuthorized(request, env) {
   return env.FC_KEY && expected.byteLength === received.byteLength && crypto.subtle.timingSafeEqual(expected, received);
 }
 
+const MANAGER_ONLY = ['painel', 'avisos limpar', 'log'];
+
+// Comandos do Discord. A assinatura do app substitui a chave da FC nesta rota.
+async function handleInteraction(request, env, ctx) {
+  const body = await request.text();
+  const signed = await verifyDiscord(
+    env.DISCORD_PUBLIC_KEY, request.headers.get('X-Signature-Ed25519'), request.headers.get('X-Signature-Timestamp'), body,
+  );
+  if (!signed) return new Response('invalid request signature', { status: 401 });
+
+  const interaction = JSON.parse(body);
+  if (interaction.type === PING) return json({ type: PING });
+  if (interaction.type !== COMMAND) return json(privateReply('Comando desconhecido.'));
+  if (env.DISCORD_GUILD_ID && interaction.guild_id !== env.DISCORD_GUILD_ID) {
+    return json(privateReply('Este servidor não está configurado no FC Companion.'));
+  }
+
+  const path = commandPath(interaction);
+  if (MANAGER_ONLY.includes(path) && !canManage(interaction)) return json(privateReply('Só quem gerencia o servidor pode usar este comando.'));
+
+  const stub = env.FC_STATE.get(env.FC_STATE.idFromName('fc'));
+  const internal = (route, payload) => stub.fetch(`https://fc/${route}`, { method: 'POST', body: payload ? JSON.stringify(payload) : undefined });
+
+  switch (path) {
+    case 'painel':
+      await internal('repost');
+      return json(privateReply('Painel reenviado no fim do canal.'));
+    case 'avisos limpar': {
+      // Apagar e reenviar avisos passa dos 3 segundos que o Discord espera: responde já e termina depois.
+      const followUp = `https://discord.com/api/v10/webhooks/${env.DISCORD_APP_ID}/${interaction.token}/messages/@original`;
+      ctx.waitUntil((async () => {
+        const result = await (await internal('regroup')).json();
+        await fetch(followUp, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: `Pronto: ${result.removed} avisos apagados, ${result.sent} agrupados enviados.` }),
+        });
+      })());
+      return json({ type: DEFERRED_REPLY, data: { flags: EPHEMERAL } });
+    }
+    case 'loot':
+    case 'estoque':
+    case 'subs':
+    case 'log': {
+      const answer = await (await internal('discord', {
+        path, periodo: optionValue(interaction, 'periodo'), personagem: optionValue(interaction, 'personagem'),
+      })).json();
+      if (!answer.file) return json(privateReply(answer.content));
+
+      const form = new FormData();
+      form.append('payload_json', JSON.stringify({
+        type: REPLY,
+        data: { content: answer.content, flags: EPHEMERAL, attachments: [{ id: 0, filename: answer.file.name }] },
+      }));
+      form.append('files[0]', new Blob([answer.file.text], { type: 'text/plain' }), answer.file.name);
+      return new Response(form);
+    }
+    default:
+      return json(privateReply('Comando desconhecido.'));
+  }
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
+    const { pathname } = new URL(request.url);
+    if (request.method === 'POST' && pathname === '/interactions') return handleInteraction(request, env, ctx);
     if (!isAuthorized(request, env)) return json({ error: 'unauthorized' }, 401);
 
-    const { pathname } = new URL(request.url);
     const allowed = (request.method === 'POST' && ['/update', '/repost', '/log', '/regroup'].includes(pathname))
       || (request.method === 'GET' && ['/history', '/state', '/logs'].includes(pathname));
     if (!allowed) return json({ error: 'not found' }, 404);
@@ -49,6 +115,7 @@ export class FcState extends DurableObject {
       case 'POST /repost': return this.handleRepost();
       case 'POST /regroup': return this.handleRegroup();
       case 'POST /log': return this.handleLog(request);
+      case 'POST /discord': return this.handleDiscord(request);
       case 'GET /state': return this.handleState();
       case 'GET /logs': return this.handleLogs();
       default: return this.handleHistory(request);
@@ -75,6 +142,32 @@ export class FcState extends DurableObject {
     const logs = [...(await storage.list({ prefix: 'log:' })).entries()].sort((a, b) => b[1].uploadedAt - a[1].uploadedAt);
     if (logs.length > MAX_LOGS) await storage.delete(logs.slice(MAX_LOGS).map(([key]) => key));
     return json({ ok: true });
+  }
+
+  // Respostas dos comandos do Discord que só leem o estado.
+  async handleDiscord(request) {
+    const { path, periodo, personagem } = await request.json();
+    const now = nowSeconds();
+    const state = (await this.ctx.storage.get('state')) ?? newState();
+    if (path === 'estoque') return json({ content: suppliesSummary(state) });
+    if (path === 'subs') return json({ content: subsSummary(state, now) });
+    if (path === 'loot') {
+      const week = periodo === 'semana';
+      const days = week ? recentDays(now) : [dayOf(now)];
+      const voyages = [];
+      for (const day of days) voyages.push(...(await this.voyagesOn(day)));
+      const [, month, day] = dayOf(now).split('-');
+      return json({ content: lootSummary(voyages, week ? 'Loot dos últimos 7 dias' : `Loot de hoje (${day}/${month})`) });
+    }
+
+    const logs = [...(await this.ctx.storage.list({ prefix: 'log:' })).values()].sort((a, b) => b.uploadedAt - a.uploadedAt);
+    const wanted = typeof personagem === 'string' ? personagem.trim().toLowerCase() : '';
+    const log = wanted ? logs.find((l) => l.character.toLowerCase().includes(wanted)) : logs[0];
+    if (!log) return json({ content: wanted ? `Nenhum log de "${personagem}".` : 'Nenhum log enviado ainda.' });
+    return json({
+      content: `Log de **${log.character}**, enviado <t:${log.uploadedAt}:R>.`,
+      file: { name: `log-${log.character.replace(/[^\w-]+/g, '_')}.txt`, text: log.text },
+    });
   }
 
   async handleLogs() {

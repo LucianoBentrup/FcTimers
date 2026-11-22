@@ -9,6 +9,18 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.9.0",
+        [
+            ("Added",
+            [
+                "Discord commands: /painel, /avisos limpar, /loot, /estoque, /subs and /log, answered by the FC Companion app.",
+                "Fields section in the Garden tab: target a garden patch or pot and press + to add it with a name. Names and removals are shared with the other members.",
+            ]),
+            ("Changed",
+            [
+                "FC Timers is now called FC Companion.",
+            ]),
+        ]),
         ("0.8.6",
         [
             ("Changed",
@@ -143,7 +155,7 @@ public static class Changelog
 
 public sealed class ChangelogWindow : Window
 {
-    public ChangelogWindow() : base("FC Timers - What's new###FcTimersChangelog")
+    public ChangelogWindow() : base("FC Companion - What's new###FcTimersChangelog")
     {
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(420, 200) };
     }
