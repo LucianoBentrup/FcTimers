@@ -54,18 +54,10 @@ Com o envio ligado, o plugin manda ao serviço da FC: horários, rank, peças e 
 |---|---|
 | Raiz (`*.cs`) | Plugin. `Plugin.cs` liga tudo; `FcView.cs` junta os dados deste PC com os do serviço; `MainWindow.cs` é a janela. |
 | `service/` | Serviço na Cloudflare (Worker + Durable Object): recebe os dados, monta o painel, manda os avisos e responde aos comandos do Discord. |
-| `tests/` | Testes da lógica do plugin, sem o jogo. |
+| `tests/` | Testes da lógica do plugin. |
 | `tools/` | Scripts: publicar na mão, reenviar o painel, agrupar avisos, baixar logs, registrar os comandos e o painel de teste. Os que precisam de chave pedem no terminal e não guardam. |
 | `REGRAS.md` | Regras do painel, dos avisos e da sincronia. |
 | `CHECKLIST.md`, `PLANO-*.md` | O que está feito, o que falta e o plano de cada versão. |
-
-## Desenvolvimento
-- **Plugin:** `dotnet build -c Release` (precisa do Dalamud instalado) e `dotnet test tests/FcTimers.Tests`.
-- **Serviço:** em `service/`, `npm test` e `npm run test:integration` (sobe o serviço localmente com um Discord simulado; só no Windows). Publicar: `npx wrangler deploy`.
-- **CI:** a cada envio para `main` ou `dev`, o GitHub roda os testes do serviço e do plugin e compila o plugin com o Dalamud mais recente.
-- **Publicar uma versão:** subir a versão no `FcTimers.csproj`, escrever a entrada no `Changelog.cs`, juntar no `main` e criar a tag `vX.Y.Z` no último commit do `main`. O GitHub compila, grava `repo.json` e `dist/latest.zip` no `main` e cria a release. O `tools/gerar-repo.ps1` faz o mesmo na mão.
-- **Ícone e prints no instalador:** coloque `images/icon.png` e `images/screenshot-1.png`, `screenshot-2.png`… e eles entram no `repo.json` na próxima publicação.
-- O trabalho novo vai para o branch `dev` e entra no `main` junto com a versão.
 
 ## Próximos passos
 - **0.10:** serviço para várias FCs.
