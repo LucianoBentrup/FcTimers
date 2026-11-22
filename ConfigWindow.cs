@@ -144,11 +144,14 @@ public sealed class ConfigWindow : Window
         }
 
         ImGui.SameLine();
-        using (ImRaii.Disabled(!config.SyncEnabled || plugin.Sync.SendingLog))
+        using (ImRaii.Disabled(!config.SyncEnabled || plugin.Sync.SendingLog || !plugin.CanSendLog))
         {
             if (ImGui.Button(L.SendLog))
                 plugin.SendLog("botão Enviar log");
         }
+
+        if (!plugin.CanSendLog && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(L.SendLogInactive);
 
         ImGui.SameLine();
         ImGui.TextColored(UiKit.Muted, DateTime.Now - copiedAt < TimeSpan.FromSeconds(5)

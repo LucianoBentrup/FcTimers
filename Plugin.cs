@@ -82,6 +82,9 @@ public sealed class Plugin : IDalamudPlugin
     private DateTime firstQueuedLog = DateTime.MaxValue;
     private int uploadedLines;
 
+    // Se o último personagem logado estava ativo. Vale depois de deslogar, para o log enviado ao fechar o jogo.
+    private bool lastCharacterActive;
+
     public Configuration Config { get; }
     public SyncClient Sync { get; }
     public DiagnosticLog Diagnostics { get; }
@@ -173,7 +176,7 @@ public sealed class Plugin : IDalamudPlugin
         windowSystem.RemoveAllWindows();
 
         // Fechando o jogo logo depois de uma coleta: o log que ainda não foi enviado vai agora, esperando no máximo 3 segundos.
-        if (autoLogAt != DateTime.MaxValue && Diagnostics.Written != uploadedLines)
+        if (autoLogAt != DateTime.MaxValue && Diagnostics.Written != uploadedLines && CanSendLog)
         {
             Diagnostics.Write("Enviando o log ao serviço (automático, plugin fechando)");
             Sync.SendLogNow(CurrentCharacterName(), LogText(), TimeSpan.FromSeconds(3));
@@ -486,11 +489,6 @@ public sealed class Plugin : IDalamudPlugin
             return false;
 
         var name = player.Name.TextValue;
-        if (Config.LastCharacterName != name)
-        {
-            Config.LastCharacterName = name;
-            SaveConfig();
-        }
 
         var home = player.HomeWorld.ValueNullable;
         if (home is { } world && (world.Name.ToString() != Config.HomeWorld || world.DataCenter.RowId != Config.HomeDataCenter))
@@ -509,6 +507,14 @@ public sealed class Plugin : IDalamudPlugin
         else if (character.Name != name)
         {
             character.Name = name;
+            SaveConfig();
+        }
+
+        // Guardado só para personagem ativo: é o nome do log enviado depois de deslogar.
+        lastCharacterActive = character.Enabled;
+        if (character.Enabled && Config.LastCharacterName != name)
+        {
+            Config.LastCharacterName = name;
             SaveConfig();
         }
 
@@ -649,9 +655,12 @@ public sealed class Plugin : IDalamudPlugin
         => Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name
             : Config.LastCharacterName.Length > 0 ? Config.LastCharacterName : "Desconhecido";
 
+    // Só personagem ativo manda log, seja automático, pelo botão ou ao fechar o jogo.
+    public bool CanSendLog => characterEnabled || (CurrentCharacterId == 0 && lastCharacterActive);
+
     public void SendLog(string source)
     {
-        if (!Sync.SendLog(CurrentCharacterName(), LogText()))
+        if (!CanSendLog || !Sync.SendLog(CurrentCharacterName(), LogText()))
             return;
 
         Diagnostics.Write($"Enviando o log ao serviço ({source})");

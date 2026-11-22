@@ -47,7 +47,7 @@ O plugin **só lê o que o jogo já mostra**. Ele não automatiza nada, não man
 3. Para os dados aparecerem: abra a lista de subs na oficina, a aba do baú onde ficam os tanques e a mesa da roda. A rega é registrada sozinha quando você cuida da planta.
 
 ## Privacidade
-Com o envio ligado, o plugin manda ao serviço da FC: horários, rank, peças e loot dos subs, estoque, rega dos campos, buffs e o log de diagnóstico do plugin. O log tem nomes de personagens e mensagens do sistema do jogo, **nunca** chat de jogadores nem a chave da FC. O serviço guarda o estado atual, o loot dos últimos dias e o último log de cada personagem. Sem o envio ligado, nada sai do PC.
+Com o envio ligado, o plugin manda ao serviço da FC: horários, rank, peças e loot dos subs, estoque, rega dos campos, buffs e o log de diagnóstico do plugin. Só personagens ativos enviam o log. O log tem nomes de personagens e mensagens do sistema do jogo, **nunca** chat de jogadores nem a chave da FC. O serviço guarda o estado atual, o loot dos últimos dias e o último log de cada personagem. Sem o envio ligado, nada sai do PC.
 
 ## Estrutura
 | Pasta / arquivo | O que é |

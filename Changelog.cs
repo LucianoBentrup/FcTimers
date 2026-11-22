@@ -24,6 +24,7 @@ public static class Changelog
                 "Settings moved to their own window (the cog in the plugin installer or at the top of the main window), with a sync status dot always visible.",
                 "Welcome steps on first use, and alerts as Dalamud notifications with optional chat message and sound, configurable per type.",
                 "Hovering a remaining time shows the exact local time.",
+                "Only enabled characters send the diagnostic log, including the one sent when the game closes.",
             ]),
         ]),
         ("0.8.6",
