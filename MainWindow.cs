@@ -245,7 +245,7 @@ public class MainWindow : Window
                     ImGui.TableNextRow();
                     Cell(plot.Name);
                     // Pronta para regar fica verde; perto de morrer (menos de 3 horas) ou já passada, vermelha.
-                    var color = plot.NextWaterAt > now ? (plot.NextWaterAt - now < 3600 ? Soon : null)
+                    Vector4? color = plot.NextWaterAt > now ? (plot.NextWaterAt - now < 3600 ? Soon : null)
                         : plot.DieAt > now + (3 * 3600) ? Good : Bad;
                     Cell(PlotState(plot, now), color);
                 }
