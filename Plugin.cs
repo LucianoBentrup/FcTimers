@@ -28,7 +28,6 @@ public sealed class Plugin : IDalamudPlugin
     private const int ActiveBuffStableSeconds = 5;
     private const int ActiveBuffSettleSeconds = 60;
     private const int MaxCompanySlots = 3;
-    private const int VoyageHistoryDays = 60;
 
     // Mensagens do jogo sobre a horta. A 4017 ("This crop is doing well.") aparece ao cuidar da planta,
     // e a 4015 ao plantar. Ainda falta confirmar no jogo que só aparecem nesses momentos.
@@ -36,8 +35,8 @@ public sealed class Plugin : IDalamudPlugin
     private const uint SeedsPlantedMessage = 4015;
     private const uint FirstGardenMessage = 4000;
     private const uint LastGardenMessage = 4026;
-    private const string GeneralPlot = "geral";
-    private const string GeneralPlotName = "Plantação";
+    private const string GeneralPlot = ConfigMigration.GeneralPlot;
+    private const string GeneralPlotName = ConfigMigration.GeneralPlotName;
 
     // Telas que aparecem quando o resultado de uma viagem chega.
     private static readonly string[] ResultAddons = ["AirShipExplorationResult", "SubmersibleExplorationResult"];
@@ -191,75 +190,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private void Migrate()
     {
-        if (Config.Version < 4)
-        {
-            Config.Voyages = LootLedger.MigrateKeys(Config.Voyages);
-            Config.Version = 4;
-        }
-
-        // Até a versão 0.6.0 a 5ª posição era lida como um submarino, duplicando timer e loot.
-        if (Config.Version < 5)
-        {
-            foreach (var key in Config.Subs.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^1])).ToList())
-                Config.Subs.Remove(key);
-            foreach (var key in Config.Voyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
-                Config.Voyages.Remove(key);
-            foreach (var key in Config.SyncedVoyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
-                Config.SyncedVoyages.Remove(key);
-            Config.Version = 5;
-        }
-
-        // A versão de testes guardava uma rega só, que vira o plot "Plantação".
-        if (Config.Version < 7 && Config.Garden.WateredAt != 0 && !Config.Plots.ContainsKey(GeneralPlot))
-            Config.Plots[GeneralPlot] = new PlotRecord { Name = GeneralPlotName, WateredAt = Config.Garden.WateredAt };
-
-        // Quem já usava o plugin continua em português, sem depender do idioma do Dalamud.
-        if (Config.Version < 8 && Config.Language.Length == 0)
-            Config.Language = "pt";
-
-        // Até a 0.8.2 a posição na chave do plot seguia o idioma do PC (vírgula ou ponto), e um mesmo canteiro
-        // tinha chaves diferentes em cada PC. Fica a rega mais recente de cada canteiro.
-        if (Config.Version < 9)
-        {
-            foreach (var (oldKey, plot) in Config.Plots.Where(p => p.Key.Contains(',')).ToList())
-            {
-                Config.Plots.Remove(oldKey);
-                var newKey = oldKey.Replace(',', '.');
-                if (!Config.Plots.TryGetValue(newKey, out var other) || other.WateredAt < plot.WateredAt)
-                    Config.Plots[newKey] = plot;
-            }
-
-            foreach (var plot in Config.Plots.Values.Where(p => IsUnnamed(p.Name)))
-                plot.Name = $"Canteiro {plot.Name.Trim()}".Trim();
-        }
-
-        // A 0.8.3 guardava o ícone do jogo no nome dos canteiros de fora ("\uE034 1").
-        if (Config.Version < 10)
-        {
-            foreach (var plot in Config.Plots.Values.Where(p => IsUnnamed(p.Name)))
-                plot.Name = $"Canteiro {CleanName(plot.Name)}".Trim();
-        }
-
-        // A migração anterior deixou o ícone no meio de alguns nomes ("Canteiro  1").
-        if (Config.Version < 11)
-        {
-            foreach (var plot in Config.Plots.Values.Where(p => CleanName(p.Name) != p.Name))
-                plot.Name = CleanName(plot.Name);
-        }
-
-        Config.Version = 11;
-        PruneVoyages();
+        ConfigMigration.Run(Config, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         SaveConfig();
-    }
-
-    private void PruneVoyages()
-    {
-        var before = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - VoyageHistoryDays * 86400L;
-        foreach (var key in Config.Voyages.Where(v => v.Value.ReturnTime < before).Select(v => v.Key).ToList())
-        {
-            Config.Voyages.Remove(key);
-            Config.SyncedVoyages.Remove(key);
-        }
     }
 
     private void OnCommand(string command, string arguments)
@@ -398,8 +330,8 @@ public sealed class Plugin : IDalamudPlugin
             indoor = inside;
             var label = baseName.Trim().Length > 0 ? baseName.Trim() : "Canteiro";
             // O nome do menu ("Canteiro 2") corrige os nomes automáticos; um nome dado na janela fica.
-            var fromMenu = AutoName.IsMatch(label);
-            name = Config.Plots.TryGetValue(key, out var known) && (known.NamedAt > 0 || (!IsUnnamed(known.Name) && !(fromMenu && AutoName.IsMatch(known.Name))))
+            var fromMenu = PlotNames.AutoName.IsMatch(label);
+            name = Config.Plots.TryGetValue(key, out var known) && (known.NamedAt > 0 || (!PlotNames.IsUnnamed(known.Name) && !(fromMenu && PlotNames.AutoName.IsMatch(known.Name))))
                 ? known.Name
                 : fromMenu ? label : $"{label} {Config.Plots.Values.Count(p => p.Name.StartsWith(label, StringComparison.Ordinal)) + 1}";
         }
@@ -435,7 +367,7 @@ public sealed class Plugin : IDalamudPlugin
         var position = target.Position;
         var coordinates = string.Join(':', new[] { position.X, position.Y, position.Z }.Select(v => v.ToString("F1", CultureInfo.InvariantCulture)));
         var key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{coordinates}";
-        return (key, CleanName(target.Name.TextValue), manager->IsInside());
+        return (key, PlotNames.Clean(target.Name.TextValue), manager->IsInside());
     }
 
     private void OnUpdate(IFramework framework)
@@ -731,21 +663,21 @@ public sealed class Plugin : IDalamudPlugin
 
         // Por 30 segundos depois do menu de um canteiro ou vaso, as mensagens do sistema vão para o log,
         // para descobrir qual mensagem a rega de um vaso de dentro de casa mostra. Chat de jogador nunca entra.
-        if (texts.Any(t => GardenMenu.IsMatch(t)))
+        if (texts.Any(t => PlotNames.GardenMenu.IsMatch(t)))
             gardenWatchUntil = DateTime.UtcNow.AddSeconds(30);
 
         // Os canteiros de fora não têm nome no alvo; o menu diz qual é ("6th Bed, 2nd Patch").
         if (ReadHousingTarget() is var (key, name, indoor))
         {
-            var patch = texts.Select(t => PatchPattern.Match(t)).FirstOrDefault(m => m.Success);
-            var label = patch != null ? $"Canteiro {patch.Groups[1].Value}" : name;
+            var patch = PlotNames.FromMenu(texts);
+            var label = patch ?? name;
             lastHousingObject = (key, label, indoor, DateTime.UtcNow);
 
             // Só de abrir o menu, um canteiro já conhecido com nome automático ganha o nome certo.
             if (patch != null && Config.Plots.TryGetValue(key, out var known) && known.Name != label && known.NamedAt == 0
-                && (IsUnnamed(known.Name) || AutoName.IsMatch(known.Name)))
+                && (PlotNames.IsUnnamed(known.Name) || PlotNames.AutoName.IsMatch(known.Name)))
             {
-                Diagnostics.Write($"Plot renomeado: {CleanName(known.Name)} -> {label} (chave {key})");
+                Diagnostics.Write($"Plot renomeado: {PlotNames.Clean(known.Name)} -> {label} (chave {key})");
                 known.Name = label;
                 SaveConfig();
             }
@@ -753,17 +685,6 @@ public sealed class Plugin : IDalamudPlugin
 
         Diagnostics.Write($"Menu de {target.Name.TextValue} ({target.ObjectKind}): {string.Join(" | ", texts)}");
     }
-
-    private static readonly Regex AutoName = new(@"^Canteiro \d+$", RegexOptions.Compiled);
-    private static readonly Regex GardenMenu = new(@"Crop|Seeds|Patch|Fertiliz", RegexOptions.Compiled);
-    private static readonly Regex PatchPattern = new(@"(\d+)(?:st|nd|rd|th) Patch", RegexOptions.Compiled);
-
-    // Nome vazio ou só um número, das versões que não sabiam o nome dos canteiros de fora.
-    private static bool IsUnnamed(string name) => CleanName(name).All(char.IsDigit);
-
-    // O jogo põe ícones (caracteres de uso privado) no nome de alguns objetos, que o Discord mostra como "▯".
-    private static string CleanName(string name)
-        => Regex.Replace(new string(name.Where(c => char.GetUnicodeCategory(c) is not (UnicodeCategory.PrivateUse or UnicodeCategory.Control or UnicodeCategory.Format)).ToArray()), @"\s+", " ").Trim();
 
     private void OnLogMessage(ILogMessage message)
     {

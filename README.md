@@ -1,4 +1,6 @@
-# FC Timers
+# FC Companion
+
+[![CI](https://github.com/LucianoBentrup/FcTimers/actions/workflows/ci.yml/badge.svg)](https://github.com/LucianoBentrup/FcTimers/actions/workflows/ci.yml)
 
 Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda de buff e dos buffs da FC, e o loot do dia. Ele só lê e exibe informações, sem automatizar nada no jogo.
 
@@ -34,3 +36,9 @@ Plugin de Dalamud para FFXIV que mostra os timers dos submarinos, da roda de buf
 - Na janela do `/fct`, seção **Diagnóstico**: **Copiar log** copia para colar no Discord, e **Enviar log** guarda no serviço da FC.
 - O plugin envia o log sozinho uns 20 segundos depois de ações importantes (coleta, sub saindo, rega, estoque, peças) e ao fechar o jogo. Ações em sequência entram no mesmo envio.
 - O serviço guarda só o último log de cada personagem, até 10 personagens. O log não inclui a chave da FC.
+
+## Desenvolvimento
+- `dotnet test tests/FcTimers.Tests`: testes da lógica do plugin (junção dos dados, loot, migração do config, nomes dos campos), sem o jogo e sem o Dalamud.
+- `npm test` em `service/`: testes do serviço. `npm run test:integration` sobe o serviço localmente com um Discord simulado (só no Windows).
+- **CI:** a cada envio para `main` ou `dev`, o GitHub roda os testes do serviço e do plugin e compila o plugin com o Dalamud mais recente.
+- **Publicar uma versão:** subir a versão no `FcTimers.csproj`, juntar no `main` e criar a tag `vX.Y.Z` no último commit do `main`. O GitHub compila, grava `repo.json` e `dist/latest.zip` no `main` e cria a release. O `tools/gerar-repo.ps1` continua funcionando para publicar na mão.
