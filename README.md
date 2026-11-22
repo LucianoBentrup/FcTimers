@@ -2,65 +2,65 @@
 
 [![CI](https://github.com/LucianoBentrup/FcTimers/actions/workflows/ci.yml/badge.svg)](https://github.com/LucianoBentrup/FcTimers/actions/workflows/ci.yml)
 
-Plugin de Dalamud para FFXIV que acompanha a Free Company: submarinos, loot, estoque da oficina, plantação e buffs. Um serviço na Cloudflare junta o que cada membro leu e mantém um painel compartilhado no Discord, com avisos e comandos.
+A Dalamud plugin for FFXIV that keeps track of your Free Company: submersibles, loot, workshop supplies, gardening and buffs. A Cloudflare service merges what each member has read and keeps a shared Discord panel, with alerts and commands.
 
-O plugin **só lê o que o jogo já mostra**. Ele não automatiza nada, não manda nada para os servidores do jogo e não abre telas sozinho. É uma ferramenta de terceiros: usar é uma escolha sua, e os termos do jogo valem para ela.
+The plugin **only reads what the game already shows**. It doesn't automate anything, doesn't send anything to the game servers and doesn't open windows on its own. It is a third-party tool: using it is your choice, and the game's terms apply to it.
 
-## O que faz
+## Features
 
-**Submarinos**
-- Horário de volta, rank, XP, peças (build), rota e desgaste de cada sub.
-- Loot de cada viagem, salvo no instante em que o resultado chega (rápido o bastante para o AutoRetainer). Se uma captura falhar, abrir o sub na oficina recupera o loot.
-- Cada item conta pelo maior valor entre a venda para NPC e o market (média das vendas recentes no Universalis, no mundo do personagem ou no escolhido).
+**Submersibles**
+- Return time, rank, XP, parts (build), route and wear for each sub.
+- Loot from every voyage, saved the moment the result arrives (fast enough for AutoRetainer). If a capture fails, opening the sub at the workshop recovers the loot.
+- Each item counts at the higher of its NPC sale price and its market value (average of recent sales on Universalis, on your character's world or one you pick).
 
-**Estoque**
-- Tanques de ceruleum e kits de reparo do baú da FC e do inventário, com quantas rodadas e quantos reparos dos subs eles pagam.
+**Supplies**
+- Ceruleum tanks and repair kits in the FC chest and your inventory, plus how many voyages and sub repairs they cover.
 
-**Plantação**
-- Rega de cada canteiro ou vaso, detectada pela mensagem do jogo, com o horário de regar de novo e de quando a planta morre.
-- Seção **Campos**: selecione o canteiro ou vaso no jogo, clique em **+** e dê um nome. Nomes e remoções valem para todos os membros.
+**Gardening**
+- Watering of each patch or pot, detected from the game message, with when to water again and when the plant dies.
+- **Fields** section: target the patch or pot in game, click **+** and give it a name. Names and removals apply to every member.
 
 **Buffs**
-- Mesa da roda (quando cada buff fica pronto) e buffs ativos da FC.
+- Wheel Stand (when each buff is ready) and active FC buffs.
 
-**Discord** (com o serviço)
-- Um painel único, sempre editado, com tudo acima e o loot do dia.
-- Avisos marcando o cargo da FC: lembrete 1 hora antes, sub pronto, sub esquecido, rega, planta perto de morrer, reparo, estoque baixo, item caro de market, setor novo e buff da mesa pronto. Avisos que acontecem juntos saem numa mensagem só, e todos se apagam depois de 8 horas.
-- Comandos do app FC Companion: `/subs`, `/estoque`, `/loot [hoje|semana]` para todos; `/painel`, `/avisos limpar` e `/log` para quem gerencia o servidor.
-- O rodapé do painel avisa quando o Dalamud ainda não saiu para um patch novo do jogo.
+**Discord** (with the service)
+- A single panel, always edited in place, with everything above and today's loot.
+- Alerts that ping the FC role: 1-hour reminder, sub ready, sub forgotten, watering, plant about to die, repair, low supplies, expensive market item, new sector and Wheel Stand buff ready. Alerts that happen together go out as one message, and all of them are deleted after 8 hours.
+- FC Companion app commands: `/subs`, `/estoque`, `/loot [hoje|semana]` for everyone; `/painel`, `/avisos limpar` and `/log` for server managers.
+- The panel footer warns when Dalamud hasn't been updated yet for a new game patch.
 
-**No jogo**
-- Janela em abas (`/fct`): Submarinos, Loot, Buffs, Plantação e Configurações, com tabelas e cores (verde pronto, amarelo em breve, vermelho urgente).
-- Aviso no chat e resumo na barra do jogo. Textos em português e inglês.
+**In game**
+- Tabbed window (`/fct`): Overview, Submersibles, Loot, Buffs and Gardening, plus a settings window, with tables and colors (green ready, yellow soon, red urgent).
+- Notifications (toast, chat or sound) and a summary in the server info bar. Text in Portuguese and English.
 
-## Instalar
-1. No jogo, digite `/xlsettings` e abra a aba **Experimental**.
-2. Em **Custom Plugin Repositories**, adicione o link abaixo, clique no **+** e salve:
+## Install
+1. In game, type `/xlsettings` and open the **Experimental** tab.
+2. Under **Custom Plugin Repositories**, add the link below, click **+** and save:
    ```
    https://raw.githubusercontent.com/LucianoBentrup/FcTimers/main/repo.json
    ```
-3. Digite `/xlplugins` e instale o **FC Companion**.
+3. Type `/xlplugins` and install **FC Companion**.
 
-## Configurar
-1. Digite `/fct`, vá em **Configurações** e marque o seu personagem. Só personagens marcados leem e enviam dados.
-2. Para o painel no Discord, ainda em **Configurações**, cole o endereço do serviço e a chave da FC e marque **Enviar e receber dados**. O endereço e a chave são passados pela FC.
-3. Para os dados aparecerem: abra a lista de subs na oficina, a aba do baú onde ficam os tanques e a mesa da roda. A rega é registrada sozinha quando você cuida da planta.
+## Setup
+1. Type `/fct`, open the settings (cog icon) and tick your character. Only ticked characters read and send data.
+2. For the Discord panel, still in settings, paste the service address and the FC key and tick **Send and receive data**. The address and key are given to you by your FC.
+3. To get data showing up: open the sub list at the workshop, the chest tab where the tanks are and the Wheel Stand. Watering is recorded on its own when you tend a plant.
 
-## Privacidade
-Com o envio ligado, o plugin manda ao serviço da FC: horários, rank, peças e loot dos subs, estoque, rega dos campos, buffs e o log de diagnóstico do plugin. Só personagens ativos enviam o log. O log tem nomes de personagens e mensagens do sistema do jogo, **nunca** chat de jogadores nem a chave da FC. O serviço guarda o estado atual, o loot dos últimos dias e o último log de cada personagem. Sem o envio ligado, nada sai do PC.
+## Privacy
+With sending on, the plugin sends to the FC's service: sub times, rank, parts and loot, supplies, field watering, buffs and the plugin's diagnostic log. Only active characters send the log. The log contains character names and game system messages, **never** player chat or the FC key. The service keeps the current state, the last few days of loot and the latest log for each character. With sending off, nothing leaves your PC.
 
-## Estrutura
-| Pasta / arquivo | O que é |
+## Layout
+| Folder / file | What it is |
 |---|---|
-| Raiz (`*.cs`) | Plugin. `Plugin.cs` liga tudo; `FcView.cs` junta os dados deste PC com os do serviço; `MainWindow.cs` é a janela. |
-| `service/` | Serviço na Cloudflare (Worker + Durable Object): recebe os dados, monta o painel, manda os avisos e responde aos comandos do Discord. |
-| `tests/` | Testes da lógica do plugin. |
-| `tools/` | Scripts: publicar na mão, reenviar o painel, agrupar avisos, baixar logs, registrar os comandos e o painel de teste. Os que precisam de chave pedem no terminal e não guardam. |
-| `REGRAS.md` | Regras do painel, dos avisos e da sincronia. |
-| `CHECKLIST.md`, `PLANO-*.md` | O que está feito, o que falta e o plano de cada versão. |
+| Root (`*.cs`) | The plugin. `Plugin.cs` wires everything up; `FcView.cs` merges this PC's data with the service's; `MainWindow.cs` is the main window. |
+| `service/` | Cloudflare service (Worker + Durable Object): receives the data, builds the panel, sends the alerts and answers Discord commands. |
+| `tests/` | Tests for the plugin logic. |
+| `tools/` | Scripts: manual publish, resend the panel, regroup alerts, download logs, register the commands and the test panel. The ones that need a key ask for it in the terminal and don't store it. |
+| `REGRAS.md` | Rules for the panel, alerts and sync. |
+| `CHECKLIST.md`, `PLANO-*.md` | What's done, what's left and each version's plan. |
 
-## Próximos passos
-- **0.10:** serviço para várias FCs.
-- **0.11:** o app do Discord vira bot, manda o painel no lugar do webhook e ganha um cadastro fácil com código.
-- **0.12:** painel em inglês e página de privacidade.
-- **1.0:** versão pública, distribuída por este repositório.
+## Roadmap
+- **0.10:** service for multiple FCs.
+- **0.11:** the Discord app becomes a bot, posts the panel instead of the webhook and gets easy sign-up with a code.
+- **0.12:** English panel and a privacy page.
+- **1.0:** public release, distributed through this repository.
