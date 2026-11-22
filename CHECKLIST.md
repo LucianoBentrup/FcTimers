@@ -43,6 +43,12 @@
 - [x] Rega e avisos por plot, no plugin e no Discord.
 - [x] Changelog no jogo, em inglês, que abre depois de cada atualização (texto para revisar).
 
+## 0.9: comandos no Discord (ver PLANO-0.9.md)
+- [ ] App do Discord criado, no servidor e com o endereço de interações configurado (Luciano).
+- [ ] Rota `/interactions` com verificação da assinatura do Discord.
+- [ ] Comandos `/painel`, `/avisos limpar`, `/loot`, `/estoque`, `/subs` e `/log`.
+- [ ] Script para registrar os comandos com o Client Secret.
+
 ## Versão pública (depois da 0.8)
 - [ ] Serviço para várias FCs, cada uma com os próprios dados.
 - [ ] Bot do Discord no lugar do webhook: o dono da FC adiciona o bot, usa um comando no canal e recebe um código curto para colar no `/fct`. Sem webhook, Cloudflare ou chave longa.
