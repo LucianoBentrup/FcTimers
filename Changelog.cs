@@ -20,6 +20,10 @@ public static class Changelog
             [
                 "FC Timers is now called FC Companion.",
                 "Submarines, loot, buffs and the garden are shown in tables, with colors for ready (green), soon (yellow) and urgent (red).",
+                "New Overview tab with cards for submarines, today's loot, garden, supplies and buffs, plus icons and progress bars.",
+                "Settings moved to their own window (the cog in the plugin installer or at the top of the main window), with a sync status dot always visible.",
+                "Welcome steps on first use, and alerts as Dalamud notifications with optional chat message and sound, configurable per type.",
+                "Hovering a remaining time shows the exact local time.",
             ]),
         ]),
         ("0.8.6",

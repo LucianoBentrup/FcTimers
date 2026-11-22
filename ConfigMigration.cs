@@ -7,7 +7,7 @@ namespace FcTimers;
 // Fica fora do Plugin para dar para testar sem o jogo.
 public static class ConfigMigration
 {
-    public const int CurrentVersion = 11;
+    public const int CurrentVersion = 12;
     public const string GeneralPlot = "geral";
     public const string GeneralPlotName = "Plantação";
     public const int VoyageHistoryDays = 60;
@@ -62,6 +62,10 @@ public static class ConfigMigration
                 plot.Name = PlotNames.IsUnnamed(clean) ? $"Canteiro {clean}".Trim() : clean;
             }
         }
+
+        // A 0.9 trouxe as boas-vindas: quem já usava o plugin não precisa ver.
+        if (config.Version < 12 && config.Characters.Values.Any(c => c.Enabled))
+            config.OnboardingDone = true;
 
         config.Version = CurrentVersion;
         PruneVoyages(config, now);

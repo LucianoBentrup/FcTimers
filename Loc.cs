@@ -8,6 +8,7 @@ public static class L
     private static string T(string pt, string en) => English ? en : pt;
 
     // Abas
+    public static string TabOverview => T("Visão geral", "Overview");
     public static string TabSubs => T("Submarinos", "Submarines");
     public static string TabLoot => T("Loot", "Loot");
     public static string TabBuffs => T("Buffs", "Buffs");
@@ -22,6 +23,28 @@ public static class L
     public static string NeedsRepair => T("precisa de reparo", "needs repair");
     public static string SetupLine(string build, string route, int tanks) => T($"{build} · {route} · {tanks} tanques por viagem", $"{build} · {route} · {tanks} tanks per voyage");
     public static string Supplies => T("Estoque", "Supplies");
+    public static string LootToday => T("Loot de hoje", "Today's loot");
+    public static string ColWater => T("Rega", "Watering");
+    public static string AddField => T("Cadastrar o objeto selecionado", "Add the targeted object");
+    public static string AtTime(string time) => T($"às {time}", $"at {time}");
+    public static string SyncOff => T("Sincronia desligada", "Sync off");
+    public static string SyncOk(string time) => T($"Sincronizado às {time}", $"Synced at {time}");
+    public static string SyncProblem => T("Sem conexão com o serviço", "Can't reach the service");
+    public static string Welcome => T("Bem-vindo ao FC Companion! Faltam só estes passos:", "Welcome to FC Companion! Just a few steps:");
+    public static string StepCharacter => T("Ativar este personagem para ler os dados", "Enable this character to read data");
+    public static string StepDiscord => T("Ligar o painel da FC no Discord (opcional)", "Connect the FC's Discord panel (optional)");
+    public static string StepData => T("Abrir a lista de subs na oficina e o baú da FC", "Open the submarine list in the workshop and the FC chest");
+    public static string EnableCharacter => T("Ativar", "Enable");
+    public static string Done => T("Pronto, esconder", "Done, hide this");
+    public static string Alerts => T("Avisos no jogo", "In-game alerts");
+    public static string AlertSubs => T("Submarino voltou", "Submarine is back");
+    public static string AlertWheels => T("Buff da mesa pronto", "Wheel buff ready");
+    public static string AlertPlots => T("Plantação pode ser regada", "Garden can be watered");
+    public static string AlertToast => T("Notificação na tela", "On-screen notification");
+    public static string AlertChat => T("Mensagem no chat", "Chat message");
+    public static string AlertSound => T("Som", "Sound");
+    public static string AlertSoundId => T("Som do chat (1 a 16)", "Chat sound (1 to 16)");
+    public static string Test => T("Testar", "Test");
     public static string ColSub => T("Sub", "Sub");
     public static string ColRank => T("Rank", "Rank");
     public static string ColReturn => T("Volta em", "Back in");

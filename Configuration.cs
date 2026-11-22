@@ -115,6 +115,18 @@ public class Configuration : IPluginConfiguration
     public string MarketWorld { get; set; } = string.Empty;
     public string HomeWorld { get; set; } = string.Empty;
     public string LastCharacterName { get; set; } = string.Empty;
+
+    // Boas-vindas da primeira vez, na Visão geral.
+    public bool OnboardingDone { get; set; }
+
+    // Avisos no jogo: o que avisa e como (notificação do Dalamud, chat e som).
+    public bool AlertSubs { get; set; } = true;
+    public bool AlertWheels { get; set; } = true;
+    public bool AlertPlots { get; set; } = true;
+    public bool AlertToast { get; set; } = true;
+    public bool AlertChat { get; set; }
+    public bool AlertSound { get; set; }
+    public int AlertSoundId { get; set; } = 1;
     public uint HomeDataCenter { get; set; }
 
     // Versão cujo changelog já foi mostrado.

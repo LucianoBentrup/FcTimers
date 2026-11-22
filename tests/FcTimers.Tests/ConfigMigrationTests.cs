@@ -60,6 +60,19 @@ public class ConfigMigrationTests
     }
 
     [Fact]
+    public void Quem_ja_usava_nao_ve_as_boas_vindas()
+    {
+        var old = new Configuration { Version = 11 };
+        old.Characters[1] = new CharacterRecord { Name = "Faire", Enabled = true };
+        ConfigMigration.Run(old, Now);
+        Assert.True(old.OnboardingDone);
+
+        var fresh = new Configuration();
+        ConfigMigration.Run(fresh, Now);
+        Assert.False(fresh.OnboardingDone);
+    }
+
+    [Fact]
     public void Viagens_com_mais_de_60_dias_saem_do_config()
     {
         var config = new Configuration();

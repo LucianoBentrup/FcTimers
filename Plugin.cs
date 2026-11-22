@@ -11,6 +11,7 @@ using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui.Dtr;
 using Dalamud.Game.Text;
+using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -54,10 +55,12 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] private static ITargetManager TargetManager { get; set; } = null!;
     [PluginService] private static IAddonLifecycle AddonLifecycle { get; set; } = null!;
     [PluginService] private static IPluginLog Log { get; set; } = null!;
+    [PluginService] private static INotificationManager Notifications { get; set; } = null!;
 
     private readonly WindowSystem windowSystem = new("FcTimers");
     private readonly MainWindow mainWindow;
     private readonly ChangelogWindow changelogWindow;
+    private readonly ConfigWindow configWindow;
     private readonly IDtrBarEntry dtrEntry;
     private readonly Dictionary<uint, string> companyStatuses;
     private readonly List<CompanyActionInfo> companyActions;
@@ -118,8 +121,10 @@ public sealed class Plugin : IDalamudPlugin
 
         mainWindow = new MainWindow(this);
         changelogWindow = new ChangelogWindow();
+        configWindow = new ConfigWindow(this);
         windowSystem.AddWindow(mainWindow);
         windowSystem.AddWindow(changelogWindow);
+        windowSystem.AddWindow(configWindow);
 
         // O changelog abre uma vez depois de cada atualização, nunca na primeira instalação.
         if (Config.LastChangelogVersion != Version)
@@ -148,14 +153,14 @@ public sealed class Plugin : IDalamudPlugin
 
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += mainWindow.Toggle;
-        PluginInterface.UiBuilder.OpenConfigUi += mainWindow.Toggle;
+        PluginInterface.UiBuilder.OpenConfigUi += configWindow.Toggle;
         Framework.Update += OnUpdate;
     }
 
     public void Dispose()
     {
         Framework.Update -= OnUpdate;
-        PluginInterface.UiBuilder.OpenConfigUi -= mainWindow.Toggle;
+        PluginInterface.UiBuilder.OpenConfigUi -= configWindow.Toggle;
         PluginInterface.UiBuilder.OpenMainUi -= mainWindow.Toggle;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         ChatGui.LogMessage -= OnLogMessage;
@@ -178,6 +183,41 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     public void SaveConfig() => PluginInterface.SavePluginConfig(Config);
+
+    public bool CurrentCharacterEnabled => characterEnabled;
+
+    public void OpenSettings() => configWindow.IsOpen = true;
+
+    public void EnableCurrentCharacter()
+    {
+        if (!Config.Characters.TryGetValue(CurrentCharacterId, out var character))
+            return;
+
+        character.Enabled = true;
+        characterEnabled = true;
+        SaveConfig();
+    }
+
+    // Pontinho no topo da janela: verde sincronizado, amarelo com problema, cinza desligado.
+    public (System.Numerics.Vector4 Color, string Text) SyncState()
+    {
+        if (!Config.SyncEnabled || Config.ServiceKey.Length == 0)
+            return (UiKit.Muted, L.SyncOff);
+        if (Sync.LastFetch is { } fetched && DateTime.Now - fetched < TimeSpan.FromMinutes(10) && !Sync.Status.StartsWith("Erro") && !Sync.Status.StartsWith("Sem"))
+            return (UiKit.Good, L.SyncOk($"{fetched:HH:mm}"));
+        return (UiKit.Soon, L.SyncProblem);
+    }
+
+    // Aviso no jogo: notificação do Dalamud, chat e som, conforme as configurações.
+    public void Notify(string message)
+    {
+        if (Config.AlertToast)
+            Notifications.AddNotification(new Notification { Title = "FC Companion", Content = message, Type = NotificationType.Info });
+        if (Config.AlertChat)
+            ChatGui.Print(message, "FC Companion");
+        if (Config.AlertSound)
+            FFXIVClientStructs.FFXIV.Client.UI.UIGlobals.PlayChatSoundEffect((uint)Math.Clamp(Config.AlertSoundId, 1, 16));
+    }
 
     public static string FormatRemaining(long seconds)
     {
@@ -924,12 +964,23 @@ public sealed class Plugin : IDalamudPlugin
     private void CheckAlerts(long now)
     {
         var due = new Dictionary<string, (long Time, string Message)>();
-        foreach (var sub in View.Subs.Where(s => s.ReturnTime != 0))
-            due[$"sub:{sub.Slot}"] = (sub.ReturnTime, L.SubReturned(sub.Name));
-        foreach (var wheel in View.Wheels)
-            due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, L.WheelReady(wheel.Name));
-        foreach (var plot in View.Plots.Where(p => p.NextWaterAt != 0))
-            due[$"plot:{plot.Key}"] = (plot.NextWaterAt, L.PlotReady(plot.Name));
+        if (Config.AlertSubs)
+        {
+            foreach (var sub in View.Subs.Where(s => s.ReturnTime != 0))
+                due[$"sub:{sub.Slot}"] = (sub.ReturnTime, L.SubReturned(sub.Name));
+        }
+
+        if (Config.AlertWheels)
+        {
+            foreach (var wheel in View.Wheels)
+                due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, L.WheelReady(wheel.Name));
+        }
+
+        if (Config.AlertPlots)
+        {
+            foreach (var plot in View.Plots.Where(p => p.NextWaterAt != 0))
+                due[$"plot:{plot.Key}"] = (plot.NextWaterAt, L.PlotReady(plot.Name));
+        }
 
         var changed = false;
         foreach (var (id, (time, message)) in due)
@@ -949,7 +1000,7 @@ public sealed class Plugin : IDalamudPlugin
                 continue;
 
             if (watched == time)
-                ChatGui.Print(message, "FC Companion");
+                Notify(message);
             changed = true;
         }
 

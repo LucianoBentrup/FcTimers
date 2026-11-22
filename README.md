@@ -64,6 +64,7 @@ Com o envio ligado, o plugin manda ao serviço da FC: horários, rank, peças e 
 - **Serviço:** em `service/`, `npm test` e `npm run test:integration` (sobe o serviço localmente com um Discord simulado; só no Windows). Publicar: `npx wrangler deploy`.
 - **CI:** a cada envio para `main` ou `dev`, o GitHub roda os testes do serviço e do plugin e compila o plugin com o Dalamud mais recente.
 - **Publicar uma versão:** subir a versão no `FcTimers.csproj`, escrever a entrada no `Changelog.cs`, juntar no `main` e criar a tag `vX.Y.Z` no último commit do `main`. O GitHub compila, grava `repo.json` e `dist/latest.zip` no `main` e cria a release. O `tools/gerar-repo.ps1` faz o mesmo na mão.
+- **Ícone e prints no instalador:** coloque `images/icon.png` e `images/screenshot-1.png`, `screenshot-2.png`… e eles entram no `repo.json` na próxima publicação.
 - O trabalho novo vai para o branch `dev` e entra no `main` junto com a versão.
 
 ## Próximos passos
