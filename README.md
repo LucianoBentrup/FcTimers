@@ -6,8 +6,6 @@ Plugin de Dalamud para FFXIV que acompanha a Free Company: submarinos, loot, est
 
 O plugin **só lê o que o jogo já mostra**. Ele não automatiza nada, não manda nada para os servidores do jogo e não abre telas sozinho. É uma ferramenta de terceiros: usar é uma escolha sua, e os termos do jogo valem para ela.
 
-> O nome mudou de **FC Timers** para **FC Companion** na 0.9. O nome interno do plugin e o link do repositório continuam os mesmos, então quem já usa recebe a atualização normalmente.
-
 ## O que faz
 
 **Submarinos**
@@ -41,7 +39,7 @@ O plugin **só lê o que o jogo já mostra**. Ele não automatiza nada, não man
    ```
    https://raw.githubusercontent.com/LucianoBentrup/FcTimers/main/repo.json
    ```
-3. Digite `/xlplugins` e instale o **FC Companion** (ou **FC Timers**, nas versões antigas).
+3. Digite `/xlplugins` e instale o **FC Companion**.
 
 ## Configurar
 1. Digite `/fct`, vá em **Configurações** e marque o seu personagem. Só personagens marcados leem e enviam dados.
