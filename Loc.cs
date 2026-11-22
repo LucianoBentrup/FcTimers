@@ -38,7 +38,7 @@ public static class L
     public static string Done => T("Pronto, esconder", "Done, hide this");
     public static string Alerts => T("Avisos no jogo", "In-game alerts");
     public static string AlertSubs => T("Submarino voltou", "Submarine is back");
-    public static string AlertWheels => T("Buff da mesa pronto", "Wheel buff ready");
+    public static string AlertWheels => T("Buff do Wheel Stand pronto", "Wheel Stand buff ready");
     public static string AlertPlots => T("Plantação pode ser regada", "Garden can be watered");
     public static string AlertToast => T("Notificação na tela", "On-screen notification");
     public static string AlertChat => T("Mensagem no chat", "Chat message");
@@ -82,8 +82,8 @@ public static class L
     public static string MarketHint => T("Itens que valem mais no market contam pelo preço do market (média das vendas recentes no Universalis).", "Items worth more on the market board count at the market price (average of recent sales on Universalis).");
 
     // Buffs
-    public static string Wheels => T("Mesa da roda", "Wheel stand");
-    public static string NoWheels => T("Nenhum buff registrado. Abra a mesa da roda na casa da FC.", "No wheels recorded. Open the wheel stand in the FC house.");
+    public static string Wheels => T("Wheel Stand", "Wheel Stand");
+    public static string NoWheels => T("Nenhum buff registrado. Abra o Wheel Stand na casa da FC.", "No wheels recorded. Open the Wheel Stand in the FC house.");
     public static string ActiveBuffs => T("Buffs ativos", "Active buffs");
     public static string None => T("Nenhum", "None");
 
