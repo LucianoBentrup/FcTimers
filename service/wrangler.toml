@@ -4,6 +4,10 @@ compatibility_date = "2026-10-01"
 
 [vars]
 ROLE_ID = "1566210740170399855"
+# App do Discord (FC Companion): ID e chave pública não são segredo. O servidor é o único que pode usar os comandos.
+DISCORD_APP_ID = "1574112157577117718"
+DISCORD_PUBLIC_KEY = "18071ee6dcc9a0926c51f499f4ace0ec214b4c9fbf3e6a582a0e598335db5d18"
+DISCORD_GUILD_ID = "1128490333819392112"
 
 [[durable_objects.bindings]]
 name = "FC_STATE"

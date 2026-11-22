@@ -71,7 +71,24 @@ function ok(name) {
 }
 
 const persist = mkdtempSync(join(tmpdir(), 'fc-timers-'));
-writeFileSync('.dev.vars', `DISCORD_WEBHOOK=http://127.0.0.1:${DISCORD_PORT}/api/webhooks/1/abc\nFC_KEY=${KEY}\nROLE_ID=999\n`);
+// Chave de teste do app do Discord, gerada aqui, para assinar os comandos como o Discord faz.
+const discordKeys = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+const discordPublic = Buffer.from(await crypto.subtle.exportKey('raw', discordKeys.publicKey)).toString('hex');
+writeFileSync('.dev.vars', `DISCORD_WEBHOOK=http://127.0.0.1:${DISCORD_PORT}/api/webhooks/1/abc\nFC_KEY=${KEY}\nROLE_ID=999\n`
+  + `DISCORD_PUBLIC_KEY=${discordPublic}\nDISCORD_GUILD_ID=42\nDISCORD_APP_ID=7\n`);
+
+async function interaction(payload, sign = true) {
+  const body = JSON.stringify(payload);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = sign
+    ? Buffer.from(await crypto.subtle.sign('Ed25519', discordKeys.privateKey, new TextEncoder().encode(timestamp + body))).toString('hex')
+    : '00'.repeat(64);
+  return fetch(`${service}/interactions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Signature-Ed25519': signature, 'X-Signature-Timestamp': timestamp },
+    body,
+  });
+}
 await new Promise((resolve) => { discord.listen(DISCORD_PORT, '127.0.0.1', resolve); });
 
 const worker = spawn(`npx wrangler dev --port ${SERVICE_PORT} --persist-to "${persist}" --log-level error`, { shell: true, stdio: 'ignore' });
@@ -215,6 +232,27 @@ try {
   assert.equal(logs.length, 1);
   assert.equal(logs[0].text, 'segundo');
   ok('o log de diagnóstico fica guardado no serviço');
+
+  // Comandos do Discord: assinatura, PING, permissão e respostas.
+  assert.equal((await interaction({ type: 1 }, false)).status, 401);
+  assert.deepEqual(await (await interaction({ type: 1 })).json(), { type: 1 });
+  const command = (name, permissions = '0', options) => ({
+    type: 2, guild_id: '42', token: 't', member: { permissions }, data: { name, ...(options ? { options } : {}) },
+  });
+  const subsReply = await (await interaction(command('subs'))).json();
+  assert.equal(subsReply.type, 4);
+  assert.equal(subsReply.data.flags, undefined);
+  assert.match(subsReply.data.content, /Ciela/);
+  const blocked = await (await interaction(command('painel'))).json();
+  assert.match(blocked.data.content, /Só quem gerencia o servidor/);
+  const otherGuild = await (await interaction({ ...command('subs'), guild_id: '1' })).json();
+  assert.match(otherGuild.data.content, /não está configurado/);
+  const logReply = await interaction(command('log', '32'));
+  assert.match(logReply.headers.get('content-type'), /multipart\/form-data/);
+  assert.match(await logReply.text(), /segundo/);
+  const panelReply = await (await interaction(command('painel', '32'))).json();
+  assert.match(panelReply.data.content, /Painel reenviado/);
+  ok('os comandos do Discord respondem com assinatura e permissão');
 
   console.log(`TODOS PASSARAM (${passed})`);
   exitCode = 0;

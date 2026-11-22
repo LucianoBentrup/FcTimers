@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Testes da lógica do plugin, sem o jogo e sem o Dalamud: compila só os arquivos que não dependem dele. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>FcTimers.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Configuration.cs" Link="Plugin/Configuration.cs" />
+    <Compile Include="../../ConfigMigration.cs" Link="Plugin/ConfigMigration.cs" />
+    <Compile Include="../../PlotNames.cs" Link="Plugin/PlotNames.cs" />
+    <Compile Include="../../Loot.cs" Link="Plugin/Loot.cs" />
+    <Compile Include="../../FcView.cs" Link="Plugin/FcView.cs" />
+    <Compile Include="../../ActiveBuffs.cs" Link="Plugin/ActiveBuffs.cs" />
+    <Compile Include="../../GameTime.cs" Link="Plugin/GameTime.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+</Project>

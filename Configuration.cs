@@ -49,6 +49,9 @@ public class WheelRecord
 public class CharacterRecord
 {
     public string Name { get; set; } = string.Empty;
+
+    // Servidor de origem, guardado ao logar. Aparece quando há personagens com o mesmo nome.
+    public string World { get; set; } = string.Empty;
     public bool Enabled { get; set; }
 }
 
@@ -96,6 +99,9 @@ public class PlotRecord
     // Vaso dentro de casa ou de quarto privado. Só esses aparecem pelo nome nos avisos do Discord.
     public bool Indoor { get; set; }
 
+    // Quando alguém deu o nome na janela. 0: nome automático, que o plugin pode corrigir sozinho.
+    public long NamedAt { get; set; }
+
     public long NextWaterAt => WateredAt + WaterIntervalSeconds;
     public long DieAt => WateredAt + DieAfterSeconds;
 }
@@ -103,7 +109,7 @@ public class PlotRecord
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 10;
+    public int Version { get; set; } = ConfigMigration.CurrentVersion;
 
     // "pt" ou "en". Vazio: segue o idioma do Dalamud.
     public string Language { get; set; } = string.Empty;
@@ -111,6 +117,19 @@ public class Configuration : IPluginConfiguration
     // Mundo ou data center dos preços do market. Vazio: o mundo de origem do último personagem marcado.
     public string MarketWorld { get; set; } = string.Empty;
     public string HomeWorld { get; set; } = string.Empty;
+    public string LastCharacterName { get; set; } = string.Empty;
+
+    // Boas-vindas da primeira vez, na Visão geral.
+    public bool OnboardingDone { get; set; }
+
+    // Avisos no jogo: o que avisa e como (notificação do Dalamud, chat e som).
+    public bool AlertSubs { get; set; } = true;
+    public bool AlertWheels { get; set; } = true;
+    public bool AlertPlots { get; set; } = true;
+    public bool AlertToast { get; set; } = true;
+    public bool AlertChat { get; set; }
+    public bool AlertSound { get; set; }
+    public int AlertSoundId { get; set; } = 1;
     public uint HomeDataCenter { get; set; }
 
     // Versão cujo changelog já foi mostrado.

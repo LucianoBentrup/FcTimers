@@ -25,7 +25,7 @@ Trocar os scripts do `tools/` (reenviar painel, reagrupar avisos, baixar logs) p
 | `/subs` | Volta, rank e desgaste de cada sub. | Todos |
 | `/log [personagem]` | Último log do plugin como arquivo (hoje: `baixar-logs.ps1`). | Gerenciar servidor |
 
-- As respostas de `/loot`, `/estoque`, `/subs` e `/log` aparecem só para quem pediu (efêmeras), para não encher o canal.
+- As respostas aparecem para todo o canal, sem marcar ninguém. Só o `/log` e as mensagens de erro ficam visíveis só para quem pediu.
 - `/painel` e `/avisos limpar` respondem na hora "Feito" e fazem o trabalho em seguida, porque o Discord só espera 3 segundos.
 - A permissão vem do próprio Discord (`default_member_permissions`), então não existe senha nova.
 

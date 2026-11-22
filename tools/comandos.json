@@ -1,0 +1,60 @@
+[
+  {
+    "name": "painel",
+    "description": "Apaga o painel e manda outro no fim do canal",
+    "default_member_permissions": "32"
+  },
+  {
+    "name": "avisos",
+    "description": "Avisos do FC Companion",
+    "default_member_permissions": "32",
+    "options": [
+      {
+        "type": 1,
+        "name": "limpar",
+        "description": "Troca avisos repetidos por avisos agrupados, sem notificar"
+      }
+    ]
+  },
+  {
+    "name": "loot",
+    "description": "Loot dos submarinos",
+    "options": [
+      {
+        "type": 3,
+        "name": "periodo",
+        "description": "Hoje ou os últimos 7 dias",
+        "choices": [
+          {
+            "name": "hoje",
+            "value": "dia"
+          },
+          {
+            "name": "semana",
+            "value": "semana"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "estoque",
+    "description": "Tanques, kits e quantas rodadas e reparos eles pagam"
+  },
+  {
+    "name": "subs",
+    "description": "Volta, rank e desgaste de cada submarino"
+  },
+  {
+    "name": "log",
+    "description": "Último log do plugin, como arquivo",
+    "default_member_permissions": "32",
+    "options": [
+      {
+        "type": 3,
+        "name": "personagem",
+        "description": "Nome do personagem (padrão: o log mais recente)"
+      }
+    ]
+  }
+]

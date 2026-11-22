@@ -1,0 +1,52 @@
+# Publica uma versão a partir de uma tag (ex.: v0.9.0): compila, gera repo.json e dist/latest.zip,
+# grava no main (é de lá que o Dalamud baixa) e cria a release no GitHub com o zip.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      DALAMUD_HOME: ${{ github.workspace }}\dalamud
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Conferir se a tag bate com a versão do plugin
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content FcTimers.csproj)).Project.PropertyGroup.Version
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "A tag ${{ github.ref_name }} não bate com a versão $version do FcTimers.csproj." }
+          if ((git rev-parse HEAD) -ne (git rev-parse "${{ github.ref_name }}^{commit}")) { throw "A tag precisa apontar para o último commit do main." }
+      - name: Baixar o Dalamud
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile dalamud.zip
+          Expand-Archive dalamud.zip -DestinationPath $env:DALAMUD_HOME
+      - run: dotnet test tests/FcTimers.Tests
+      - name: Gerar repo.json e dist/latest.zip
+        shell: pwsh
+        run: ./tools/gerar-repo.ps1
+      - name: Gravar no main
+        shell: pwsh
+        run: |
+          git config user.name "LucianoBentrup"
+          git config user.email "LucianoBentrup@users.noreply.github.com"
+          git add repo.json dist/latest.zip
+          git commit -m "Publish ${{ github.ref_name }} package"
+          git push origin main
+      - name: Criar a release no GitHub
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/latest.zip --title "FC Companion ${{ github.ref_name }}" --generate-notes

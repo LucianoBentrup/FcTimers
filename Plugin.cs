@@ -10,6 +10,8 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui.Dtr;
+using Dalamud.Game.Text;
+using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -32,10 +34,13 @@ public sealed class Plugin : IDalamudPlugin
     // e a 4015 ao plantar. Ainda falta confirmar no jogo que só aparecem nesses momentos.
     private const uint CropTendedMessage = 4017;
     private const uint SeedsPlantedMessage = 4015;
+
+    // Nos vasos de dentro de casa, cuidar da planta mostra outra mensagem ("The crops appear to be healthy.").
+    private const uint PotTendedMessage = 3450;
     private const uint FirstGardenMessage = 4000;
     private const uint LastGardenMessage = 4026;
-    private const string GeneralPlot = "geral";
-    private const string GeneralPlotName = "Plantação";
+    private const string GeneralPlot = ConfigMigration.GeneralPlot;
+    private const string GeneralPlotName = ConfigMigration.GeneralPlotName;
 
     // Telas que aparecem quando o resultado de uma viagem chega.
     private static readonly string[] ResultAddons = ["AirShipExplorationResult", "SubmersibleExplorationResult"];
@@ -53,10 +58,12 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] private static ITargetManager TargetManager { get; set; } = null!;
     [PluginService] private static IAddonLifecycle AddonLifecycle { get; set; } = null!;
     [PluginService] private static IPluginLog Log { get; set; } = null!;
+    [PluginService] private static INotificationManager Notifications { get; set; } = null!;
 
     private readonly WindowSystem windowSystem = new("FcTimers");
     private readonly MainWindow mainWindow;
     private readonly ChangelogWindow changelogWindow;
+    private readonly ConfigWindow configWindow;
     private readonly IDtrBarEntry dtrEntry;
     private readonly Dictionary<uint, string> companyStatuses;
     private readonly List<CompanyActionInfo> companyActions;
@@ -71,11 +78,15 @@ public sealed class Plugin : IDalamudPlugin
     private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
     private DateTime gardenWatchUntil = DateTime.MinValue;
+    private RemoteState? appliedRemote;
     private string lastScan = string.Empty;
     private DateTime nextScan = DateTime.MinValue;
     private DateTime autoLogAt = DateTime.MaxValue;
     private DateTime firstQueuedLog = DateTime.MaxValue;
     private int uploadedLines;
+
+    // Se o último personagem logado estava ativo. Vale depois de deslogar, para o log enviado ao fechar o jogo.
+    private bool lastCharacterActive;
 
     public Configuration Config { get; }
     public SyncClient Sync { get; }
@@ -116,8 +127,10 @@ public sealed class Plugin : IDalamudPlugin
 
         mainWindow = new MainWindow(this);
         changelogWindow = new ChangelogWindow();
+        configWindow = new ConfigWindow(this);
         windowSystem.AddWindow(mainWindow);
         windowSystem.AddWindow(changelogWindow);
+        windowSystem.AddWindow(configWindow);
 
         // O changelog abre uma vez depois de cada atualização, nunca na primeira instalação.
         if (Config.LastChangelogVersion != Version)
@@ -127,7 +140,7 @@ public sealed class Plugin : IDalamudPlugin
             SaveConfig();
         }
 
-        dtrEntry = DtrBar.Get("FC Timers");
+        dtrEntry = DtrBar.Get("FC Companion");
         dtrEntry.OnClick = _ => mainWindow.Toggle();
 
         CommandManager.AddHandler(Command, new CommandInfo(OnCommand)
@@ -146,14 +159,14 @@ public sealed class Plugin : IDalamudPlugin
 
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += mainWindow.Toggle;
-        PluginInterface.UiBuilder.OpenConfigUi += mainWindow.Toggle;
+        PluginInterface.UiBuilder.OpenConfigUi += configWindow.Toggle;
         Framework.Update += OnUpdate;
     }
 
     public void Dispose()
     {
         Framework.Update -= OnUpdate;
-        PluginInterface.UiBuilder.OpenConfigUi -= mainWindow.Toggle;
+        PluginInterface.UiBuilder.OpenConfigUi -= configWindow.Toggle;
         PluginInterface.UiBuilder.OpenMainUi -= mainWindow.Toggle;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         ChatGui.LogMessage -= OnLogMessage;
@@ -166,7 +179,7 @@ public sealed class Plugin : IDalamudPlugin
         windowSystem.RemoveAllWindows();
 
         // Fechando o jogo logo depois de uma coleta: o log que ainda não foi enviado vai agora, esperando no máximo 3 segundos.
-        if (autoLogAt != DateTime.MaxValue && Diagnostics.Written != uploadedLines)
+        if (autoLogAt != DateTime.MaxValue && Diagnostics.Written != uploadedLines && CanSendLog)
         {
             Diagnostics.Write("Enviando o log ao serviço (automático, plugin fechando)");
             Sync.SendLogNow(CurrentCharacterName(), LogText(), TimeSpan.FromSeconds(3));
@@ -176,6 +189,52 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     public void SaveConfig() => PluginInterface.SavePluginConfig(Config);
+
+    public bool CurrentCharacterEnabled => characterEnabled;
+
+    // Carregado pelo Dev Plugin Locations do Dalamud, e não pelo repositório.
+    public bool IsDevBuild => PluginInterface.IsDev;
+
+    // Só na versão de dev: mostra as boas-vindas de novo, para testar.
+    public void ReplayWelcome()
+    {
+        Config.OnboardingDone = false;
+        SaveConfig();
+        mainWindow.IsOpen = true;
+    }
+
+    public void OpenSettings() => configWindow.IsOpen = true;
+
+    public void EnableCurrentCharacter()
+    {
+        if (!Config.Characters.TryGetValue(CurrentCharacterId, out var character))
+            return;
+
+        character.Enabled = true;
+        characterEnabled = true;
+        SaveConfig();
+    }
+
+    // Pontinho no topo da janela: verde sincronizado, amarelo com problema, cinza desligado.
+    public (System.Numerics.Vector4 Color, string Text) SyncState()
+    {
+        if (!Config.SyncEnabled || Config.ServiceKey.Length == 0)
+            return (UiKit.Muted, L.SyncOff);
+        if (Sync.LastFetch is { } fetched && DateTime.Now - fetched < TimeSpan.FromMinutes(10) && !Sync.Status.StartsWith("Erro") && !Sync.Status.StartsWith("Sem"))
+            return (UiKit.Good, L.SyncOk($"{fetched:HH:mm}"));
+        return (UiKit.Soon, L.SyncProblem);
+    }
+
+    // Aviso no jogo: notificação do Dalamud, chat e som, conforme as configurações.
+    public void Notify(string message)
+    {
+        if (Config.AlertToast)
+            Notifications.AddNotification(new Notification { Title = "FC Companion", Content = message, Type = NotificationType.Info });
+        if (Config.AlertChat)
+            ChatGui.Print(message, "FC Companion");
+        if (Config.AlertSound)
+            FFXIVClientStructs.FFXIV.Client.UI.UIGlobals.PlayChatSoundEffect((uint)Math.Clamp(Config.AlertSoundId, 1, 16));
+    }
 
     public static string FormatRemaining(long seconds)
     {
@@ -188,56 +247,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void Migrate()
     {
-        if (Config.Version < 4)
-        {
-            Config.Voyages = LootLedger.MigrateKeys(Config.Voyages);
-            Config.Version = 4;
-        }
-
-        // Até a versão 0.6.0 a 5ª posição era lida como um submarino, duplicando timer e loot.
-        if (Config.Version < 5)
-        {
-            foreach (var key in Config.Subs.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^1])).ToList())
-                Config.Subs.Remove(key);
-            foreach (var key in Config.Voyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
-                Config.Voyages.Remove(key);
-            foreach (var key in Config.SyncedVoyages.Keys.Where(k => !LootLedger.IsRealSlot(k.Split(':')[^2])).ToList())
-                Config.SyncedVoyages.Remove(key);
-            Config.Version = 5;
-        }
-
-        // A versão de testes guardava uma rega só, que vira o plot "Plantação".
-        if (Config.Version < 7 && Config.Garden.WateredAt != 0 && !Config.Plots.ContainsKey(GeneralPlot))
-            Config.Plots[GeneralPlot] = new PlotRecord { Name = GeneralPlotName, WateredAt = Config.Garden.WateredAt };
-
-        // Quem já usava o plugin continua em português, sem depender do idioma do Dalamud.
-        if (Config.Version < 8 && Config.Language.Length == 0)
-            Config.Language = "pt";
-
-        // Até a 0.8.2 a posição na chave do plot seguia o idioma do PC (vírgula ou ponto), e um mesmo canteiro
-        // tinha chaves diferentes em cada PC. Fica a rega mais recente de cada canteiro.
-        if (Config.Version < 9)
-        {
-            foreach (var (oldKey, plot) in Config.Plots.Where(p => p.Key.Contains(',')).ToList())
-            {
-                Config.Plots.Remove(oldKey);
-                var newKey = oldKey.Replace(',', '.');
-                if (!Config.Plots.TryGetValue(newKey, out var other) || other.WateredAt < plot.WateredAt)
-                    Config.Plots[newKey] = plot;
-            }
-
-            foreach (var plot in Config.Plots.Values.Where(p => IsUnnamed(p.Name)))
-                plot.Name = $"Canteiro {plot.Name.Trim()}".Trim();
-        }
-
-        // A 0.8.3 guardava o ícone do jogo no nome dos canteiros de fora ("\uE034 1").
-        if (Config.Version < 10)
-        {
-            foreach (var plot in Config.Plots.Values.Where(p => IsUnnamed(p.Name)))
-                plot.Name = $"Canteiro {CleanName(plot.Name)}".Trim();
-        }
-
-        Config.Version = 10;
+        ConfigMigration.Run(Config, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         SaveConfig();
     }
 
@@ -247,7 +257,7 @@ public sealed class Plugin : IDalamudPlugin
         if (argument is "regar" or "water")
         {
             WaterAll("comando /fct regar");
-            ChatGui.Print(L.WateredAll, "FC Timers");
+            ChatGui.Print(L.WateredAll, "FC Companion");
             return;
         }
 
@@ -270,11 +280,89 @@ public sealed class Plugin : IDalamudPlugin
 
     public void RemovePlot(string key)
     {
-        if (Config.Plots.Remove(key))
+        Config.Plots.Remove(key);
+        SaveConfig();
+        Sync.ReportPlotRemoval(key, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        Diagnostics.Write($"Campo removido da lista: {key}");
+        QueueLogUpload();
+    }
+
+    // O objeto da casa selecionado agora, com o nome do menu quando houver ("Canteiro 2"). Null se não for um campo válido.
+    public (string Key, string Name, bool Indoor)? FieldTarget()
+    {
+        if (ReadHousingTarget() is not var (key, name, indoor))
+            return null;
+
+        if (lastHousingObject is { } menu && menu.Key == key)
+            name = menu.Name;
+        return (key, name.Length > 0 ? name : "Canteiro", indoor);
+    }
+
+    public void AddField(string key, string name, bool indoor)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (!Config.Plots.TryGetValue(key, out var plot))
         {
-            SaveConfig();
-            Diagnostics.Write($"Plot removido da lista: {key}");
+            plot = new PlotRecord();
+            Config.Plots[key] = plot;
         }
+
+        plot.Name = name;
+        plot.Indoor = indoor;
+        plot.NamedAt = now;
+        SaveConfig();
+        Sync.ReportPlotName(key, name, indoor, now);
+        Diagnostics.Write($"Campo cadastrado: {name} ({(indoor ? "dentro de casa" : "fora")}, chave {key})");
+        QueueLogUpload();
+    }
+
+    public void RenameField(string key, string name)
+    {
+        if (!Config.Plots.TryGetValue(key, out var plot) || plot.Name == name)
+            return;
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        plot.Name = name;
+        plot.NamedAt = now;
+        SaveConfig();
+        Sync.ReportPlotName(key, name, plot.Indoor, now);
+    }
+
+    // Nomes e remoções feitos em outro PC chegam pelo serviço e valem aqui também.
+    private void ApplyRemoteFields(RemoteState remote)
+    {
+        var changed = false;
+        foreach (var (key, removedAt) in remote.RemovedPlots)
+        {
+            if (Config.Plots.TryGetValue(key, out var plot) && Math.Max(plot.WateredAt, plot.NamedAt) <= removedAt)
+            {
+                Config.Plots.Remove(key);
+                Diagnostics.Write($"Campo removido em outro PC: {plot.Name}");
+                changed = true;
+            }
+        }
+
+        foreach (var (key, shared) in remote.Plots.Where(p => p.Value.NameAt > 0))
+        {
+            if (!Config.Plots.TryGetValue(key, out var plot))
+            {
+                if (remote.RemovedPlots.GetValueOrDefault(key) >= shared.NameAt)
+                    continue;
+                plot = new PlotRecord { Indoor = shared.Indoor };
+                Config.Plots[key] = plot;
+            }
+            else if (shared.NameAt <= plot.NamedAt)
+            {
+                continue;
+            }
+
+            plot.Name = shared.Name;
+            plot.NamedAt = shared.NameAt;
+            changed = true;
+        }
+
+        if (changed)
+            SaveConfig();
     }
 
     // O plot regado é o objeto selecionado no momento da mensagem. A chave junta a casa, o quarto e a posição dele,
@@ -299,8 +387,8 @@ public sealed class Plugin : IDalamudPlugin
             indoor = inside;
             var label = baseName.Trim().Length > 0 ? baseName.Trim() : "Canteiro";
             // O nome do menu ("Canteiro 2") corrige os nomes automáticos; um nome dado na janela fica.
-            var fromMenu = AutoName.IsMatch(label);
-            name = Config.Plots.TryGetValue(key, out var known) && !IsUnnamed(known.Name) && !(fromMenu && AutoName.IsMatch(known.Name))
+            var fromMenu = PlotNames.AutoName.IsMatch(label);
+            name = Config.Plots.TryGetValue(key, out var known) && (known.NamedAt > 0 || (!PlotNames.IsUnnamed(known.Name) && !(fromMenu && PlotNames.AutoName.IsMatch(known.Name))))
                 ? known.Name
                 : fromMenu ? label : $"{label} {Config.Plots.Values.Count(p => p.Name.StartsWith(label, StringComparison.Ordinal)) + 1}";
         }
@@ -336,7 +424,7 @@ public sealed class Plugin : IDalamudPlugin
         var position = target.Position;
         var coordinates = string.Join(':', new[] { position.X, position.Y, position.Z }.Select(v => v.ToString("F1", CultureInfo.InvariantCulture)));
         var key = $"{ClientState.TerritoryType}:{manager->GetCurrentWard()}:{manager->GetCurrentPlot()}:{manager->GetCurrentRoom()}:{coordinates}";
-        return (key, CleanName(target.Name.TextValue), manager->IsInside());
+        return (key, PlotNames.Clean(target.Name.TextValue), manager->IsInside());
     }
 
     private void OnUpdate(IFramework framework)
@@ -383,6 +471,12 @@ public sealed class Plugin : IDalamudPlugin
         L.English = LanguageCode == "en";
         Sync.WindowOpen = mainWindow.IsOpen;
         Sync.Tick();
+        if (Sync.Remote is { } remote && !ReferenceEquals(remote, appliedRemote))
+        {
+            appliedRemote = remote;
+            ApplyRemoteFields(remote);
+        }
+
         View = FcView.Build(Config, localReadings, Sync.Remote, Sync.RemoteOffset);
         CheckAlerts(now);
         UpdateDtr(now);
@@ -398,6 +492,7 @@ public sealed class Plugin : IDalamudPlugin
             return false;
 
         var name = player.Name.TextValue;
+
         var home = player.HomeWorld.ValueNullable;
         if (home is { } world && (world.Name.ToString() != Config.HomeWorld || world.DataCenter.RowId != Config.HomeDataCenter))
         {
@@ -406,15 +501,25 @@ public sealed class Plugin : IDalamudPlugin
             SaveConfig();
         }
 
+        var worldName = home?.Name.ToString() ?? string.Empty;
         if (!Config.Characters.TryGetValue(id, out var character))
         {
-            character = new CharacterRecord { Name = name };
+            character = new CharacterRecord { Name = name, World = worldName };
             Config.Characters[id] = character;
             SaveConfig();
         }
-        else if (character.Name != name)
+        else if (character.Name != name || (worldName.Length > 0 && character.World != worldName))
         {
             character.Name = name;
+            character.World = worldName.Length > 0 ? worldName : character.World;
+            SaveConfig();
+        }
+
+        // Guardado só para personagem ativo: é o nome do log enviado depois de deslogar.
+        lastCharacterActive = character.Enabled;
+        if (character.Enabled && Config.LastCharacterName != name)
+        {
+            Config.LastCharacterName = name;
             SaveConfig();
         }
 
@@ -548,14 +653,19 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     public string LogText()
-        => Diagnostics.Text($"FC Timers {Version} | fuso UTC{DateTimeOffset.Now:zzz} | gerado {DateTime.Now:dd/MM HH:mm}");
+        => Diagnostics.Text($"FC Companion {Version} | fuso UTC{DateTimeOffset.Now:zzz} | gerado {DateTime.Now:dd/MM HH:mm}");
 
+    // Depois de deslogar (o log que vai ao fechar o jogo), vale o último personagem que estava jogando.
     private string CurrentCharacterName()
-        => Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name : "Desconhecido";
+        => Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name
+            : Config.LastCharacterName.Length > 0 ? Config.LastCharacterName : "Desconhecido";
+
+    // Só personagem ativo manda log, seja automático, pelo botão ou ao fechar o jogo.
+    public bool CanSendLog => characterEnabled || (CurrentCharacterId == 0 && lastCharacterActive);
 
     public void SendLog(string source)
     {
-        if (!Sync.SendLog(CurrentCharacterName(), LogText()))
+        if (!CanSendLog || !Sync.SendLog(CurrentCharacterName(), LogText()))
             return;
 
         Diagnostics.Write($"Enviando o log ao serviço ({source})");
@@ -616,22 +726,23 @@ public sealed class Plugin : IDalamudPlugin
             }
         }
 
-        // Por 30 segundos depois do menu de um objeto da casa, toda mensagem do jogo vai para o log,
-        // para descobrir qual mensagem a rega de um vaso de dentro de casa mostra.
-        gardenWatchUntil = DateTime.UtcNow.AddSeconds(30);
+        // Por 30 segundos depois do menu de um canteiro ou vaso, as mensagens do sistema vão para o log,
+        // para descobrir qual mensagem a rega de um vaso de dentro de casa mostra. Chat de jogador nunca entra.
+        if (texts.Any(t => PlotNames.GardenMenu.IsMatch(t)))
+            gardenWatchUntil = DateTime.UtcNow.AddSeconds(30);
 
         // Os canteiros de fora não têm nome no alvo; o menu diz qual é ("6th Bed, 2nd Patch").
         if (ReadHousingTarget() is var (key, name, indoor))
         {
-            var patch = texts.Select(t => PatchPattern.Match(t)).FirstOrDefault(m => m.Success);
-            var label = patch != null ? $"Canteiro {patch.Groups[1].Value}" : name;
+            var patch = PlotNames.FromMenu(texts);
+            var label = patch ?? name;
             lastHousingObject = (key, label, indoor, DateTime.UtcNow);
 
             // Só de abrir o menu, um canteiro já conhecido com nome automático ganha o nome certo.
-            if (patch != null && Config.Plots.TryGetValue(key, out var known) && known.Name != label
-                && (IsUnnamed(known.Name) || AutoName.IsMatch(known.Name)))
+            if (patch != null && Config.Plots.TryGetValue(key, out var known) && known.Name != label && known.NamedAt == 0
+                && (PlotNames.IsUnnamed(known.Name) || PlotNames.AutoName.IsMatch(known.Name)))
             {
-                Diagnostics.Write($"Plot renomeado: {CleanName(known.Name)} -> {label} (chave {key})");
+                Diagnostics.Write($"Plot renomeado: {PlotNames.Clean(known.Name)} -> {label} (chave {key})");
                 known.Name = label;
                 SaveConfig();
             }
@@ -640,26 +751,25 @@ public sealed class Plugin : IDalamudPlugin
         Diagnostics.Write($"Menu de {target.Name.TextValue} ({target.ObjectKind}): {string.Join(" | ", texts)}");
     }
 
-    private static readonly Regex AutoName = new(@"^Canteiro \d+$", RegexOptions.Compiled);
-    private static readonly Regex PatchPattern = new(@"(\d+)(?:st|nd|rd|th) Patch", RegexOptions.Compiled);
-
-    // Nome vazio ou só um número, das versões que não sabiam o nome dos canteiros de fora.
-    private static bool IsUnnamed(string name) => CleanName(name).All(char.IsDigit);
-
-    // O jogo põe ícones (caracteres de uso privado) no nome de alguns objetos, que o Discord mostra como "▯".
-    private static string CleanName(string name)
-        => new string(name.Where(c => char.GetUnicodeCategory(c) is not (UnicodeCategory.PrivateUse or UnicodeCategory.Control or UnicodeCategory.Format)).ToArray()).Trim();
-
     private void OnLogMessage(ILogMessage message)
     {
         var id = message.LogMessageId;
+        if (id == PotTendedMessage)
+        {
+            Diagnostics.Write($"Mensagem do vaso {id}: {message.GameData.ValueNullable?.Text.ToString()}");
+            if (characterEnabled)
+                WaterTargetedPlot($"mensagem do jogo {id}");
+            return;
+        }
+
         if (id < FirstGardenMessage || id > LastGardenMessage)
         {
             if (DateTime.UtcNow < gardenWatchUntil)
-                {
-                    Diagnostics.Write($"Mensagem do jogo {id} depois do menu da casa: {message.GameData.ValueNullable?.Text.ToString()}");
-                    QueueLogUpload();
-                }
+            {
+                Diagnostics.Write($"Mensagem do jogo {id} depois do menu da plantação: {message.GameData.ValueNullable?.Text.ToString()}");
+                QueueLogUpload();
+            }
+
             return;
         }
 
@@ -670,12 +780,15 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnChatMessage(IChatMessage message)
     {
-        if (DateTime.UtcNow < gardenWatchUntil)
-            {
-                Diagnostics.Write($"Chat {message.LogKind} depois do menu da casa: {message.Message.TextValue}");
-                QueueLogUpload();
-            }
+        if (DateTime.UtcNow >= gardenWatchUntil || !SystemChat.Contains(message.LogKind))
+            return;
+
+        Diagnostics.Write($"Chat {message.LogKind} depois do menu da plantação: {message.Message.TextValue}");
+        QueueLogUpload();
     }
+
+    private static readonly HashSet<XivChatType> SystemChat =
+        [XivChatType.SystemMessage, XivChatType.LootNotice, XivChatType.GatheringSystemMessage, XivChatType.ErrorMessage];
 
     public string MarketWorld => Config.MarketWorld.Length > 0 ? Config.MarketWorld : Config.HomeWorld;
 
@@ -884,12 +997,23 @@ public sealed class Plugin : IDalamudPlugin
     private void CheckAlerts(long now)
     {
         var due = new Dictionary<string, (long Time, string Message)>();
-        foreach (var sub in View.Subs.Where(s => s.ReturnTime != 0))
-            due[$"sub:{sub.Slot}"] = (sub.ReturnTime, L.SubReturned(sub.Name));
-        foreach (var wheel in View.Wheels)
-            due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, L.WheelReady(wheel.Name));
-        foreach (var plot in View.Plots)
-            due[$"plot:{plot.Key}"] = (plot.NextWaterAt, L.PlotReady(plot.Name));
+        if (Config.AlertSubs)
+        {
+            foreach (var sub in View.Subs.Where(s => s.ReturnTime != 0))
+                due[$"sub:{sub.Slot}"] = (sub.ReturnTime, L.SubReturned(sub.Name));
+        }
+
+        if (Config.AlertWheels)
+        {
+            foreach (var wheel in View.Wheels)
+                due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, L.WheelReady(wheel.Name));
+        }
+
+        if (Config.AlertPlots)
+        {
+            foreach (var plot in View.Plots.Where(p => p.NextWaterAt != 0))
+                due[$"plot:{plot.Key}"] = (plot.NextWaterAt, L.PlotReady(plot.Name));
+        }
 
         var changed = false;
         foreach (var (id, (time, message)) in due)
@@ -909,7 +1033,7 @@ public sealed class Plugin : IDalamudPlugin
                 continue;
 
             if (watched == time)
-                ChatGui.Print(message, "FC Timers");
+                Notify(message);
             changed = true;
         }
 

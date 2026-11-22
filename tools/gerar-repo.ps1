@@ -21,6 +21,15 @@ $manifest | Add-Member -NotePropertyName 'DownloadLinkUpdate' -NotePropertyValue
 $manifest | Add-Member -NotePropertyName 'DownloadLinkTesting' -NotePropertyValue $download -Force
 $manifest | Add-Member -NotePropertyName 'IsHide' -NotePropertyValue $false -Force
 $manifest | Add-Member -NotePropertyName 'IsTestingExclusive' -NotePropertyValue $false -Force
+# Ícone e prints aparecem no instalador do Dalamud quando existem em images/ (icon.png, screenshot-*.png).
+$images = Join-Path $root 'images'
+if (Test-Path (Join-Path $images 'icon.png')) {
+    $manifest | Add-Member -NotePropertyName 'IconUrl' -NotePropertyValue "$rawBase/images/icon.png" -Force
+}
+$shots = @(Get-ChildItem $images -Filter 'screenshot-*.png' -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { "$rawBase/images/$($_.Name)" })
+if ($shots.Count -gt 0) {
+    $manifest | Add-Member -NotePropertyName 'ImageUrls' -NotePropertyValue $shots -Force
+}
 $manifest | Add-Member -NotePropertyName 'LastUpdate' -NotePropertyValue ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -Force
 
 $json = ConvertTo-Json @($manifest) -Depth 5

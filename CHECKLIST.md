@@ -45,15 +45,18 @@
 
 ## 0.9: comandos no Discord (ver PLANO-0.9.md)
 - [ ] App do Discord criado, no servidor e com o endereço de interações configurado (Luciano).
-- [ ] Rota `/interactions` com verificação da assinatura do Discord.
-- [ ] Comandos `/painel`, `/avisos limpar`, `/loot`, `/estoque`, `/subs` e `/log`.
-- [ ] Script para registrar os comandos com o Client Secret.
+- [x] Rota `/interactions` com verificação da assinatura do Discord.
+- [x] Comandos `/painel`, `/avisos limpar`, `/loot`, `/estoque`, `/subs` e `/log`.
+- [x] Script para registrar os comandos com o Client Secret.
+- [x] Seção Campos na aba Plantação, com nomes e remoções sincronizados.
+- [x] Nome que aparece: FC Companion.
 
 ## Versão pública (depois da 0.8)
 - [ ] Serviço para várias FCs, cada uma com os próprios dados.
 - [ ] Bot do Discord no lugar do webhook: o dono da FC adiciona o bot, usa um comando no canal e recebe um código curto para colar no `/fct`. Sem webhook, Cloudflare ou chave longa.
 - [ ] Painel e avisos do Discord em inglês também.
-- [ ] Pedido de entrada no repositório oficial do Dalamud, com a política de privacidade.
+- [ ] Distribuir pelo repositório próprio (o link do `repo.json`), com uma página de privacidade.
+- [ ] Repositório oficial do Dalamud: não está nos planos por enquanto. Se um dia for, exige declarar o uso de IA e saber explicar o código (ver política de IA do repositório oficial).
 
 ## Antes de publicar
 - [ ] Testar uma coleta completa dos 4 subs e comparar com o relatório do jogo e com o baú.

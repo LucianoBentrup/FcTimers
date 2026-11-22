@@ -8,6 +8,7 @@ public static class L
     private static string T(string pt, string en) => English ? en : pt;
 
     // Abas
+    public static string TabOverview => T("Visão geral", "Overview");
     public static string TabSubs => T("Submarinos", "Submarines");
     public static string TabLoot => T("Loot", "Loot");
     public static string TabBuffs => T("Buffs", "Buffs");
@@ -22,11 +23,50 @@ public static class L
     public static string NeedsRepair => T("precisa de reparo", "needs repair");
     public static string SetupLine(string build, string route, int tanks) => T($"{build} · {route} · {tanks} tanques por viagem", $"{build} · {route} · {tanks} tanks per voyage");
     public static string Supplies => T("Estoque", "Supplies");
+    public static string LootToday => T("Loot de hoje", "Today's loot");
+    public static string ColWater => T("Rega", "Watering");
+    public static string AddField => T("Cadastrar o objeto selecionado", "Add the targeted object");
+    public static string AtTime(string time) => T($"às {time}", $"at {time}");
+    public static string SyncOff => T("Sincronia desligada", "Sync off");
+    public static string SyncOk(string time) => T($"Sincronizado às {time}", $"Synced at {time}");
+    public static string SyncProblem => T("Sem conexão com o serviço", "Can't reach the service");
+    public static string Welcome => T("Bem-vindo ao FC Companion! Faltam só estes passos:", "Welcome to FC Companion! Just a few steps:");
+    public static string StepCharacter => T("Ativar este personagem para ler os dados", "Enable this character to read data");
+    public static string StepDiscord => T("Ligar o painel da FC no Discord (opcional)", "Connect the FC's Discord panel (optional)");
+    public static string StepData => T("Abrir a lista de subs na oficina e o baú da FC", "Open the submarine list in the workshop and the FC chest");
+    public static string EnableCharacter => T("Ativar", "Enable");
+    public static string Done => T("Pronto, esconder", "Done, hide this");
+    public static string Alerts => T("Avisos no jogo", "In-game alerts");
+    public static string AlertSubs => T("Submarino voltou", "Submarine is back");
+    public static string AlertWheels => T("Buff do Wheel Stand pronto", "Wheel Stand buff ready");
+    public static string AlertPlots => T("Plantação pode ser regada", "Garden can be watered");
+    public static string AlertToast => T("Notificação na tela", "On-screen notification");
+    public static string AlertChat => T("Mensagem no chat", "Chat message");
+    public static string AlertSound => T("Som", "Sound");
+    public static string AlertSoundId => T("Som do chat (1 a 16)", "Chat sound (1 to 16)");
+    public static string Test => T("Testar", "Test");
+    public static string SendLogInactive => T("Só um personagem ativo envia o log. Ative este personagem nas configurações.", "Only an enabled character sends the log. Enable this character in the settings.");
+    public static string ReplayWelcome => T("Testar boas-vindas", "Test welcome");
+    public static string DevOnly => T("Só aparece na versão de dev.", "Only shown in the dev build.");
+    public static string ColSub => T("Sub", "Sub");
+    public static string ColRank => T("Rank", "Rank");
+    public static string ColReturn => T("Volta em", "Back in");
+    public static string ColParts => T("Peças", "Parts");
+    public static string ColItem => T("Item", "Item");
+    public static string ColCount => T("Qtd.", "Qty");
+    public static string ColGil => T("Gil", "Gil");
+    public static string ColBuff => T("Buff", "Buff");
+    public static string ColReady => T("Pronto em", "Ready in");
+    public static string ColEnds => T("Acaba em", "Ends in");
+    public static string ColField => T("Campo", "Field");
+    public static string ColState => T("Estado", "State");
+    public static string ColName => T("Nome", "Name");
+    public static string ColPlace => T("Local", "Place");
     public static string NoSupplies => T("Nenhum dado ainda. Abra a aba do baú da FC onde ficam os tanques.", "No data yet. Open the FC chest tab where the tanks are kept.");
     public static string Tanks(string count) => T($"Tanques de ceruleum: {count}", $"Ceruleum tanks: {count}");
     public static string Kits(string count) => T($"Kits de reparo: {count}", $"Repair materials: {count}");
-    public static string Rounds(int rounds) => rounds == 1 ? T("≈ 1 rodada", "≈ 1 round") : T($"≈ {rounds} rodadas", $"≈ {rounds} rounds");
-    public static string Repairs(int repairs, int subs) => repairs == 1 ? T($"≈ 1 reparo dos {subs}", $"≈ 1 repair of all {subs}") : T($"≈ {repairs} reparos dos {subs}", $"≈ {repairs} repairs of all {subs}");
+    public static string Rounds(int rounds) => rounds == 1 ? T("~ 1 rodada", "~ 1 round") : T($"~ {rounds} rodadas", $"~ {rounds} rounds");
+    public static string Repairs(int repairs, int subs) => repairs == 1 ? T($"~ 1 reparo dos {subs}", $"~ 1 repair of all {subs}") : T($"~ {repairs} reparos dos {subs}", $"~ {repairs} repairs of all {subs}");
     public static string CountedNow => T("Contado agora, no baú da FC e no inventário.", "Counted just now, from the FC chest and inventory.");
     public static string CountedAgo(string time) => T($"Contado há {time}, no baú da FC e no inventário.", $"Counted {time} ago, from the FC chest and inventory.");
 
@@ -42,13 +82,22 @@ public static class L
     public static string MarketHint => T("Itens que valem mais no market contam pelo preço do market (média das vendas recentes no Universalis).", "Items worth more on the market board count at the market price (average of recent sales on Universalis).");
 
     // Buffs
-    public static string Wheels => T("Mesa da roda", "Wheel stand");
-    public static string NoWheels => T("Nenhum buff registrado. Abra a mesa da roda na casa da FC.", "No wheels recorded. Open the wheel stand in the FC house.");
+    public static string Wheels => T("Wheel Stand", "Wheel Stand");
+    public static string NoWheels => T("Nenhum buff registrado. Abra o Wheel Stand na casa da FC.", "No wheels recorded. Open the Wheel Stand in the FC house.");
     public static string ActiveBuffs => T("Buffs ativos", "Active buffs");
     public static string None => T("Nenhum", "None");
 
     // Plantação
-    public static string NoPlots => T("Nenhuma rega registrada. Regue um plot com o plugin ligado.", "No watering recorded. Water a plot with the plugin enabled.");
+    public static string NoPlots => T("Nenhum campo ainda. Selecione um canteiro ou vaso da casa e clique em +.", "No fields yet. Target a garden patch or pot and click +.");
+    public static string Fields => T("Campos", "Fields");
+    public static string AddFieldHint => T("Selecione um canteiro ou vaso da casa para cadastrar.", "Target a garden patch or pot to add it.");
+    public static string FieldExists => T("Esse objeto já está na lista.", "This object is already listed.");
+    public static string FieldName => T("Nome do campo", "Field name");
+    public static string Save => T("Salvar", "Save");
+    public static string Cancel => T("Cancelar", "Cancel");
+    public static string NoWaterYet => T("sem rega ainda", "not watered yet");
+    public static string Inside => T("dentro", "inside");
+    public static string Outside => T("fora", "outside");
     public static string Remove => T("Remover", "Remove");
     public static string WaterAll => T("Reguei todos agora", "Watered all now");
     public static string WaterAllHint => T("ou /fct regar. Cada plot também é registrado sozinho ao regar.", "or /fct water. Each plot is also picked up on its own when watered.");
@@ -61,6 +110,7 @@ public static class L
     public static string Language => T("Idioma", "Language");
     public static string Characters => T("Personagens que leem e enviam dados", "Characters that read and send data");
     public static string Current => T("atual", "current");
+    public static string UnknownWorld => T("logue para ver o servidor", "log in to see the world");
     public static string SyncEnabled => T("Enviar e receber dados do painel da FC", "Send and receive FC panel data");
     public static string ServiceUrl => T("Endereço do serviço", "Service address");
     public static string ServiceKey => T("Chave da FC", "FC key");

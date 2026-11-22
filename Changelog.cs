@@ -9,6 +9,24 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.9.0",
+        [
+            ("Added",
+            [
+                "Discord commands: /painel, /avisos limpar, /loot, /estoque, /subs and /log, answered by the FC Companion app.",
+                "Fields section in the Garden tab: target a garden patch or pot and press + to add it with a name. Names and removals are shared with the other members.",
+            ]),
+            ("Changed",
+            [
+                "FC Timers is now called FC Companion.",
+                "Submarines, loot, buffs and the garden are shown in tables, with colors for ready (green), soon (yellow) and urgent (red).",
+                "New Overview tab with cards for submarines, today's loot, garden, supplies and buffs, plus icons and progress bars.",
+                "Settings moved to their own window (the cog in the plugin installer or at the top of the main window), with a sync status dot always visible.",
+                "Welcome steps on first use, and alerts as Dalamud notifications with optional chat message and sound, configurable per type.",
+                "Hovering a remaining time shows the exact local time.",
+                "Only enabled characters send the diagnostic log, including the one sent when the game closes.",
+            ]),
+        ]),
         ("0.8.6",
         [
             ("Changed",
@@ -143,7 +161,7 @@ public static class Changelog
 
 public sealed class ChangelogWindow : Window
 {
-    public ChangelogWindow() : base("FC Timers - What's new###FcTimersChangelog")
+    public ChangelogWindow() : base("FC Companion - What's new###FcTimersChangelog")
     {
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(420, 200) };
     }

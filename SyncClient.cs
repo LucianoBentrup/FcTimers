@@ -28,6 +28,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private sealed record PendingBuffs(List<BuffReading> Slots, DateTime ReadAt);
     private sealed record PendingActive(List<ActiveBuffReading> Buffs, DateTime ReadAt);
     private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, bool Indoor, DateTime ReadAt);
+    private sealed record PendingName(string Key, string Name, bool Indoor, long At);
     private sealed record PendingSupplies(int Tanks, int Kits, DateTime ReadAt);
     private sealed record SendResult(bool Success, string Status);
 
@@ -41,6 +42,10 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private PendingActive? pendingActive;
     private readonly Dictionary<string, string> lastPlots = [];
     private readonly Dictionary<string, PendingPlot> pendingPlots = [];
+    private readonly Dictionary<string, PendingName> pendingNames = [];
+    private readonly Dictionary<string, long> pendingRemovals = [];
+    private List<PendingName> sendingNames = [];
+    private List<KeyValuePair<string, long>> sendingRemovals = [];
     private long lastSupplies;
     private PendingSupplies? pendingSupplies;
     private PendingSupplies? sendingSupplies;
@@ -127,6 +132,22 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, indoor, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime);
     }
 
+    // Nome dado ou campo cadastrado na janela. O serviço guarda e manda para os outros PCs.
+    public void ReportPlotName(string key, string name, bool indoor, long at)
+    {
+        if (Enabled)
+            pendingNames[key] = new PendingName(key, name, indoor, at);
+    }
+
+    public void ReportPlotRemoval(string key, long at)
+    {
+        if (!Enabled)
+            return;
+
+        pendingNames.Remove(key);
+        pendingRemovals[key] = at;
+    }
+
     // Vale a partir de quando a contagem mudou, e não do envio, para uma contagem antiga não vencer uma nova.
     public void ReportSupplies(int tanks, int kits, long changedAt)
     {
@@ -191,7 +212,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
         if (sendingLog is { IsCompleted: true })
         {
-            LogStatus = sendingLog.Result;
+            LogStatus = Outcome(sendingLog, "Erro ao enviar o log");
             sendingLog = null;
             log($"Diagnóstico: {LogStatus}");
         }
@@ -201,7 +222,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             if (!sending.IsCompleted)
                 return;
 
-            Finish(sending.Result);
+            Finish(sending.IsCompletedSuccessfully ? sending.Result : new SendResult(false, Failure(sending, "Erro ao enviar")));
             sending = null;
         }
 
@@ -226,13 +247,15 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             nextVoyageScan = sendingVoyages.Count == MaxVoyagesPerRequest ? DateTime.MinValue : DateTime.UtcNow + VoyageScanDelay;
         }
 
-        if (pendingSubs.Count == 0 && pendingBuffs == null && pendingActive == null && pendingPlots.Count == 0 && pendingSupplies == null && sendingVoyages.Count == 0)
+        if (pendingSubs.Count == 0 && pendingBuffs == null && pendingActive == null && pendingPlots.Count == 0 && pendingNames.Count == 0 && pendingRemovals.Count == 0 && pendingSupplies == null && sendingVoyages.Count == 0)
             return;
 
         sendingSubs = pendingSubs.Values.ToList();
         sendingBuffs = pendingBuffs;
         sendingActive = pendingActive;
         sendingPlots = pendingPlots.Values.ToList();
+        sendingNames = pendingNames.Values.ToList();
+        sendingRemovals = pendingRemovals.ToList();
         sendingSupplies = pendingSupplies;
         sending = SendAsync(BuildBody(DateTime.UtcNow), config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim());
     }
@@ -269,6 +292,8 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
                 buffs = sendingActive.Buffs.Select(b => new { name = b.Name, seconds = b.Seconds }),
             },
             supplies = sendingSupplies == null ? null : new { tanks = sendingSupplies.Tanks, kits = sendingSupplies.Kits, age = Age(sendingSupplies.ReadAt, now) },
+            plotNames = sendingNames.Select(n => new { key = n.Key, name = n.Name, indoor = n.Indoor, at = n.At }),
+            plotRemovals = sendingRemovals.Select(r => new { key = r.Key, at = r.Value }),
             plots = sendingPlots.Select(p => new { key = p.Key, name = p.Name, nextWaterAt = p.NextWaterAt, dieAt = p.DieAt, indoor = p.Indoor, age = Age(p.ReadAt, now) }),
             voyages = sendingVoyages.Select(v =>
             {
@@ -314,7 +339,9 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             if (!fetching.IsCompleted)
                 return;
 
-            var state = fetching.Result;
+            var state = fetching.IsCompletedSuccessfully ? fetching.Result : null;
+            if (fetching.IsFaulted)
+                log(Failure(fetching, "Erro ao receber"));
             fetching = null;
             if (state != null)
             {
@@ -385,6 +412,12 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         if (ReferenceEquals(pendingSupplies, sendingSupplies))
             pendingSupplies = null;
 
+        foreach (var name in sendingNames.Where(n => ReferenceEquals(pendingNames.GetValueOrDefault(n.Key), n)))
+            pendingNames.Remove(name.Key);
+
+        foreach (var removal in sendingRemovals.Where(r => pendingRemovals.GetValueOrDefault(r.Key) == r.Value))
+            pendingRemovals.Remove(removal.Key);
+
         foreach (var plot in sendingPlots.Where(p => ReferenceEquals(pendingPlots.GetValueOrDefault(p.Key), p)))
             pendingPlots.Remove(plot.Key);
 
@@ -397,6 +430,12 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         if (sendingVoyages.Count > 0)
             save();
     }
+
+    // Uma tarefa que terminou com erro vira uma mensagem, em vez de jogar a exceção na thread do jogo.
+    private static string Outcome(Task<string> task, string error) => task.IsCompletedSuccessfully ? task.Result : Failure(task, error);
+
+    private static string Failure(Task task, string error)
+        => $"{error}: {task.Exception?.GetBaseException().Message ?? "cancelado"}";
 
     private static long Age(DateTime readAt, DateTime now) => Math.Max(0, (long)(now - readAt).TotalSeconds);
 
