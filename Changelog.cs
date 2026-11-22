@@ -19,6 +19,7 @@ public static class Changelog
             ("Changed",
             [
                 "FC Timers is now called FC Companion.",
+                "Submarines, loot, buffs and the garden are shown in tables, with colors for ready (green), soon (yellow) and urgent (red).",
             ]),
         ]),
         ("0.8.6",

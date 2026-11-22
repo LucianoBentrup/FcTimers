@@ -52,36 +52,74 @@ public class MainWindow : Window
             draw();
     }
 
+    private const ImGuiTableFlags TableFlags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.SizingStretchProp;
+
+    // Verde: pronto. Amarelo: falta menos de 1 hora. Vermelho: precisa de atenção.
+    private static readonly Vector4 Good = new(0.45f, 0.85f, 0.45f, 1f);
+    private static readonly Vector4 Soon = new(0.95f, 0.80f, 0.30f, 1f);
+    private static readonly Vector4 Bad = new(1f, 0.45f, 0.35f, 1f);
+
+    // Abre uma tabela com cabeçalho; o using fecha. Devolve null se a tabela não aparece neste frame.
+    private static IDisposable? Table(string id, params string[] columns)
+    {
+        if (!ImGui.BeginTable(id, columns.Length, TableFlags))
+            return null;
+
+        foreach (var column in columns)
+            ImGui.TableSetupColumn(column);
+        ImGui.TableHeadersRow();
+        return EndTable;
+    }
+
+    private static readonly TableEnd EndTable = new();
+
+    private sealed class TableEnd : IDisposable
+    {
+        public void Dispose() => ImGui.EndTable();
+    }
+
+    private static void Cell(string text, Vector4? color = null)
+    {
+        ImGui.TableNextColumn();
+        if (color is { } tint)
+            ImGui.TextColored(tint, text);
+        else
+            ImGui.TextUnformatted(text);
+    }
+
+    private static Vector4? TimeColor(long until, long now) => until <= now ? Good : until - now < 3600 ? Soon : null;
+
     private static void DrawSubs(FcView view, long now)
     {
         if (view.Subs.Count == 0)
             ImGui.TextUnformatted(L.NoSubs);
 
-        // Build e rota numa linha discreta. Se os subs forem diferentes, cada um mostra a sua.
+        // Build e rota numa linha discreta. Se os subs forem diferentes, cada um mostra a sua na tabela.
         var setups = view.Subs.Select(s => s.Details).Where(d => d != null && d.Build.Length > 0)
             .Select(d => L.SetupLine(d!.Build, d.Route, d.TanksPerVoyage)).Distinct().ToList();
         if (setups.Count == 1)
             ImGui.TextDisabled(setups[0]);
 
-        foreach (var sub in view.Subs.OrderBy(s => s.ReturnTime))
+        if (view.Subs.Count > 0)
         {
-            var details = sub.Details;
-            var rank = details == null ? string.Empty : $" (R{details.Rank}, {details.ExpPercent}%)";
-            var state = sub.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(sub.ReturnTime - now);
-            ImGui.TextUnformatted($"{sub.Name}{rank}: {state}");
-
-            if (details?.Condition is { } condition && condition < RepairShow)
+            using var table = Table("##subs", L.ColSub, L.ColRank, L.ColReturn, L.ColParts);
+            if (table != null)
             {
-                ImGui.SameLine();
-                var text = $"{L.Wear($"{Math.Floor(condition)}%")}{(condition < RepairLow ? $", {L.NeedsRepair}" : string.Empty)}";
-                if (condition < RepairLow)
-                    ImGui.TextColored(new Vector4(1f, 0.45f, 0.35f, 1f), text);
-                else
-                    ImGui.TextDisabled(text);
+                foreach (var sub in view.Subs.OrderBy(s => s.ReturnTime))
+                {
+                    var details = sub.Details;
+                    ImGui.TableNextRow();
+                    Cell(sub.Name);
+                    if (setups.Count > 1 && details != null && ImGui.IsItemHovered())
+                        ImGui.SetTooltip(L.SetupLine(details.Build, details.Route, details.TanksPerVoyage));
+                    Cell(details == null ? "-" : $"R{details.Rank} · {details.ExpPercent}%");
+                    Cell(sub.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(sub.ReturnTime - now), sub.ReturnTime == 0 ? null : TimeColor(sub.ReturnTime, now));
+                    if (details?.Condition is { } condition)
+                        Cell($"{Math.Floor(condition)}%", condition < RepairLow ? Bad : condition < RepairShow ? Soon : null);
+                    else
+                        Cell("-");
+                }
             }
-
-            if (setups.Count > 1 && details != null)
-                ImGui.TextDisabled($"  {L.SetupLine(details.Build, details.Route, details.TanksPerVoyage)}");
         }
 
         ImGui.Spacing();
@@ -126,13 +164,22 @@ public class MainWindow : Window
             if (!ImGui.CollapsingHeader(label, flags))
                 continue;
 
+            using var table = Table($"##loot{day.Key:yyyyMMdd}", L.ColItem, L.ColCount, L.ColGil);
+            if (table == null)
+                continue;
+
             var items = all
                 .GroupBy(i => i.Name)
                 .Select(g => (Name: g.Key, Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Best), Market: g.Any(i => i.IsMarket)))
                 .OrderByDescending(i => i.Value);
 
             foreach (var item in items)
-                ImGui.TextUnformatted($"{item.Count}x {item.Name}: {item.Value:N0} gil{(item.Market ? $" ({L.MarketTag})" : string.Empty)}");
+            {
+                ImGui.TableNextRow();
+                Cell(item.Name);
+                Cell($"{item.Count}");
+                Cell($"{item.Value:N0}{(item.Market ? $" ({L.MarketTag})" : string.Empty)}", item.Market ? Soon : null);
+            }
         }
     }
 
@@ -141,20 +188,43 @@ public class MainWindow : Window
         ImGui.TextUnformatted(L.Wheels);
         ImGui.Separator();
         if (view.Wheels.Count == 0)
+        {
             ImGui.TextUnformatted(L.NoWheels);
-
-        foreach (var wheel in view.Wheels.OrderBy(w => w.ReadyTime))
-            ImGui.TextUnformatted($"{wheel.Name}: {Plugin.FormatRemaining(wheel.ReadyTime - now)}");
+        }
+        else
+        {
+            using var wheels = Table("##wheels", L.ColBuff, L.ColReady);
+            if (wheels != null)
+            {
+                foreach (var wheel in view.Wheels.OrderBy(w => w.ReadyTime))
+                {
+                    ImGui.TableNextRow();
+                    Cell(wheel.Name);
+                    Cell(Plugin.FormatRemaining(wheel.ReadyTime - now), TimeColor(wheel.ReadyTime, now));
+                }
+            }
+        }
 
         ImGui.Spacing();
         ImGui.TextUnformatted(L.ActiveBuffs);
         ImGui.Separator();
         var active = view.ActiveBuffs.Where(b => b.EndTime == 0 || b.EndTime > now).ToList();
         if (active.Count == 0)
+        {
             ImGui.TextUnformatted(L.None);
+            return;
+        }
+
+        using var table = Table("##active", L.ColBuff, L.ColEnds);
+        if (table == null)
+            return;
 
         foreach (var buff in active)
-            ImGui.TextUnformatted($"{buff.Name}: {(buff.EndTime == 0 ? "?" : Plugin.FormatRemaining(buff.EndTime - now))}");
+        {
+            ImGui.TableNextRow();
+            Cell(buff.Name);
+            Cell(buff.EndTime == 0 ? "?" : Plugin.FormatRemaining(buff.EndTime - now), buff.EndTime != 0 && buff.EndTime - now < 3600 ? Soon : null);
+        }
     }
 
     // Em cima, o estado da plantação. Embaixo, a seção Campos, que só cadastra, renomeia e remove.
@@ -162,10 +232,25 @@ public class MainWindow : Window
     {
         var watered = view.Plots.Where(p => p.NextWaterAt != 0).ToList();
         if (watered.Count == 0)
+        {
             ImGui.TextDisabled(L.NoWaterYet);
-
-        foreach (var plot in watered)
-            ImGui.TextUnformatted($"{plot.Name}: {PlotState(plot, now)}");
+        }
+        else
+        {
+            using var table = Table("##garden", L.ColField, L.ColState);
+            if (table != null)
+            {
+                foreach (var plot in watered)
+                {
+                    ImGui.TableNextRow();
+                    Cell(plot.Name);
+                    // Pronta para regar fica verde; perto de morrer (menos de 3 horas) ou já passada, vermelha.
+                    var color = plot.NextWaterAt > now ? (plot.NextWaterAt - now < 3600 ? Soon : null)
+                        : plot.DieAt > now + (3 * 3600) ? Good : Bad;
+                    Cell(PlotState(plot, now), color);
+                }
+            }
+        }
 
         if (ImGui.Button(L.WaterAll))
             plugin.WaterAll("botão Reguei todos agora");
@@ -178,23 +263,32 @@ public class MainWindow : Window
         if (config.Plots.Count == 0 && newField == null)
             ImGui.TextDisabled(L.NoPlots);
 
-        foreach (var (key, record) in config.Plots.OrderBy(p => p.Value.Name))
+        if (config.Plots.Count > 0)
         {
-            ImGui.PushID(key);
-            var name = record.Name;
-            ImGui.SetNextItemWidth(170);
+            using var fields = Table("##fields", L.ColName, L.ColPlace, string.Empty);
+            if (fields != null)
+            {
+                foreach (var (key, record) in config.Plots.OrderBy(p => p.Value.Name))
+                {
+                    ImGui.PushID(key);
+                    ImGui.TableNextRow();
+                    ImGui.TableNextColumn();
+                    var name = record.Name;
+                    ImGui.SetNextItemWidth(-1);
 
-            // O nome só é gravado ao sair do campo de texto, para não mandar um nome por letra digitada.
-            ImGui.InputText("##nome", ref name, MaxFieldName);
-            if (ImGui.IsItemDeactivatedAfterEdit() && name.Trim().Length > 0)
-                plugin.RenameField(key, name.Trim());
+                    // O nome só é gravado ao sair do campo de texto, para não mandar um nome por letra digitada.
+                    ImGui.InputText("##nome", ref name, MaxFieldName);
+                    if (ImGui.IsItemDeactivatedAfterEdit() && name.Trim().Length > 0)
+                        plugin.RenameField(key, name.Trim());
 
-            ImGui.SameLine();
-            ImGui.TextDisabled($"{(record.Indoor ? L.Inside : L.Outside)} · {Coordinates(key)}");
-            ImGui.SameLine();
-            if (ImGui.SmallButton(L.Remove))
-                plugin.RemovePlot(key);
-            ImGui.PopID();
+                    ImGui.TableNextColumn();
+                    ImGui.TextDisabled($"{(record.Indoor ? L.Inside : L.Outside)} · {Coordinates(key)}");
+                    ImGui.TableNextColumn();
+                    if (ImGui.SmallButton(L.Remove))
+                        plugin.RemovePlot(key);
+                    ImGui.PopID();
+                }
+            }
         }
 
         DrawNewField(config);
