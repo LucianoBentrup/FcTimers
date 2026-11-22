@@ -9,6 +9,12 @@ Trocar os scripts do `tools/` (reenviar painel, reagrupar avisos, baixar logs) p
 - O app entra no servidor só com o escopo `applications.commands`. Não precisa de bot conectado nem de token guardado no serviço.
 - O painel e os avisos continuam saindo pelo webhook atual. Nada muda para quem só lê o canal.
 
+## Nome: FC Companion
+- O app do Discord nasce como **FC Companion**. Não existe plugin oficial do Dalamud com esse nome (conferido na lista oficial em 22/11).
+- No plugin muda só o nome que aparece: `Name` no `FcTimers.json`, título da janela e do changelog, barra do jogo, prefixo do chat e cabeçalho do log.
+- O título da janela vira `FC Companion###FC Timers`, para o ImGui manter a posição e o tamanho salvos.
+- O nome interno (`InternalName` = `FcTimers`), o repositório e o link do `repo.json` continuam iguais, senão o Dalamud de vocês para de achar as atualizações.
+
 ## Comandos
 | Comando | O que faz | Quem pode |
 |---|---|---|
