@@ -45,6 +45,8 @@ public static class L
     public static string AlertSound => T("Som", "Sound");
     public static string AlertSoundId => T("Som do chat (1 a 16)", "Chat sound (1 to 16)");
     public static string Test => T("Testar", "Test");
+    public static string ReplayWelcome => T("Testar boas-vindas", "Test welcome");
+    public static string DevOnly => T("Só aparece na versão de dev.", "Only shown in the dev build.");
     public static string ColSub => T("Sub", "Sub");
     public static string ColRank => T("Rank", "Rank");
     public static string ColReturn => T("Volta em", "Back in");

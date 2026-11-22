@@ -155,6 +155,14 @@ public sealed class ConfigWindow : Window
             ? L.Copied
             : plugin.Sync.LogStatus.Length > 0 ? plugin.Sync.LogStatus : L.LogHasNoKey);
         ImGui.TextColored(UiKit.Muted, L.SendLogHint);
+
+        if (plugin.IsDevBuild)
+        {
+            ImGui.Spacing();
+            if (ImGui.Button(L.ReplayWelcome))
+                plugin.ReplayWelcome();
+            UiKit.Tooltip(L.DevOnly);
+        }
     }
 
     private void Toggle(string label, Func<bool> get, Action<bool> set)

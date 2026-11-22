@@ -186,6 +186,17 @@ public sealed class Plugin : IDalamudPlugin
 
     public bool CurrentCharacterEnabled => characterEnabled;
 
+    // Carregado pelo Dev Plugin Locations do Dalamud, e não pelo repositório.
+    public bool IsDevBuild => PluginInterface.IsDev;
+
+    // Só na versão de dev: mostra as boas-vindas de novo, para testar.
+    public void ReplayWelcome()
+    {
+        Config.OnboardingDone = false;
+        SaveConfig();
+        mainWindow.IsOpen = true;
+    }
+
     public void OpenSettings() => configWindow.IsOpen = true;
 
     public void EnableCurrentCharacter()
