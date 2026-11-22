@@ -34,6 +34,9 @@ public sealed class Plugin : IDalamudPlugin
     // e a 4015 ao plantar. Ainda falta confirmar no jogo que só aparecem nesses momentos.
     private const uint CropTendedMessage = 4017;
     private const uint SeedsPlantedMessage = 4015;
+
+    // Nos vasos de dentro de casa, cuidar da planta mostra outra mensagem ("The crops appear to be healthy.").
+    private const uint PotTendedMessage = 3450;
     private const uint FirstGardenMessage = 4000;
     private const uint LastGardenMessage = 4026;
     private const string GeneralPlot = ConfigMigration.GeneralPlot;
@@ -749,6 +752,14 @@ public sealed class Plugin : IDalamudPlugin
     private void OnLogMessage(ILogMessage message)
     {
         var id = message.LogMessageId;
+        if (id == PotTendedMessage)
+        {
+            Diagnostics.Write($"Mensagem do vaso {id}: {message.GameData.ValueNullable?.Text.ToString()}");
+            if (characterEnabled)
+                WaterTargetedPlot($"mensagem do jogo {id}");
+            return;
+        }
+
         if (id < FirstGardenMessage || id > LastGardenMessage)
         {
             if (DateTime.UtcNow < gardenWatchUntil)
