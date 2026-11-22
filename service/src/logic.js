@@ -14,6 +14,9 @@ const DEATH_WARNING_LATE = 1800;
 const PLOT_STALE = 2 * 86400;
 const MAX_PLOTS = 64;
 const MAX_PLOT_LINES = 12;
+const MAX_FIELD_NAME = 40;
+// Remoções de campo ficam guardadas 7 dias, para uma rega antiga de outro PC não trazer o campo de volta.
+const REMOVED_KEEP = 7 * 86400;
 const DAY_STEP = 900;
 export const HISTORY_DAYS = 7;
 // A lista de itens fica fora do painel para a mensagem do webhook ficar leve. O código continua aqui para um bot no futuro.
@@ -326,6 +329,12 @@ export function isValidUpdate(body) {
   if (!Array.isArray(plots) || plots.length > MAX_PLOTS) return false;
   if (!plots.every((p) => isPlot(p) && isName(p.key) && isName(p.name))) return false;
   if (body.garden != null && !isPlot(body.garden)) return false;
+  const names = body.plotNames ?? [];
+  const removals = body.plotRemovals ?? [];
+  if (!Array.isArray(names) || names.length > MAX_PLOTS || !Array.isArray(removals) || removals.length > MAX_PLOTS) return false;
+  if (!names.every((f) => f && isName(f.key) && isName(f.name) && f.name.length <= MAX_FIELD_NAME && isTime(f.at)
+    && (f.indoor == null || typeof f.indoor === 'boolean'))) return false;
+  if (!removals.every((r) => r && isName(r.key) && isTime(r.at))) return false;
   const supplies = body.supplies;
   if (supplies != null && !(isAge(supplies.age) && isTime(supplies.tanks) && isTime(supplies.kits))) return false;
   if (body.buffs == null) return true;
@@ -363,17 +372,47 @@ export function applyUpdate(state, body, now) {
     const fixed = plotKey(key);
     if (!state.plots[fixed] || state.plots[fixed].observedAt < plot.observedAt) state.plots[fixed] = plot;
   }
+  // Campos cadastrados e renomeados na janela do plugin: vale o nome mudado por último, em qualquer PC.
+  state.removedPlots ??= {};
+  for (const field of body.plotNames ?? []) {
+    const key = plotKey(field.key);
+    if ((state.removedPlots[key] ?? 0) >= field.at) continue;
+    const existing = state.plots[key];
+    if (existing && field.at <= (existing.nameAt ?? 0)) continue;
+    state.plots[key] = existing
+      ? { ...existing, name: field.name, indoor: field.indoor ?? existing.indoor ?? false, nameAt: field.at }
+      : {
+        name: field.name, nextWaterAt: 0, dieAt: 0, observedAt: 0, notified: 0, reminded: 0, warned: 0, forgotten: 0,
+        indoor: field.indoor ?? false, nameAt: field.at,
+      };
+  }
+
+  // Campo removido em qualquer PC some para todos, a não ser que tenha sido regado ou renomeado depois.
+  for (const removal of body.plotRemovals ?? []) {
+    const key = plotKey(removal.key);
+    if ((state.removedPlots[key] ?? 0) >= removal.at) continue;
+    state.removedPlots[key] = removal.at;
+    const existing = state.plots[key];
+    if (existing && Math.max(existing.observedAt ?? 0, existing.nameAt ?? 0) <= removal.at) delete state.plots[key];
+  }
+  for (const [key, at] of Object.entries(state.removedPlots)) {
+    if (at < now - REMOVED_KEEP) delete state.removedPlots[key];
+  }
+
   const plotUpdates = (body.plots ?? []).map((p) => ({ ...p, key: plotKey(p.key) }));
   if (body.garden) plotUpdates.push({ ...body.garden, key: 'geral', name: 'Plantação' });
   for (const update of plotUpdates) {
     const observedAt = now - update.age;
     const existing = state.plots[update.key];
     if (existing && observedAt < existing.observedAt) continue;
+    if ((state.removedPlots[update.key] ?? 0) >= observedAt) continue;
     const { nextWaterAt } = update;
     const dieAt = update.dieAt ?? 0;
     const same = existing?.nextWaterAt === nextWaterAt;
+    // Um nome dado na janela não é trocado pelo nome que vem junto com a rega.
     state.plots[update.key] = {
-      name: update.name,
+      name: existing?.nameAt ? existing.name : update.name,
+      nameAt: existing?.nameAt ?? 0,
       nextWaterAt,
       dieAt,
       observedAt,
@@ -660,6 +699,7 @@ export function publicState(state, voyages, now) {
     buffsObservedAt: state.buffsObservedAt,
     activeBuffs: state.activeBuffs,
     plots: state.plots ?? {},
+    removedPlots: state.removedPlots ?? {},
     supplies: state.supplies ? { tanks: state.supplies.tanks, kits: state.supplies.kits, observedAt: state.supplies.observedAt } : null,
     voyages,
   };

@@ -48,7 +48,17 @@ public static class L
     public static string None => T("Nenhum", "None");
 
     // Plantação
-    public static string NoPlots => T("Nenhuma rega registrada. Regue um plot com o plugin ligado.", "No watering recorded. Water a plot with the plugin enabled.");
+    public static string NoPlots => T("Nenhum campo ainda. Selecione um canteiro ou vaso da casa e clique em +.", "No fields yet. Target a garden patch or pot and click +.");
+    public static string Fields => T("Campos", "Fields");
+    public static string AddFieldHint => T("Selecione um canteiro ou vaso da casa para cadastrar.", "Target a garden patch or pot to add it.");
+    public static string FieldExists => T("Esse objeto já está na lista.", "This object is already listed.");
+    public static string FieldName => T("Nome do campo", "Field name");
+    public static string Save => T("Salvar", "Save");
+    public static string Cancel => T("Cancelar", "Cancel");
+    public static string Watered => T("Reguei", "Watered");
+    public static string NoWaterYet => T("sem rega ainda", "not watered yet");
+    public static string Inside => T("dentro", "inside");
+    public static string Outside => T("fora", "outside");
     public static string Remove => T("Remover", "Remove");
     public static string WaterAll => T("Reguei todos agora", "Watered all now");
     public static string WaterAllHint => T("ou /fct regar. Cada plot também é registrado sozinho ao regar.", "or /fct water. Each plot is also picked up on its own when watered.");

@@ -13,6 +13,7 @@ public sealed class RemoteState
     public long BuffsObservedAt { get; set; }
     public RemoteActive? ActiveBuffs { get; set; }
     public Dictionary<string, RemotePlot> Plots { get; set; } = [];
+    public Dictionary<string, long> RemovedPlots { get; set; } = [];
     public RemoteSupplies? Supplies { get; set; }
     public List<RemoteVoyage> Voyages { get; set; } = [];
 }
@@ -65,6 +66,8 @@ public sealed class RemotePlot
     public long NextWaterAt { get; set; }
     public long DieAt { get; set; }
     public long ObservedAt { get; set; }
+    public long NameAt { get; set; }
+    public bool Indoor { get; set; }
 }
 
 public sealed class RemoteSupplies
@@ -144,9 +147,10 @@ public sealed class FcView
         // Cada plot fica com a rega mais recente, seja deste PC ou de outro membro.
         // Um plot morto há mais de 2 dias some, como no painel.
         var plots = new Dictionary<string, (PlotView View, long WateredAt)>();
-        foreach (var (key, plot) in config.Plots.Where(p => p.Value.WateredAt != 0))
+        // Campo cadastrado e ainda sem rega entra com horários zerados.
+        foreach (var (key, plot) in config.Plots)
         {
-            var view = new PlotView(key, plot.Name, plot.NextWaterAt, plot.DieAt);
+            var view = plot.WateredAt == 0 ? new PlotView(key, plot.Name, 0, 0) : new PlotView(key, plot.Name, plot.NextWaterAt, plot.DieAt);
             plots[key] = (view, plot.WateredAt);
         }
 
@@ -192,7 +196,7 @@ public sealed class FcView
             ActiveBuffs = active,
             Plots = plots.Values.Select(p => p.View)
                 .Where(p => p.DieAt == 0 || p.DieAt >= staleBefore)
-                .OrderBy(p => p.NextWaterAt).ThenBy(p => p.Name).ToList(),
+                .OrderBy(p => p.NextWaterAt == 0).ThenBy(p => p.NextWaterAt).ThenBy(p => p.Name).ToList(),
             Supplies = supplies,
             Voyages = voyages.Values.ToList(),
         };

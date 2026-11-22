@@ -422,6 +422,33 @@ test('Dalamud desatualizado aparece só no painel, sem aviso', () => {
   assert.equal(nextEvent(state, at(1, 10)) <= at(1, 10) + 1800, true);
 });
 
+test('campos: cadastro, nome e remoção valem para todos os PCs', () => {
+  const state = newState();
+  const key = '340:25:26:0:-111.1:31.5:-28.1';
+  // Cadastrado na janela, sem rega: existe para os plugins, mas não aparece no painel.
+  applyUpdate(state, { plotNames: [{ key, name: 'Canteiro da frente', indoor: false, at: at(1, 9) }] }, at(1, 9));
+  assert.equal(state.plots[key].name, 'Canteiro da frente');
+  assert.equal(renderPanel(state, [], at(1, 9)).embeds[0].fields.find((f) => f.name.includes('Plantação')).value, 'Nenhum dado ainda.');
+
+  // A rega de outro PC, com o nome automático dele, não troca o nome dado na janela.
+  applyUpdate(state, { plots: [{ key, name: 'Canteiro 2', nextWaterAt: at(2, 10), dieAt: at(3, 10), age: 0 }] }, at(1, 10));
+  assert.equal(state.plots[key].name, 'Canteiro da frente');
+  assert.equal(state.plots[key].nextWaterAt, at(2, 10));
+
+  // Renomear de novo vale; um nome mais antigo não.
+  applyUpdate(state, { plotNames: [{ key, name: 'Cebolas', at: at(1, 11) }] }, at(1, 11));
+  applyUpdate(state, { plotNames: [{ key, name: 'Velho', at: at(1, 8) }] }, at(1, 11));
+  assert.equal(state.plots[key].name, 'Cebolas');
+
+  // Removido some, e uma rega antiga não traz de volta.
+  applyUpdate(state, { plotRemovals: [{ key, at: at(1, 12) }] }, at(1, 12));
+  assert.equal(state.plots[key], undefined);
+  applyUpdate(state, { plots: [{ key, name: 'Canteiro 2', nextWaterAt: at(2, 10), dieAt: at(3, 10), age: 7200 }] }, at(1, 12));
+  assert.equal(state.plots[key], undefined);
+  assert.equal(publicState(state, [], at(1, 12)).removedPlots[key], at(1, 12));
+  assert.equal(isValidUpdate({ plotNames: [{ key, name: 'x'.repeat(41), at: 1 }] }), false);
+});
+
 test('buff da mesa pronto avisa uma vez, e buff visto já pronto não avisa', () => {
   const state = newState();
   applyUpdate(state, { buffs: { age: 0, slots: [{ slot: 0, itemId: 1, name: 'Grade 3 Wheel of Confrontation', hours: 2 }] } }, at(1, 9));

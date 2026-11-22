@@ -96,6 +96,9 @@ public class PlotRecord
     // Vaso dentro de casa ou de quarto privado. Só esses aparecem pelo nome nos avisos do Discord.
     public bool Indoor { get; set; }
 
+    // Quando alguém deu o nome na janela. 0: nome automático, que o plugin pode corrigir sozinho.
+    public long NamedAt { get; set; }
+
     public long NextWaterAt => WateredAt + WaterIntervalSeconds;
     public long DieAt => WateredAt + DieAfterSeconds;
 }

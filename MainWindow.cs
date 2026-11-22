@@ -16,7 +16,11 @@ public class MainWindow : Window
     private static readonly (string Code, string Name)[] Languages = [("pt", "Português"), ("en", "English")];
 
     private readonly Plugin plugin;
+    private const int MaxFieldName = 40;
+
     private DateTime copiedAt = DateTime.MinValue;
+    private (string Key, bool Indoor)? newField;
+    private string newFieldName = string.Empty;
 
     public MainWindow(Plugin plugin) : base("FC Timers")
     {
@@ -155,22 +159,22 @@ public class MainWindow : Window
 
     private void DrawGarden(Configuration config, FcView view, long now)
     {
-        if (view.Plots.Count == 0)
-            ImGui.TextUnformatted(L.NoPlots);
+        ImGui.TextUnformatted(L.Fields);
+        ImGui.Separator();
+        if (view.Plots.Count == 0 && newField == null)
+            ImGui.TextDisabled(L.NoPlots);
 
         foreach (var plot in view.Plots)
         {
             ImGui.PushID(plot.Key);
             var name = plot.Name;
-            ImGui.SetNextItemWidth(150);
+            ImGui.SetNextItemWidth(170);
             if (config.Plots.TryGetValue(plot.Key, out var record))
             {
-                // Renomear só vale para os plots que este PC já regou; o nome vai junto na próxima rega.
-                if (ImGui.InputText("##nome", ref name, 40) && name.Trim().Length > 0)
-                {
-                    record.Name = name.Trim();
-                    plugin.SaveConfig();
-                }
+                // O nome só é gravado ao sair do campo de texto, para não mandar um nome por letra digitada.
+                ImGui.InputText("##nome", ref name, MaxFieldName);
+                if (ImGui.IsItemDeactivatedAfterEdit() && name.Trim().Length > 0)
+                    plugin.RenameField(plot.Key, name.Trim());
             }
             else
             {
@@ -182,12 +186,18 @@ public class MainWindow : Window
             if (record != null)
             {
                 ImGui.SameLine();
+                if (ImGui.SmallButton(L.Watered))
+                    plugin.WaterField(plot.Key);
+                ImGui.SameLine();
                 if (ImGui.SmallButton(L.Remove))
                     plugin.RemovePlot(plot.Key);
+                ImGui.TextDisabled($"   {(record.Indoor ? L.Inside : L.Outside)} · {Coordinates(plot.Key)}");
             }
 
             ImGui.PopID();
         }
+
+        DrawNewField(config);
 
         ImGui.Spacing();
         if (ImGui.Button(L.WaterAll))
@@ -196,8 +206,55 @@ public class MainWindow : Window
         ImGui.TextDisabled(L.WaterAllHint);
     }
 
+    // O "+" só funciona com um canteiro ou vaso da casa selecionado no jogo e que ainda não esteja na lista.
+    private void DrawNewField(Configuration config)
+    {
+        if (newField is { } pending)
+        {
+            ImGui.SetNextItemWidth(170);
+            ImGui.InputText(L.FieldName, ref newFieldName, MaxFieldName);
+            ImGui.SameLine();
+            using (ImRaii.Disabled(newFieldName.Trim().Length == 0))
+            {
+                if (ImGui.SmallButton(L.Save))
+                {
+                    plugin.AddField(pending.Key, newFieldName.Trim(), pending.Indoor);
+                    newField = null;
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.SmallButton(L.Cancel))
+                newField = null;
+            return;
+        }
+
+        var target = plugin.FieldTarget();
+        var exists = target is { } t && config.Plots.ContainsKey(t.Key);
+        using (ImRaii.Disabled(target == null || exists))
+        {
+            if (ImGui.Button("+") && target is { } chosen)
+            {
+                newField = (chosen.Key, chosen.Indoor);
+                newFieldName = chosen.Name;
+            }
+        }
+
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled) && (target == null || exists))
+            ImGui.SetTooltip(exists ? L.FieldExists : L.AddFieldHint);
+    }
+
+    // A chave termina com X, Y e Z do objeto. Mostra X e Z, que é o que muda de um campo para outro.
+    private static string Coordinates(string key)
+    {
+        var parts = key.Split(':');
+        return parts.Length >= 7 ? $"X {parts[^3]} · Z {parts[^1]}" : key;
+    }
+
     private static string PlotState(PlotView plot, long now)
     {
+        if (plot.NextWaterAt == 0)
+            return L.NoWaterYet;
         if (plot.NextWaterAt > now)
             return L.WaterIn(Plugin.FormatRemaining(plot.NextWaterAt - now));
         if (plot.DieAt > now)

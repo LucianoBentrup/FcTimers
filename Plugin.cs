@@ -71,6 +71,7 @@ public sealed class Plugin : IDalamudPlugin
     private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
     private DateTime gardenWatchUntil = DateTime.MinValue;
+    private RemoteState? appliedRemote;
     private string lastScan = string.Empty;
     private DateTime nextScan = DateTime.MinValue;
     private DateTime autoLogAt = DateTime.MaxValue;
@@ -270,11 +271,101 @@ public sealed class Plugin : IDalamudPlugin
 
     public void RemovePlot(string key)
     {
-        if (Config.Plots.Remove(key))
+        Config.Plots.Remove(key);
+        SaveConfig();
+        Sync.ReportPlotRemoval(key, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        Diagnostics.Write($"Campo removido da lista: {key}");
+        QueueLogUpload();
+    }
+
+    // O objeto da casa selecionado agora, com o nome do menu quando houver ("Canteiro 2"). Null se não for um campo válido.
+    public (string Key, string Name, bool Indoor)? FieldTarget()
+    {
+        if (ReadHousingTarget() is not var (key, name, indoor))
+            return null;
+
+        if (lastHousingObject is { } menu && menu.Key == key)
+            name = menu.Name;
+        return (key, name.Length > 0 ? name : "Canteiro", indoor);
+    }
+
+    public void AddField(string key, string name, bool indoor)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (!Config.Plots.TryGetValue(key, out var plot))
         {
-            SaveConfig();
-            Diagnostics.Write($"Plot removido da lista: {key}");
+            plot = new PlotRecord();
+            Config.Plots[key] = plot;
         }
+
+        plot.Name = name;
+        plot.Indoor = indoor;
+        plot.NamedAt = now;
+        SaveConfig();
+        Sync.ReportPlotName(key, name, indoor, now);
+        Diagnostics.Write($"Campo cadastrado: {name} ({(indoor ? "dentro de casa" : "fora")}, chave {key})");
+        QueueLogUpload();
+    }
+
+    public void RenameField(string key, string name)
+    {
+        if (!Config.Plots.TryGetValue(key, out var plot) || plot.Name == name)
+            return;
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        plot.Name = name;
+        plot.NamedAt = now;
+        SaveConfig();
+        Sync.ReportPlotName(key, name, plot.Indoor, now);
+    }
+
+    // Botão "Reguei" de uma linha: para quando o jogo não mostra a mensagem de rega.
+    public void WaterField(string key)
+    {
+        if (!Config.Plots.TryGetValue(key, out var plot))
+            return;
+
+        plot.WateredAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        SaveConfig();
+        Diagnostics.Write($"Rega registrada em {plot.Name} (botão Reguei, chave {key})");
+        QueueLogUpload();
+    }
+
+    // Nomes e remoções feitos em outro PC chegam pelo serviço e valem aqui também.
+    private void ApplyRemoteFields(RemoteState remote)
+    {
+        var changed = false;
+        foreach (var (key, removedAt) in remote.RemovedPlots)
+        {
+            if (Config.Plots.TryGetValue(key, out var plot) && Math.Max(plot.WateredAt, plot.NamedAt) <= removedAt)
+            {
+                Config.Plots.Remove(key);
+                Diagnostics.Write($"Campo removido em outro PC: {plot.Name}");
+                changed = true;
+            }
+        }
+
+        foreach (var (key, shared) in remote.Plots.Where(p => p.Value.NameAt > 0))
+        {
+            if (!Config.Plots.TryGetValue(key, out var plot))
+            {
+                if (remote.RemovedPlots.GetValueOrDefault(key) >= shared.NameAt)
+                    continue;
+                plot = new PlotRecord { Indoor = shared.Indoor };
+                Config.Plots[key] = plot;
+            }
+            else if (shared.NameAt <= plot.NamedAt)
+            {
+                continue;
+            }
+
+            plot.Name = shared.Name;
+            plot.NamedAt = shared.NameAt;
+            changed = true;
+        }
+
+        if (changed)
+            SaveConfig();
     }
 
     // O plot regado é o objeto selecionado no momento da mensagem. A chave junta a casa, o quarto e a posição dele,
@@ -300,7 +391,7 @@ public sealed class Plugin : IDalamudPlugin
             var label = baseName.Trim().Length > 0 ? baseName.Trim() : "Canteiro";
             // O nome do menu ("Canteiro 2") corrige os nomes automáticos; um nome dado na janela fica.
             var fromMenu = AutoName.IsMatch(label);
-            name = Config.Plots.TryGetValue(key, out var known) && !IsUnnamed(known.Name) && !(fromMenu && AutoName.IsMatch(known.Name))
+            name = Config.Plots.TryGetValue(key, out var known) && (known.NamedAt > 0 || (!IsUnnamed(known.Name) && !(fromMenu && AutoName.IsMatch(known.Name))))
                 ? known.Name
                 : fromMenu ? label : $"{label} {Config.Plots.Values.Count(p => p.Name.StartsWith(label, StringComparison.Ordinal)) + 1}";
         }
@@ -383,6 +474,12 @@ public sealed class Plugin : IDalamudPlugin
         L.English = LanguageCode == "en";
         Sync.WindowOpen = mainWindow.IsOpen;
         Sync.Tick();
+        if (Sync.Remote is { } remote && !ReferenceEquals(remote, appliedRemote))
+        {
+            appliedRemote = remote;
+            ApplyRemoteFields(remote);
+        }
+
         View = FcView.Build(Config, localReadings, Sync.Remote, Sync.RemoteOffset);
         CheckAlerts(now);
         UpdateDtr(now);
@@ -628,7 +725,7 @@ public sealed class Plugin : IDalamudPlugin
             lastHousingObject = (key, label, indoor, DateTime.UtcNow);
 
             // Só de abrir o menu, um canteiro já conhecido com nome automático ganha o nome certo.
-            if (patch != null && Config.Plots.TryGetValue(key, out var known) && known.Name != label
+            if (patch != null && Config.Plots.TryGetValue(key, out var known) && known.Name != label && known.NamedAt == 0
                 && (IsUnnamed(known.Name) || AutoName.IsMatch(known.Name)))
             {
                 Diagnostics.Write($"Plot renomeado: {CleanName(known.Name)} -> {label} (chave {key})");
@@ -888,7 +985,7 @@ public sealed class Plugin : IDalamudPlugin
             due[$"sub:{sub.Slot}"] = (sub.ReturnTime, L.SubReturned(sub.Name));
         foreach (var wheel in View.Wheels)
             due[$"wheel:{wheel.Slot}"] = (wheel.ReadyTime, L.WheelReady(wheel.Name));
-        foreach (var plot in View.Plots)
+        foreach (var plot in View.Plots.Where(p => p.NextWaterAt != 0))
             due[$"plot:{plot.Key}"] = (plot.NextWaterAt, L.PlotReady(plot.Name));
 
         var changed = false;
