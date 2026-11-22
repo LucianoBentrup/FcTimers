@@ -212,7 +212,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
         if (sendingLog is { IsCompleted: true })
         {
-            LogStatus = sendingLog.Result;
+            LogStatus = Outcome(sendingLog, "Erro ao enviar o log");
             sendingLog = null;
             log($"Diagnóstico: {LogStatus}");
         }
@@ -222,7 +222,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             if (!sending.IsCompleted)
                 return;
 
-            Finish(sending.Result);
+            Finish(sending.IsCompletedSuccessfully ? sending.Result : new SendResult(false, Failure(sending, "Erro ao enviar")));
             sending = null;
         }
 
@@ -339,7 +339,9 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             if (!fetching.IsCompleted)
                 return;
 
-            var state = fetching.Result;
+            var state = fetching.IsCompletedSuccessfully ? fetching.Result : null;
+            if (fetching.IsFaulted)
+                log(Failure(fetching, "Erro ao receber"));
             fetching = null;
             if (state != null)
             {
@@ -428,6 +430,12 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         if (sendingVoyages.Count > 0)
             save();
     }
+
+    // Uma tarefa que terminou com erro vira uma mensagem, em vez de jogar a exceção na thread do jogo.
+    private static string Outcome(Task<string> task, string error) => task.IsCompletedSuccessfully ? task.Result : Failure(task, error);
+
+    private static string Failure(Task task, string error)
+        => $"{error}: {task.Exception?.GetBaseException().Message ?? "cancelado"}";
 
     private static long Age(DateTime readAt, DateTime now) => Math.Max(0, (long)(now - readAt).TotalSeconds);
 

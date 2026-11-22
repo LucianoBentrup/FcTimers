@@ -10,6 +10,7 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui.Dtr;
+using Dalamud.Game.Text;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -27,6 +28,7 @@ public sealed class Plugin : IDalamudPlugin
     private const int ActiveBuffStableSeconds = 5;
     private const int ActiveBuffSettleSeconds = 60;
     private const int MaxCompanySlots = 3;
+    private const int VoyageHistoryDays = 60;
 
     // Mensagens do jogo sobre a horta. A 4017 ("This crop is doing well.") aparece ao cuidar da planta,
     // e a 4015 ao plantar. Ainda falta confirmar no jogo que só aparecem nesses momentos.
@@ -246,7 +248,18 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         Config.Version = 11;
+        PruneVoyages();
         SaveConfig();
+    }
+
+    private void PruneVoyages()
+    {
+        var before = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - VoyageHistoryDays * 86400L;
+        foreach (var key in Config.Voyages.Where(v => v.Value.ReturnTime < before).Select(v => v.Key).ToList())
+        {
+            Config.Voyages.Remove(key);
+            Config.SyncedVoyages.Remove(key);
+        }
     }
 
     private void OnCommand(string command, string arguments)
@@ -716,9 +729,10 @@ public sealed class Plugin : IDalamudPlugin
             }
         }
 
-        // Por 30 segundos depois do menu de um objeto da casa, toda mensagem do jogo vai para o log,
-        // para descobrir qual mensagem a rega de um vaso de dentro de casa mostra.
-        gardenWatchUntil = DateTime.UtcNow.AddSeconds(30);
+        // Por 30 segundos depois do menu de um canteiro ou vaso, as mensagens do sistema vão para o log,
+        // para descobrir qual mensagem a rega de um vaso de dentro de casa mostra. Chat de jogador nunca entra.
+        if (texts.Any(t => GardenMenu.IsMatch(t)))
+            gardenWatchUntil = DateTime.UtcNow.AddSeconds(30);
 
         // Os canteiros de fora não têm nome no alvo; o menu diz qual é ("6th Bed, 2nd Patch").
         if (ReadHousingTarget() is var (key, name, indoor))
@@ -741,6 +755,7 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     private static readonly Regex AutoName = new(@"^Canteiro \d+$", RegexOptions.Compiled);
+    private static readonly Regex GardenMenu = new(@"Crop|Seeds|Patch|Fertiliz", RegexOptions.Compiled);
     private static readonly Regex PatchPattern = new(@"(\d+)(?:st|nd|rd|th) Patch", RegexOptions.Compiled);
 
     // Nome vazio ou só um número, das versões que não sabiam o nome dos canteiros de fora.
@@ -756,10 +771,11 @@ public sealed class Plugin : IDalamudPlugin
         if (id < FirstGardenMessage || id > LastGardenMessage)
         {
             if (DateTime.UtcNow < gardenWatchUntil)
-                {
-                    Diagnostics.Write($"Mensagem do jogo {id} depois do menu da casa: {message.GameData.ValueNullable?.Text.ToString()}");
-                    QueueLogUpload();
-                }
+            {
+                Diagnostics.Write($"Mensagem do jogo {id} depois do menu da plantação: {message.GameData.ValueNullable?.Text.ToString()}");
+                QueueLogUpload();
+            }
+
             return;
         }
 
@@ -770,12 +786,15 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnChatMessage(IChatMessage message)
     {
-        if (DateTime.UtcNow < gardenWatchUntil)
-            {
-                Diagnostics.Write($"Chat {message.LogKind} depois do menu da casa: {message.Message.TextValue}");
-                QueueLogUpload();
-            }
+        if (DateTime.UtcNow >= gardenWatchUntil || !SystemChat.Contains(message.LogKind))
+            return;
+
+        Diagnostics.Write($"Chat {message.LogKind} depois do menu da plantação: {message.Message.TextValue}");
+        QueueLogUpload();
     }
+
+    private static readonly HashSet<XivChatType> SystemChat =
+        [XivChatType.SystemMessage, XivChatType.LootNotice, XivChatType.GatheringSystemMessage, XivChatType.ErrorMessage];
 
     public string MarketWorld => Config.MarketWorld.Length > 0 ? Config.MarketWorld : Config.HomeWorld;
 

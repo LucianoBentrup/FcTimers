@@ -455,9 +455,11 @@ test('assinatura do Discord e leitura dos comandos', async () => {
   const publicKey = Buffer.from(await crypto.subtle.exportKey('raw', keys.publicKey)).toString('hex');
   const body = '{"type":1}';
   const signature = Buffer.from(await crypto.subtle.sign('Ed25519', keys.privateKey, new TextEncoder().encode(`123${body}`))).toString('hex');
-  assert.equal(await verifyDiscord(publicKey, signature, '123', body), true);
-  assert.equal(await verifyDiscord(publicKey, signature, '124', body), false);
-  assert.equal(await verifyDiscord(publicKey, 'zz', '123', body), false);
+  assert.equal(await verifyDiscord(publicKey, signature, '123', body, 200), true);
+  assert.equal(await verifyDiscord(publicKey, signature, '124', body, 200), false);
+  assert.equal(await verifyDiscord(publicKey, 'zz', '123', body, 200), false);
+  // Pedido assinado, mas de mais de 5 minutos atrás.
+  assert.equal(await verifyDiscord(publicKey, signature, '123', body, 123 + 301), false);
 
   const avisos = { data: { name: 'avisos', options: [{ type: 1, name: 'limpar' }] } };
   assert.equal(commandPath(avisos), 'avisos limpar');

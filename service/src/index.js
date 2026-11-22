@@ -62,12 +62,15 @@ async function handleInteraction(request, env, ctx) {
       // Apagar e reenviar avisos passa dos 3 segundos que o Discord espera: responde já e termina depois.
       const followUp = `https://discord.com/api/v10/webhooks/${env.DISCORD_APP_ID}/${interaction.token}/messages/@original`;
       ctx.waitUntil((async () => {
-        const result = await (await internal('regroup')).json();
-        await fetch(followUp, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: `Pronto: ${result.removed} avisos apagados, ${result.sent} agrupados enviados.` }),
-        });
+        let content;
+        try {
+          const result = await (await internal('regroup')).json();
+          content = `Pronto: ${result.removed} avisos apagados, ${result.sent} agrupados enviados.`;
+        } catch (error) {
+          console.error('Falha no /avisos limpar', error);
+          content = 'Não consegui limpar os avisos agora. Tente de novo em alguns minutos.';
+        }
+        await fetch(followUp, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
       })());
       return json({ type: DEFERRED_REPLY });
     }
