@@ -17,6 +17,7 @@
 - Lembrete de esquecido: um sub que voltou há mais de 2 horas e não saiu de novo ganha um lembrete, uma vez por viagem. Um vaso de dentro de casa ganha um lembrete quando outro vaso da mesma casa foi regado há 15 minutos ou mais e ele, que já podia ser regado, não foi.
 - Nos avisos de plantação, só os vasos de dentro de casa ou de quarto privado aparecem pelo nome. Os canteiros de fora são regados juntos, então aparecem como "a plantação" ou "os canteiros de fora".
 - O aviso de estoque baixo diz quantas viagens e rodadas os tanques ainda aguentam.
+- O aviso de reparo espera 5 minutos sem leitura nova de sub gasto, para sair um aviso só com todos os subs, e diz quantos kits o reparo de todos gasta. O estoque conta os reparos pelo total dos subs juntos.
 - Reparo: quando a peça mais gasta de um sub fica abaixo de 30%, sai um aviso com os subs gastos e os kits que o reparo completo gasta. Ele volta a avisar depois de um reparo.
 
 ## Loot do dia

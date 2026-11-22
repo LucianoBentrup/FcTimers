@@ -149,7 +149,7 @@ export class FcState extends DurableObject {
     const state = (await storage.get('state')) ?? newState();
     // Avisos antigos, sem o tipo gravado, também são trocados.
     const removed = [];
-    for (const alert of (state.alerts ?? []).filter((a) => !a.kind || a.kind === 'subReady' || a.kind === 'subForgotten')) {
+    for (const alert of (state.alerts ?? []).filter((a) => !a.kind || ['subReady', 'subForgotten', 'repairNeeded'].includes(a.kind))) {
       const response = await fetch(`${this.webhook()}/messages/${alert.id}`, { method: 'DELETE' });
       if (response.ok || response.status === 404) removed.push(alert.id);
       await new Promise((resolve) => { setTimeout(resolve, 300); });

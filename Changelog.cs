@@ -9,6 +9,14 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.8.6",
+        [
+            ("Changed",
+            [
+                "Repair materials are counted per repair of all submarines together, since they are always repaired as a group.",
+                "Submarines that need repair are reported in a single Discord message instead of one per submarine.",
+            ]),
+        ]),
         ("0.8.5",
         [
             ("Fixed",

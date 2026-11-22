@@ -31,6 +31,9 @@ export const MARKET_CACHE = 6 * 3600;
 // da mesma casa foi regado há 15 minutos ou mais depois de ele já poder ser regado.
 export const FORGOTTEN_SUB = 2 * 3600;
 export const FORGOTTEN_PLOT = 900;
+// Os detalhes de cada sub chegam um por vez, conforme a lista é aberta. O aviso de reparo espera
+// 5 minutos sem leitura nova de sub gasto, para sair um aviso só com todos.
+export const REPAIR_SETTLE = 300;
 // A cada 30 minutos o serviço confere se o Dalamud já saiu para a versão atual do jogo.
 export const DALAMUD_CHECK = 1800;
 // Desgaste da peça mais gasta: abaixo de 50% aparece no painel, abaixo de 30% sai o aviso de reparo.
@@ -91,7 +94,9 @@ export function pendingAlerts(state, now) {
   if (forgotten.length > 0) alerts.push({ kind: 'plotForgotten', plots: forgotten });
 
   const worn = subs.filter((s) => needsRepair(s) && !s.repairWarned);
-  if (worn.length > 0) alerts.push({ kind: 'repairNeeded', subs: worn, supplies: state.supplies });
+  if (worn.length > 0 && worn.every((s) => now - s.observedAt >= REPAIR_SETTLE)) {
+    alerts.push({ kind: 'repairNeeded', subs: worn, supplies: state.supplies });
+  }
 
   const supplies = state.supplies;
   if (supplies && !supplies.lowWarned && isLow(supplies, state)) {
@@ -132,6 +137,8 @@ export function recentSubAlerts(state, now) {
   return [
     ...groups(subs.filter((s) => s.notified === s.returnTime), (s) => s.returnTime).map((g) => ({ kind: 'subReady', subs: g })),
     ...groups(subs.filter((s) => s.forgotten === s.returnTime), (s) => s.returnTime + FORGOTTEN_SUB).map((g) => ({ kind: 'subForgotten', subs: g })),
+    ...[Object.values(state.subs).filter((s) => needsRepair(s) && s.repairWarned)]
+      .filter((g) => g.length > 0).map((g) => ({ kind: 'repairNeeded', subs: g, supplies: state.supplies })),
   ];
 }
 
@@ -239,7 +246,8 @@ export function alertPayload(alert, roleId) {
       const subs = joinList(alert.subs.map((s) => `**${s.name}** (${percent(s.details.condition)})`));
       const kits = alert.subs.reduce((sum, s) => sum + (s.details.kits ?? 0), 0);
       const stock = alert.supplies ? `, ${gilFormat.format(alert.supplies.kits)} no estoque` : '';
-      return `🔧 Hora de reparar: ${subs}. O reparo completo gasta ${gilFormat.format(kits)} kits${stock}.`;
+      const who = alert.subs.length > 1 ? `dos ${alert.subs.length}` : 'completo';
+      return `🔧 Hora de reparar: ${subs}. O reparo ${who} gasta ${gilFormat.format(kits)} kits${stock}.`;
     },
     suppliesLow: () => {
       const low = [];
@@ -535,9 +543,10 @@ function suppliesText(supplies, subs = [], lowTanks = LOW_TANKS) {
   const mark = (value, low) => (value < low ? `⚠️ **${gilFormat.format(value)}**` : `**${gilFormat.format(value)}**`);
   const known = subs.filter((s) => s.details);
   const tanksPerRound = known.reduce((sum, s) => sum + s.details.tanks, 0);
-  const kitsPerRepair = Math.max(0, ...known.map((s) => s.details.kits));
+  // Os subs saem e são reparados juntos, então um reparo conta os kits de todos.
+  const kitsPerRepair = known.reduce((sum, s) => sum + s.details.kits, 0);
   const rounds = tanksPerRound > 0 ? ` (≈ ${plural(Math.floor(supplies.tanks / tanksPerRound), 'rodada', 'rodadas')})` : '';
-  const repairs = kitsPerRepair > 0 ? ` (≈ ${plural(Math.floor(supplies.kits / kitsPerRepair), 'reparo completo', 'reparos completos')})` : '';
+  const repairs = kitsPerRepair > 0 ? ` (≈ ${plural(Math.floor(supplies.kits / kitsPerRepair), `reparo dos ${known.length}`, `reparos dos ${known.length}`)})` : '';
   return [
     `${mark(supplies.tanks, lowTanks)} tanques de ceruleum${rounds}`,
     `${mark(supplies.kits, LOW_KITS)} kits de reparo${repairs}`,
@@ -632,6 +641,7 @@ export function nextEvent(state, now) {
     ...plots.filter((p) => p.dieAt > 0).flatMap((p) => [p.dieAt, ...DEATH_WARNINGS.map((before) => p.dieAt - before)]),
     ...Object.values(state.subs).filter((s) => s.returnTime > 0).map((s) => s.returnTime + FORGOTTEN_SUB),
     ...plots.filter((p) => p.indoor).map((p) => p.observedAt + FORGOTTEN_PLOT),
+    ...Object.values(state.subs).filter((s) => needsRepair(s) && !s.repairWarned).map((s) => s.observedAt + REPAIR_SETTLE),
     ...Object.values(state.buffs).map((b) => b.readyTime),
     ...(state.activeBuffs?.buffs ?? []).map((b) => b.endTime ?? 0),
     ...(state.alerts ?? []).map((a) => a.deleteAt),

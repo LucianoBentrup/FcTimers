@@ -91,9 +91,10 @@ public class MainWindow : Window
 
         var known = view.Subs.Select(s => s.Details).Where(d => d != null).ToList();
         var tanksPerRound = known.Sum(d => d!.TanksPerVoyage);
-        var kitsPerRepair = known.Count == 0 ? 0 : known.Max(d => d!.RepairKits);
+        // Os subs são reparados juntos, então um reparo conta os kits de todos.
+        var kitsPerRepair = known.Sum(d => d!.RepairKits);
         ImGui.TextUnformatted(L.Tanks($"{stock.Tanks:N0}") + (tanksPerRound > 0 ? $" ({L.Rounds(stock.Tanks / tanksPerRound)})" : string.Empty));
-        ImGui.TextUnformatted(L.Kits($"{stock.Kits:N0}") + (kitsPerRepair > 0 ? $" ({L.Repairs(stock.Kits / kitsPerRepair)})" : string.Empty));
+        ImGui.TextUnformatted(L.Kits($"{stock.Kits:N0}") + (kitsPerRepair > 0 ? $" ({L.Repairs(stock.Kits / kitsPerRepair, known.Count)})" : string.Empty));
         var age = now - stock.ObservedAt;
         ImGui.TextDisabled(age < 60 ? L.CountedNow : L.CountedAgo(Plugin.FormatRemaining(age)));
     }
