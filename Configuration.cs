@@ -114,6 +114,7 @@ public class Configuration : IPluginConfiguration
     // Mundo ou data center dos preços do market. Vazio: o mundo de origem do último personagem marcado.
     public string MarketWorld { get; set; } = string.Empty;
     public string HomeWorld { get; set; } = string.Empty;
+    public string LastCharacterName { get; set; } = string.Empty;
     public uint HomeDataCenter { get; set; }
 
     // Versão cujo changelog já foi mostrado.

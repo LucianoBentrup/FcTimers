@@ -483,6 +483,12 @@ public sealed class Plugin : IDalamudPlugin
             return false;
 
         var name = player.Name.TextValue;
+        if (Config.LastCharacterName != name)
+        {
+            Config.LastCharacterName = name;
+            SaveConfig();
+        }
+
         var home = player.HomeWorld.ValueNullable;
         if (home is { } world && (world.Name.ToString() != Config.HomeWorld || world.DataCenter.RowId != Config.HomeDataCenter))
         {
@@ -635,8 +641,10 @@ public sealed class Plugin : IDalamudPlugin
     public string LogText()
         => Diagnostics.Text($"FC Companion {Version} | fuso UTC{DateTimeOffset.Now:zzz} | gerado {DateTime.Now:dd/MM HH:mm}");
 
+    // Depois de deslogar (o log que vai ao fechar o jogo), vale o último personagem que estava jogando.
     private string CurrentCharacterName()
-        => Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name : "Desconhecido";
+        => Config.Characters.TryGetValue(CurrentCharacterId, out var character) ? character.Name
+            : Config.LastCharacterName.Length > 0 ? Config.LastCharacterName : "Desconhecido";
 
     public void SendLog(string source)
     {
