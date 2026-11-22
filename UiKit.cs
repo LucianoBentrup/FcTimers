@@ -55,12 +55,24 @@ public static class UiKit
             ImGui.TextUnformatted(text);
     }
 
-    // Barra de progresso com texto por cima. A cor segue o valor quando não vem uma cor pronta.
+    // Barra de progresso com o texto centralizado. O ImGui põe o texto logo depois da parte cheia,
+    // então a barra é desenhada sem texto e o texto vai por cima, no meio.
     public static void Bar(float fraction, string overlay, Vector4? color = null, float width = -1)
     {
         fraction = Math.Clamp(fraction, 0f, 1f);
         using (ImRaii.PushColor(ImGuiCol.PlotHistogram, color ?? Good, color != null || fraction >= 1f))
-            ImGui.ProgressBar(fraction, new Vector2(width, ImGui.GetTextLineHeight() + 2), overlay);
+            ImGui.ProgressBar(fraction, new Vector2(width, ImGui.GetTextLineHeight() + 2), string.Empty);
+
+        if (overlay.Length == 0)
+            return;
+
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var size = ImGui.CalcTextSize(overlay);
+        var position = new Vector2(min.X + ((max.X - min.X - size.X) / 2), min.Y + ((max.Y - min.Y - size.Y) / 2));
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.AddText(position + Vector2.One, ImGui.GetColorU32(new Vector4(0, 0, 0, 0.8f)), overlay);
+        drawList.AddText(position, ImGui.GetColorU32(ImGuiCol.Text), overlay);
     }
 
     // Horário absoluto ao passar o mouse sobre um tempo relativo ("em 2h10" mostra "às 15:47 · 03/11").
