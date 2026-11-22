@@ -556,7 +556,7 @@ function buffLine(buff, now) {
 
 const bySlot = (record) => Object.keys(record).map(Number).sort((a, b) => a - b).map((slot) => record[slot]);
 // Tira os ícones do jogo (caracteres de uso privado), que o Discord mostra como "▯".
-const cleanName = (name) => name.replace(/[\uE000-\uF8FF]/g, '').trim() || 'Canteiro';
+const cleanName = (name) => name.replace(/[\uE000-\uF8FF]/g, '').replace(/\s+/g, ' ').trim() || 'Canteiro';
 const shorten = (raw) => {
   const name = cleanName(raw);
   return name.length > MAX_NAME_SHOWN ? `${name.slice(0, MAX_NAME_SHOWN - 1)}…` : name;

@@ -238,7 +238,14 @@ public sealed class Plugin : IDalamudPlugin
                 plot.Name = $"Canteiro {CleanName(plot.Name)}".Trim();
         }
 
-        Config.Version = 10;
+        // A migração anterior deixou o ícone no meio de alguns nomes ("Canteiro  1").
+        if (Config.Version < 11)
+        {
+            foreach (var plot in Config.Plots.Values.Where(p => CleanName(p.Name) != p.Name))
+                plot.Name = CleanName(plot.Name);
+        }
+
+        Config.Version = 11;
         SaveConfig();
     }
 
@@ -741,7 +748,7 @@ public sealed class Plugin : IDalamudPlugin
 
     // O jogo põe ícones (caracteres de uso privado) no nome de alguns objetos, que o Discord mostra como "▯".
     private static string CleanName(string name)
-        => new string(name.Where(c => char.GetUnicodeCategory(c) is not (UnicodeCategory.PrivateUse or UnicodeCategory.Control or UnicodeCategory.Format)).ToArray()).Trim();
+        => Regex.Replace(new string(name.Where(c => char.GetUnicodeCategory(c) is not (UnicodeCategory.PrivateUse or UnicodeCategory.Control or UnicodeCategory.Format)).ToArray()), @"\s+", " ").Trim();
 
     private void OnLogMessage(ILogMessage message)
     {
