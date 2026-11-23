@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   alertDeleteAt, alertPayload, applyDalamud, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, needsPrice, newState, nextEvent, nextMidnight,
   lootSummary, parseUniversalis, pendingAlerts, subsSummary, suppliesSummary, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
+  lastWeekly, nextWeekly, profitReport, profitSummary, supplyForecast, weeklyDue, weeklySummary, vesselKey,
 } from '../src/logic.js';
 import { canManage, commandPath, optionValue, verifyDiscord } from '../src/discord.js';
 
@@ -589,4 +590,122 @@ test('dados inválidos são recusados', () => {
   assert.equal(isValidUpdate({ subs: [{ slot: 0, name: 'Navi', returnTime: 1, age: 0 }] }), true);
   assert.equal(isValidUpdate({ garden: { nextWaterAt: -1, age: 0 } }), false);
   assert.equal(isValidUpdate({ plots: [{ key: '', name: 'x', nextWaterAt: 1, age: 0 }] }), false);
+});
+
+// ---- 0.10 ----
+
+const supplies = (state, list) => {
+  for (const [time, tanks, kits] of list) applyUpdate(state, { supplies: { tanks, kits, age: 0 } }, time);
+};
+
+test('previsão do estoque: gasto dos últimos dias vira a data em que acaba', () => {
+  const state = newState();
+  supplies(state, [[at(1, 10), 500, 100], [at(2, 10), 400, 100], [at(3, 10), 300, 60], [at(4, 10), 200, 60]]);
+  const forecast = supplyForecast(state, at(4, 10));
+  assert.equal(Math.round(forecast.tanks.perDay), 100);
+  assert.equal(forecast.tanks.until, at(6, 10));
+  assert.ok(forecast.kits.until > forecast.tanks.until);
+  assert.match(suppliesSummary(state, at(4, 10)), /acaba ~06\/11/);
+});
+
+test('previsão: compra não conta como gasto, e sem 3 dias de contagem não há previsão', () => {
+  const state = newState();
+  supplies(state, [[at(1, 10), 500, 100], [at(2, 10), 400, 100]]);
+  assert.equal(supplyForecast(state, at(2, 10)), null);
+  supplies(state, [[at(3, 10), 900, 100], [at(4, 10), 800, 100]]);
+  assert.equal(Math.round(supplyForecast(state, at(4, 10)).tanks.perDay), 67);
+});
+
+test('estoque que acaba em até 5 dias gera um aviso só, com a data', () => {
+  const state = newState();
+  supplies(state, [[at(1, 10), 1000, 100], [at(2, 10), 900, 100], [at(3, 10), 800, 100], [at(4, 10), 700, 100]]);
+  assert.equal(pendingAlerts(state, at(4, 10)).filter((a) => a.kind === 'suppliesLow').length, 0);
+  supplies(state, [[at(5, 10), 450, 100]]);
+  const alert = pendingAlerts(state, at(5, 10)).find((a) => a.kind === 'suppliesLow');
+  assert.match(alertPayload(alert).content, /450 tanques de ceruleum\*\* \(acabam ~/);
+  markSent(state, alert);
+  assert.equal(pendingAlerts(state, at(5, 11)).filter((a) => a.kind === 'suppliesLow').length, 0);
+});
+
+test('airships: aviso quando voltam, linha no painel e loot separado dos subs na mesma posição', () => {
+  const state = newState();
+  applyUpdate(state, { airships: [{ slot: 0, name: 'Nuvem', returnTime: at(1, 12), age: 0, rank: 30, exp: 40 }] }, at(1, 10));
+  assert.ok(isValidUpdate({ airships: [{ slot: 0, name: 'Nuvem', returnTime: 1, age: 0 }] }));
+  assert.equal(isValidUpdate({ airships: [{ slot: 4, name: 'Nuvem', returnTime: 1, age: 0 }] }), false);
+  assert.match(JSON.stringify(renderPanel(state, [], at(1, 10))), /Airships.*Nuvem\*\* \(R30\): volta/);
+  const alert = pendingAlerts(state, at(1, 12)).find((a) => a.kind === 'airshipReady');
+  assert.equal(alertPayload(alert).content, '✈️ **Nuvem** voltou!');
+  markSent(state, alert);
+  assert.equal(pendingAlerts(state, at(1, 13)).filter((a) => a.kind === 'airshipReady').length, 0);
+
+  const sub = voyage(0, at(1, 8), 100);
+  const ship = { ...voyage(0, at(1, 8), 50), subName: 'Nuvem', airship: true };
+  assert.notEqual(voyageKey(sub), voyageKey(ship));
+  assert.equal(vesselKey(ship), 'a0');
+  assert.equal(mergeVoyage(undefined, ship).airship, true);
+  const text = lootSummary([sub, ship], 'Hoje');
+  assert.match(text, /Sub0\*\*: 100 gil/);
+  assert.match(text, /✈️ \*\*Nuvem\*\*: 50 gil/);
+});
+
+test('casa: visita mais recente vale, painel a partir de 7 dias e avisos aos 30, 40 e 44', () => {
+  const state = newState();
+  const day = 86400;
+  applyUpdate(state, { houseVisit: { age: 0, name: 'Luciano' } }, at(1, 10));
+  applyUpdate(state, { houseVisit: { age: 3 * day, name: 'Velho' } }, at(1, 11));
+  assert.equal(state.house.by, 'Luciano');
+  assert.doesNotMatch(JSON.stringify(renderPanel(state, [], at(5, 10))), /Última visita/);
+  assert.match(JSON.stringify(renderPanel(state, [], at(1, 10) + (8 * day))), /Última visita na casa <t:\d+:R> \(Luciano\)/);
+  assert.equal(pendingAlerts(state, at(1, 10) + (29 * day)).filter((a) => a.kind === 'houseIdle').length, 0);
+  const first = pendingAlerts(state, at(1, 10) + (30 * day)).find((a) => a.kind === 'houseIdle');
+  assert.equal(first.step, 30);
+  assert.match(alertPayload(first).content, /há 30 dias/);
+  markSent(state, first);
+  assert.equal(pendingAlerts(state, at(1, 10) + (31 * day)).filter((a) => a.kind === 'houseIdle').length, 0);
+  const last = pendingAlerts(state, at(1, 10) + (44 * day) + 60).find((a) => a.kind === 'houseIdle');
+  assert.match(alertPayload(last).content, /^🚨/);
+  assert.ok(nextEvent(state, at(1, 10)) <= at(1, 10) + (7 * day));
+  applyUpdate(state, { houseVisit: { age: 0, name: 'Amigo' } }, at(1, 10) + (44 * day));
+  assert.equal(state.house.warned, 0);
+});
+
+test('lucro: 4 semanas e rotas por gil por tanque', () => {
+  const now = at(28, 12);
+  const list = [
+    { ...voyage(0, at(28, 8), 1000), route: 'A > B', tanks: 10 },
+    { ...voyage(1, at(27, 8), 600), route: 'C', tanks: 3 },
+    { ...voyage(0, at(10, 8), 500), route: 'A > B', tanks: 10 },
+    { ...voyage(0, at(1, 8), 999) },
+  ];
+  const profit = profitReport(list, now);
+  assert.equal(profit.weeks.length, 4);
+  assert.equal(profit.weeks.at(-1).gil, 1600);
+  assert.equal(profit.weeks[0].to, '2026-11-07');
+  assert.deepEqual(profit.routes.map((r) => r.route), ['C', 'A > B']);
+  assert.equal(profit.routes[1].perVoyage, 750);
+  assert.match(profitSummary(profit), /22\/11 a 28\/11: \*\*1\.600 gil\*\*/);
+});
+
+test('resumo semanal: segunda às 9h de Brasília, uma vez, com gil, gasto e tempo parado', () => {
+  // 23/11/2026 é segunda.
+  const monday = at(23, 9);
+  assert.equal(lastWeekly(at(23, 10)), monday);
+  assert.equal(nextWeekly(at(23, 10)), at(30, 9));
+  const state = newState();
+  assert.equal(weeklyDue(state, at(23, 8)), null);
+  assert.equal(weeklyDue(state, at(23, 9, 5)).baseline, true);
+  assert.deepEqual(weeklyDue({ ...state, weekly: { sent: '2026-11-16' } }, at(23, 9, 5)), { id: '2026-11-23', at: monday, baseline: false });
+  assert.equal(weeklyDue({ ...state, weekly: { sent: '2026-11-23' } }, at(23, 10)), null);
+  assert.equal(weeklyDue(state, at(24, 10)), null);
+
+  applyUpdate(state, { subs: [{ slot: 0, name: 'Navi', returnTime: at(18, 8), age: 0 }] }, at(18, 6));
+  applyUpdate(state, { subs: [{ slot: 0, name: 'Navi', returnTime: at(19, 8), age: 0 }] }, at(18, 11));
+  supplies(state, [[at(17, 10), 500, 100], [at(18, 11), 470, 90]]);
+  const list = [voyage(0, at(18, 8), 3000), voyage(1, at(20, 8), 1000), voyage(0, at(12, 8), 2000)];
+  const { content } = weeklySummary(state, list, at(23, 9, 5));
+  assert.match(content, /16\/11 a 22\/11/);
+  assert.match(content, /\*\*4\.000 gil\*\* em 2 viagens \(▲ 100% sobre a anterior\)/);
+  assert.match(content, /Sub0\*\* \(3\.000 gil\)/);
+  assert.match(content, /30 tanques e 10 kits/);
+  assert.match(content, /3h no total/);
 });

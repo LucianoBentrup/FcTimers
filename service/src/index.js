@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import {
   alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, MARKET_CACHE, markSent, mergeVoyage, needsPrice, newState,
   applyDalamud, dalamudDue, lootSummary, nextEvent, parseUniversalis, subsSummary, suppliesSummary, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
+  profitReport, profitSummary, VOYAGE_KEEP_DAYS, weeklyDue, weeklySummary,
 } from './logic.js';
 import {
   canManage, COMMAND, commandPath, DEFERRED_REPLY, EPHEMERAL, optionValue, PING, privateReply, publicReply, REPLY, verifyDiscord,
@@ -31,7 +32,7 @@ function isAuthorized(request, env) {
   return env.FC_KEY && expected.byteLength === received.byteLength && crypto.subtle.timingSafeEqual(expected, received);
 }
 
-const MANAGER_ONLY = ['painel', 'avisos limpar', 'log'];
+const MANAGER_ONLY = ['painel', 'avisos limpar', 'log', 'resumo ligar', 'resumo desligar'];
 
 // Comandos do Discord. A assinatura do app substitui a chave da FC nesta rota.
 async function handleInteraction(request, env, ctx) {
@@ -75,8 +76,11 @@ async function handleInteraction(request, env, ctx) {
       return json({ type: DEFERRED_REPLY });
     }
     case 'loot':
+    case 'lucro':
     case 'estoque':
     case 'subs':
+    case 'resumo ligar':
+    case 'resumo desligar':
     case 'log': {
       const answer = await (await internal('discord', {
         path, periodo: optionValue(interaction, 'periodo'), personagem: optionValue(interaction, 'personagem'),
@@ -153,15 +157,23 @@ export class FcState extends DurableObject {
     const { path, periodo, personagem } = await request.json();
     const now = nowSeconds();
     const state = (await this.ctx.storage.get('state')) ?? newState();
-    if (path === 'estoque') return json({ content: suppliesSummary(state) });
+    if (path === 'estoque') return json({ content: suppliesSummary(state, now) });
     if (path === 'subs') return json({ content: subsSummary(state, now) });
+    if (path === 'lucro') return json({ content: profitSummary(await this.profit(now)) });
+    if (path === 'resumo ligar' || path === 'resumo desligar') {
+      const off = path === 'resumo desligar';
+      const latest = (await this.ctx.storage.get('state')) ?? newState();
+      latest.weekly = { ...(latest.weekly ?? {}), off };
+      await this.ctx.storage.put('state', latest);
+      await this.ctx.storage.setAlarm(Date.now());
+      return json({ content: off ? 'Resumo semanal desligado.' : 'Resumo semanal ligado: sai toda segunda às 9h.' });
+    }
     if (path === 'loot') {
-      const week = periodo === 'semana';
-      const days = week ? recentDays(now) : [dayOf(now)];
-      const voyages = [];
-      for (const day of days) voyages.push(...(await this.voyagesOn(day)));
+      const count = { semana: 7, mes: 30 }[periodo] ?? 1;
+      const voyages = await this.voyagesSince(now, count);
       const [, month, day] = dayOf(now).split('-');
-      return json({ content: lootSummary(voyages, week ? 'Loot dos últimos 7 dias' : `Loot de hoje (${day}/${month})`) });
+      const titles = { 7: 'Loot dos últimos 7 dias', 30: 'Loot dos últimos 30 dias' };
+      return json({ content: lootSummary(voyages, titles[count] ?? `Loot de hoje (${day}/${month})`) });
     }
 
     const logs = [...(await this.ctx.storage.list({ prefix: 'log:' })).values()].sort((a, b) => b.uploadedAt - a.uploadedAt);
@@ -183,9 +195,22 @@ export class FcState extends DurableObject {
   async handleState() {
     const now = nowSeconds();
     const state = (await this.ctx.storage.get('state')) ?? newState();
+    const voyages = await this.voyagesSince(now, 7);
+    return json(publicState(state, voyages, now, await this.profit(now)));
+  }
+
+  // Viagens dos últimos dias, do mais antigo para hoje.
+  async voyagesSince(now, count) {
     const voyages = [];
-    for (const day of recentDays(now)) voyages.push(...(await this.voyagesOn(day)));
-    return json(publicState(state, voyages, now));
+    for (const day of recentDays(now, count)) voyages.push(...(await this.voyagesOn(day)));
+    return voyages;
+  }
+
+  // O lucro das 4 semanas fica em memória até chegar viagem nova ou o dia virar.
+  async profit(now) {
+    const day = dayOf(now);
+    if (this.profitCache?.day !== day) this.profitCache = { day, report: profitReport(await this.voyagesSince(now, 28), now) };
+    return this.profitCache.report;
   }
 
   async handleUpdate(request) {
@@ -209,9 +234,15 @@ export class FcState extends DurableObject {
       const key = voyageKey(incoming);
       const existing = changes[key] ?? (await storage.get(key));
       const merged = mergeVoyage(existing, incoming);
-      if (merged) changes[key] = merged;
-      if (merged && !existing) addNotice(state, sectorNotice(merged), merged.returnTime, nowSeconds());
+      if (!merged) continue;
+      // A rota e os tanques ficam na viagem, para o lucro por rota. Vêm do sub na hora em que o loot chega.
+      const details = incoming.airship ? null : state.subs[incoming.slot]?.details;
+      const route = existing?.route ?? details?.route;
+      if (route) Object.assign(merged, { route, tanks: existing?.tanks ?? details?.tanks ?? 0 });
+      changes[key] = merged;
+      if (!existing) addNotice(state, sectorNotice(merged), merged.returnTime, nowSeconds());
     }
+    if (Object.keys(changes).length > 1) this.profitCache = null;
     await storage.put(changes);
 
     const soon = Date.now() + DEBOUNCE_MS;
@@ -287,7 +318,9 @@ export class FcState extends DurableObject {
       retryAt = await this.publish(now);
       const alertRetryAt = await this.sendAlerts(now);
       await this.deleteOldAlerts(now);
-      retryAt = retryAt ?? alertRetryAt;
+      const weeklyRetryAt = await this.sendWeekly(now);
+      await this.pruneVoyages(now);
+      retryAt = retryAt ?? alertRetryAt ?? weeklyRetryAt;
     } catch (error) {
       console.error('Falha ao publicar o painel', error);
       retryAt = Date.now() + RETRY_MS;
@@ -331,6 +364,42 @@ export class FcState extends DurableObject {
       await this.ctx.storage.put('state', latest);
     }
     return null;
+  }
+
+  // Resumo da semana, toda segunda às 9h. Não marca ninguém e não se apaga como os avisos.
+  async sendWeekly(now) {
+    const state = (await this.ctx.storage.get('state')) ?? newState();
+    const due = weeklyDue(state, now);
+    if (!due) return null;
+    if (due.baseline) {
+      const latest = (await this.ctx.storage.get('state')) ?? newState();
+      latest.weekly = { ...(latest.weekly ?? {}), sent: due.id };
+      await this.ctx.storage.put('state', latest);
+      return null;
+    }
+    const payload = weeklySummary(state, await this.voyagesSince(now, 16), now);
+    const response = await fetch(this.webhook(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!response.ok) {
+      console.error(`Discord respondeu ${response.status} ao resumo semanal`);
+      return Date.now() + RETRY_MS;
+    }
+    const latest = (await this.ctx.storage.get('state')) ?? newState();
+    latest.weekly = { ...(latest.weekly ?? {}), sent: due.id };
+    await this.ctx.storage.put('state', latest);
+    return null;
+  }
+
+  // Viagens com mais de 120 dias saem do histórico, uma vez por dia.
+  async pruneVoyages(now) {
+    const state = (await this.ctx.storage.get('state')) ?? newState();
+    const today = dayOf(now);
+    if (state.prunedDay === today) return;
+    const cutoff = dayOf(now - (VOYAGE_KEEP_DAYS * 86400));
+    const old = [...(await this.ctx.storage.list({ prefix: 'voyage:', end: `voyage:${cutoff}` })).keys()];
+    for (let n = 0; n < old.length; n += 128) await this.ctx.storage.delete(old.slice(n, n + 128));
+    const latest = (await this.ctx.storage.get('state')) ?? newState();
+    latest.prunedDay = today;
+    await this.ctx.storage.put('state', latest);
   }
 
   async deleteOldAlerts(now) {

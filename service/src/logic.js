@@ -42,6 +42,25 @@ export const DALAMUD_CHECK = 1800;
 // Desgaste da peça mais gasta: abaixo de 50% aparece no painel, abaixo de 30% sai o aviso de reparo.
 export const REPAIR_SHOW = 50;
 export const REPAIR_LOW = 30;
+// As viagens ficam guardadas 120 dias, para o lucro por semana e por mês.
+export const VOYAGE_KEEP_DAYS = 120;
+// Previsão do estoque: gasto dos últimos 7 dias, só com pelo menos 3 dias de contagens. Avisa com 5 dias restando.
+export const SUPPLY_WINDOW = 7 * 86400;
+export const SUPPLY_MIN_SPAN = 3 * 86400;
+export const SUPPLY_WARN = 5 * 86400;
+const SUPPLY_LOG_KEEP = 14 * 86400;
+const SUPPLY_LOG_MAX = 300;
+// Tempo que cada sub ficou pronto esperando sair de novo, para o resumo semanal.
+const IDLE_LOG_KEEP = 14 * 86400;
+const IDLE_MAX = 7 * 86400;
+// A casa da FC é derrubada depois de 45 dias sem nenhum membro entrar. O painel mostra a partir de 7 dias,
+// e os avisos saem aos 30, 40 e 44 dias.
+export const HOUSE_LIMIT = 45 * 86400;
+export const HOUSE_SHOW = 7 * 86400;
+export const HOUSE_WARNINGS = [30, 40, 44];
+// Resumo semanal: toda segunda às 9h, no fuso do painel.
+export const WEEKLY_DAY = 'Mon';
+export const WEEKLY_HOUR = 9;
 
 // Até a versão 0.6.0 o plugin enviava uma 5ª posição, que repete um dos 4 submarinos.
 export const isRealSlot = (slot) => Number(slot) < MAX_SUBMARINES;
@@ -50,8 +69,13 @@ const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 
 const gilFormat = new Intl.NumberFormat('pt-BR');
 
 export const newState = () => ({
-  subs: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, plots: {}, supplies: null, notices: [], alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
+  subs: {}, airships: {}, buffs: {}, buffsObservedAt: 0, activeBuffs: null, plots: {}, supplies: null, supplyLog: [], idleLog: [], house: null,
+  weekly: { off: false, sent: null }, notices: [], alerts: [], updatedAt: 0, messageId: null, lastPanel: null,
 });
+
+// Sub e airship podem ter a mesma posição (0 a 3); a chave separa os dois.
+export const vesselKey = (voyage) => `${voyage.airship ? 'a' : ''}${voyage.slot}`;
+const voyageValue = (voyage) => voyage.items.reduce((s, i) => s + bestValue(i), 0);
 
 // O lembrete sai 1 hora antes. Se o serviço só puder enviar com menos de 30 minutos restando, ele não sai.
 const reminderDue = (time, reminded, now) => reminded !== time && now >= time - REMINDER_LEAD && now < time - REMINDER_MIN_LEFT;
@@ -86,6 +110,10 @@ export function pendingAlerts(state, now) {
   const dying = plots.map((p) => ({ ...p, step: deathWarningDue(p, now) })).filter((p) => p.step);
   if (dying.length > 0) alerts.push({ kind: 'plotDying', plots: dying });
 
+  const airships = Object.values(state.airships ?? {}).filter((s) => s.returnTime > 0);
+  const docked = waitGroup(airships.filter((s) => s.notified !== s.returnTime), (s) => s.returnTime, now);
+  if (docked) alerts.push({ kind: 'airshipReady', subs: docked });
+
   const wheels = Object.values(state.buffs).filter((b) => b.readyTime > 0 && b.readyTime <= now && b.notified !== b.readyTime);
   if (wheels.length > 0) alerts.push({ kind: 'wheelReady', wheels });
 
@@ -102,11 +130,17 @@ export function pendingAlerts(state, now) {
   }
 
   const supplies = state.supplies;
-  if (supplies && !supplies.lowWarned && isLow(supplies, state)) {
+  if (supplies && !supplies.lowWarned && isLow(supplies, state, now)) {
     const known = Object.values(state.subs).filter((s) => s.details?.tanks > 0);
     const perRound = tanksPerRound(state);
-    alerts.push({ kind: 'suppliesLow', supplies, lowTanks: lowTanksOf(state), perRound, perVoyage: known.length > 0 ? perRound / known.length : 0 });
+    alerts.push({
+      kind: 'suppliesLow', supplies, lowTanks: lowTanksOf(state), perRound, perVoyage: known.length > 0 ? perRound / known.length : 0,
+      forecast: supplyForecast(state, now), now,
+    });
   }
+
+  const houseStep = houseWarningDue(state.house, now);
+  if (houseStep) alerts.push({ kind: 'houseIdle', house: state.house, step: houseStep });
 
   // Avisos de uma vez só que nascem de uma viagem: item caro de market e setor novo.
   for (const notice of state.notices ?? []) alerts.push({ kind: notice.kind, notice });
@@ -157,7 +191,51 @@ const needsRepair = (sub) => sub.details?.condition != null && sub.details.condi
 
 const tanksPerRound = (state) => Object.values(state.subs).reduce((sum, s) => sum + (s.details?.tanks ?? 0), 0);
 const lowTanksOf = (state) => (tanksPerRound(state) > 0 ? LOW_ROUNDS * tanksPerRound(state) : LOW_TANKS);
-const isLow = (supplies, state) => supplies.tanks < lowTanksOf(state) || supplies.kits < LOW_KITS;
+
+// Com previsão, o estoque está baixo quando acaba em até 5 dias. Sem ela, valem os limites fixos.
+function isLow(supplies, state, now) {
+  const forecast = supplyForecast(state, now);
+  const tanksLow = forecast?.tanks ? forecast.tanks.until - now <= SUPPLY_WARN : supplies.tanks < lowTanksOf(state);
+  const kitsLow = forecast?.kits ? forecast.kits.until - now <= SUPPLY_WARN : supplies.kits < LOW_KITS;
+  return tanksLow || kitsLow;
+}
+
+// Quanto de tanques e kits a FC gasta por dia, pelas contagens dos últimos 7 dias. Compras não contam:
+// só as quedas entre uma contagem e a seguinte. Devolve null sem 3 dias de contagens.
+export function supplyForecast(state, now) {
+  const supplies = state.supplies;
+  const log = (state.supplyLog ?? []).filter((p) => p.at <= now);
+  if (!supplies || log.length < 2) return null;
+  const start = now - SUPPLY_WINDOW;
+  const before = log.filter((p) => p.at <= start).at(-1);
+  const points = [...(before ? [before] : []), ...log.filter((p) => p.at > start)];
+  const span = now - Math.max(points[0].at, start);
+  if (span < SUPPLY_MIN_SPAN) return null;
+  const used = (field) => points.slice(1).reduce((sum, p, n) => sum + Math.max(0, points[n][field] - p[field]), 0);
+  const of = (field) => {
+    const perDay = (used(field) * 86400) / span;
+    return perDay > 0 ? { perDay, until: now + Math.floor((supplies[field] / perDay) * 86400) } : null;
+  };
+  const tanks = of('tanks');
+  const kits = of('kits');
+  return tanks || kits ? { tanks, kits } : null;
+}
+
+// Aviso da casa da vez: o maior marco (30, 40 ou 44 dias) que já passou e ainda não saiu.
+function houseWarningDue(house, now) {
+  if (!house?.visitedAt || house.off) return null;
+  const days = (now - house.visitedAt) / 86400;
+  const step = HOUSE_WARNINGS.filter((d) => d <= days).at(-1);
+  if (!step || step <= (house.warned ?? 0) || now >= house.visitedAt + HOUSE_LIMIT) return null;
+  return step;
+}
+
+// Linha do painel: só aparece depois de 7 dias sem visita.
+function houseLine(house, now) {
+  if (!house?.visitedAt || now - house.visitedAt < HOUSE_SHOW) return null;
+  const warn = now - house.visitedAt >= HOUSE_WARNINGS[0] * 86400 ? '⚠️ ' : '';
+  return `🏠 ${warn}Última visita na casa <t:${house.visitedAt}:R>${house.by ? ` (${cleanName(house.by)})` : ''}`;
+}
 
 // Plots com horário de rega, sem os que morreram há muito tempo ou foram retirados.
 const plotKey = (key) => key.replace(/,/g, '.');
@@ -194,6 +272,17 @@ function deathWarningDue(plot, now) {
 
 // Marca no estado que o aviso saiu. Só marca o que ainda está igual ao que foi avisado.
 export function markSent(state, alert) {
+  if (alert.kind === 'airshipReady') {
+    for (const sent of alert.subs) {
+      const ship = Object.values(state.airships ?? {}).find((s) => s.name === sent.name && s.returnTime === sent.returnTime);
+      if (ship) ship.notified = ship.returnTime;
+    }
+    return;
+  }
+  if (alert.kind === 'houseIdle') {
+    if (state.house?.visitedAt === alert.house.visitedAt) state.house.warned = alert.step;
+    return;
+  }
   for (const sent of alert.subs ?? []) {
     if (alert.kind === 'repairNeeded') {
       const worn = Object.values(state.subs).find((s) => s.name === sent.name);
@@ -244,6 +333,12 @@ export function alertPayload(alert, roleId) {
     plotReminder: () => `Lembrete: Em 1 hora a plantação estará disponível para regar${plotNames(alert.plots)}.`,
     plotForgotten: () => `🌱 ${joinNames(alert.plots)} ${alert.plots.length > 1 ? 'ficaram' : 'ficou'} sem regar? Os outros vasos já foram regados.`,
     wheelReady: () => `⚙️ ${joinNames(alert.wheels)} ${alert.wheels.length > 1 ? 'estão prontos' : 'está pronto'}!`,
+    airshipReady: () => `✈️ ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'}!`,
+    houseIdle: () => {
+      const demolish = alert.house.visitedAt + HOUSE_LIMIT;
+      const urgent = alert.step === HOUSE_WARNINGS.at(-1) ? '🚨' : '🏠';
+      return `${urgent} Ninguém entra na casa da FC há ${alert.step} dias. Ela é derrubada <t:${demolish}:R> (<t:${demolish}:f>) se ninguém entrar!`;
+    },
     subForgotten: () => `⏰ ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'} há mais de 2 horas e ainda não ${alert.subs.length > 1 ? 'saíram' : 'saiu'} de novo.`,
     repairNeeded: () => {
       const subs = joinList(alert.subs.map((s) => `**${s.name}** (${percent(s.details.condition)})`));
@@ -253,14 +348,23 @@ export function alertPayload(alert, roleId) {
       return `🔧 Hora de reparar: ${subs}. O reparo ${who} gasta ${gilFormat.format(kits)} kits${stock}.`;
     },
     suppliesLow: () => {
+      const { forecast, now } = alert;
+      // Com previsão, cada item avisa pela data em que acaba; sem ela, pela quantidade.
+      const ending = (field) => forecast?.[field] && forecast[field].until - now <= SUPPLY_WARN;
       const low = [];
-      if (alert.supplies.tanks < alert.lowTanks) {
+      if (ending('tanks')) {
+        low.push(`**${gilFormat.format(alert.supplies.tanks)} tanques de ceruleum** (acabam ~${shortDate(forecast.tanks.until)})`);
+      } else if (!forecast?.tanks && alert.supplies.tanks < alert.lowTanks) {
         const lasts = alert.perVoyage > 0
           ? ` (≈ ${plural(Math.floor(alert.supplies.tanks / alert.perVoyage), 'viagem', 'viagens')}, ${plural(Math.floor(alert.supplies.tanks / alert.perRound), 'rodada', 'rodadas')})`
           : '';
         low.push(`**${gilFormat.format(alert.supplies.tanks)} tanques de ceruleum**${lasts}`);
       }
-      if (alert.supplies.kits < LOW_KITS) low.push(`**${gilFormat.format(alert.supplies.kits)} kits de reparo**`);
+      if (ending('kits')) {
+        low.push(`**${gilFormat.format(alert.supplies.kits)} kits de reparo** (acabam ~${shortDate(forecast.kits.until)})`);
+      } else if (!forecast?.kits && alert.supplies.kits < LOW_KITS) {
+        low.push(`**${gilFormat.format(alert.supplies.kits)} kits de reparo**`);
+      }
       return `⛽ Estoque baixo: restam ${joinList(low)}.`;
     },
     marketDrop: () => {
@@ -287,7 +391,13 @@ export function alertPayload(alert, roleId) {
 
 export const dayOf = (unix) => dayFormat.format(new Date(unix * 1000));
 
-export const voyageKey = (voyage) => `voyage:${dayOf(voyage.returnTime)}:${voyage.slot}:${voyage.returnTime}`;
+// "05/12", no fuso do painel.
+export const shortDate = (unix) => {
+  const [, month, day] = dayOf(unix).split('-');
+  return `${day}/${month}`;
+};
+
+export const voyageKey = (voyage) => `voyage:${dayOf(voyage.returnTime)}:${vesselKey(voyage)}:${voyage.returnTime}`;
 
 const percent = (value) => `${Math.floor(value)}%`;
 
@@ -302,6 +412,7 @@ function isVoyage(v) {
     && v.items.every((i) => i && isTime(i.itemId) && isName(i.name) && isTime(i.count) && isTime(i.value)
       && (i.market == null || typeof i.market === 'boolean'))
     && (v.world == null || (typeof v.world === 'string' && v.world.length <= 32))
+    && (v.airship == null || typeof v.airship === 'boolean')
     && (v.unlocked == null || (Array.isArray(v.unlocked) && v.unlocked.length <= 5 && v.unlocked.every(isName)));
 }
 
@@ -320,6 +431,12 @@ export function isValidUpdate(body) {
   if (!subs.every((s) => s && isSlot(s.slot) && isName(s.name) && isTime(s.returnTime) && isAge(s.age)
     && (s.details == null || isDetails(s.details)))) return false;
   if (!voyages.every(isVoyage)) return false;
+  const airships = body.airships ?? [];
+  if (!Array.isArray(airships) || airships.length > 4) return false;
+  if (!airships.every((s) => s && isSlot(s.slot) && s.slot < MAX_SUBMARINES && isName(s.name) && isTime(s.returnTime) && isAge(s.age)
+    && (s.rank == null || (isTime(s.rank) && s.rank < 256)) && (s.exp == null || (isTime(s.exp) && s.exp <= 100)))) return false;
+  const visit = body.houseVisit;
+  if (visit != null && !(isAge(visit.age) && (visit.name == null || (isName(visit.name) && visit.name.length <= 40)))) return false;
   const active = body.activeBuffs;
   if (active != null && !(isAge(active.age) && Array.isArray(active.buffs) && active.buffs.length <= 16
     && active.buffs.every((b) => b && isName(b.name) && (b.seconds === null || isTime(b.seconds))))) return false;
@@ -360,6 +477,33 @@ export function applyUpdate(state, body, now) {
     const details = sub.details ?? existing?.details ?? null;
     const repairWarned = (existing?.repairWarned ?? false) && needsRepair({ details });
     state.subs[sub.slot] = { name: sub.name, returnTime: sub.returnTime, observedAt, notified, reminded, details, repairWarned };
+    // Saiu de novo: o tempo parado é da volta anterior até a leitura que viu a viagem nova.
+    if (existing?.returnTime > 0 && existing.returnTime <= observedAt && sub.returnTime > existing.returnTime) {
+      state.idleLog ??= [];
+      state.idleLog.push({ slot: sub.slot, at: observedAt, seconds: Math.min(IDLE_MAX, observedAt - existing.returnTime) });
+    }
+  }
+  state.idleLog = (state.idleLog ?? []).filter((e) => e.at >= now - IDLE_LOG_KEEP);
+
+  // Airships: só nome, volta, rank e XP. O jogo não guarda a rota delas como guarda a dos subs.
+  state.airships ??= {};
+  for (const ship of body.airships ?? []) {
+    const observedAt = now - ship.age;
+    const existing = state.airships[ship.slot];
+    if (existing && existing.observedAt > observedAt) continue;
+    const same = existing?.returnTime === ship.returnTime;
+    const notified = same ? existing.notified : (ship.returnTime <= now ? ship.returnTime : 0);
+    state.airships[ship.slot] = {
+      name: ship.name, returnTime: ship.returnTime, observedAt, notified, rank: ship.rank ?? existing?.rank ?? 0, exp: ship.exp ?? existing?.exp ?? 0,
+    };
+  }
+
+  // Entrada na casa da FC: vale a mais recente entre os membros.
+  if (body.houseVisit) {
+    const visitedAt = now - body.houseVisit.age;
+    if (!state.house?.visitedAt || visitedAt > state.house.visitedAt) {
+      state.house = { visitedAt, by: body.houseVisit.name ?? null, warned: 0, off: state.house?.off ?? false };
+    }
   }
 
   // A rega de cada plot vale a partir do horário em que foi regado, então a mais nova sempre vence.
@@ -430,8 +574,14 @@ export function applyUpdate(state, body, now) {
     if (!state.supplies || observedAt >= state.supplies.observedAt) {
       const { tanks, kits } = body.supplies;
       const supplies = { tanks, kits, observedAt, lowWarned: false };
-      supplies.lowWarned = isLow(supplies, state) && (state.supplies?.lowWarned ?? false);
+      // Cada contagem nova entra no histórico da previsão, em ordem de horário.
+      state.supplyLog = [...(state.supplyLog ?? []).filter((p) => p.at !== observedAt), { at: observedAt, tanks, kits }]
+        .sort((a, b) => a.at - b.at)
+        .filter((p) => p.at >= now - SUPPLY_LOG_KEEP)
+        .slice(-SUPPLY_LOG_MAX);
+      const previous = state.supplies;
       state.supplies = supplies;
+      supplies.lowWarned = isLow(supplies, state, now) && (previous?.lowWarned ?? false);
     }
   }
 
@@ -482,6 +632,7 @@ export function mergeVoyage(existing, incoming) {
     subName: incoming.subName,
     returnTime: incoming.returnTime,
     items,
+    ...(incoming.airship ? { airship: true } : {}),
     ...(incoming.world ? { world: incoming.world } : {}),
     ...(incoming.unlocked?.length ? { unlocked: incoming.unlocked } : {}),
   };
@@ -550,6 +701,16 @@ function setupLines(subs) {
   return subs.filter((s) => s.details?.build).map((s) => `*${s.name}: ${s.details.build} · ${s.details.route}*`);
 }
 
+function airshipLine(ship, now) {
+  const name = `**${ship.name}**${ship.rank ? ` (R${ship.rank})` : ''}`;
+  if (ship.returnTime === 0) return `${name}: parada`;
+  if (ship.returnTime <= now) return `${name}: ✅ pronta`;
+  return `${name}: volta <t:${ship.returnTime}:R> (<t:${ship.returnTime}:t>)`;
+}
+
+// Subs primeiro, depois airships, cada grupo pela posição.
+const sortVessels = (list) => [...list].sort((a, b) => Number(a.airship) - Number(b.airship) || a.slot - b.slot);
+
 function buffLine(buff, now) {
   return buff.readyTime <= now ? `**${buff.name}**: ✅ pronto` : `**${buff.name}**: <t:${buff.readyTime}:R>`;
 }
@@ -578,7 +739,9 @@ function renderPlots(plots, now) {
 }
 
 // Quantas rodadas dos subs os tanques aguentam, e quantos reparos completos os kits pagam.
-function suppliesText(supplies, subs = [], lowTanks = LOW_TANKS) {
+// Com a previsão, cada linha ganha a data em que acaba.
+function suppliesText(supplies, subs = [], lowTanks = LOW_TANKS, forecast = null) {
+  const ends = (field) => (forecast?.[field] ? ` · acaba ~${shortDate(forecast[field].until)}` : '');
   const mark = (value, low) => (value < low ? `⚠️ **${gilFormat.format(value)}**` : `**${gilFormat.format(value)}**`);
   const known = subs.filter((s) => s.details);
   const tanksPerRound = known.reduce((sum, s) => sum + s.details.tanks, 0);
@@ -587,8 +750,8 @@ function suppliesText(supplies, subs = [], lowTanks = LOW_TANKS) {
   const rounds = tanksPerRound > 0 ? ` (≈ ${plural(Math.floor(supplies.tanks / tanksPerRound), 'rodada', 'rodadas')})` : '';
   const repairs = kitsPerRepair > 0 ? ` (≈ ${plural(Math.floor(supplies.kits / kitsPerRepair), `reparo dos ${known.length}`, `reparos dos ${known.length}`)})` : '';
   return [
-    `${mark(supplies.tanks, lowTanks)} tanques de ceruleum${rounds}`,
-    `${mark(supplies.kits, LOW_KITS)} kits de reparo${repairs}`,
+    `${mark(supplies.tanks, lowTanks)} tanques de ceruleum${rounds}${ends('tanks')}`,
+    `${mark(supplies.kits, LOW_KITS)} kits de reparo${repairs}${ends('kits')}`,
     `Contado <t:${supplies.observedAt}:R>`,
   ].join('\n');
 }
@@ -602,7 +765,7 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
   const perSub = new Map();
   const perItem = new Map();
   for (const voyage of todayVoyages) {
-    const sub = perSub.get(voyage.slot) ?? { name: voyage.subName, value: 0 };
+    const sub = perSub.get(vesselKey(voyage)) ?? { name: voyage.subName, value: 0, airship: Boolean(voyage.airship), slot: voyage.slot };
     sub.name = voyage.subName;
     for (const item of voyage.items) {
       sub.value += bestValue(item);
@@ -611,11 +774,11 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
       entry.value += bestValue(item);
       perItem.set(item.itemId, entry);
     }
-    perSub.set(voyage.slot, sub);
+    perSub.set(vesselKey(voyage), sub);
   }
 
-  const subLoot = [...perSub.entries()].sort((a, b) => a[0] - b[0])
-    .map(([, s]) => `**${shorten(s.name)}**: ${gilFormat.format(s.value)} gil`);
+  const subLoot = sortVessels([...perSub.values()])
+    .map((s) => `${s.airship ? '✈️ ' : ''}**${shorten(s.name)}**: ${gilFormat.format(s.value)} gil`);
   const items = [...perItem.values()].sort((a, b) => b.value - a.value);
   const itemLines = items.slice(0, MAX_ITEMS_SHOWN).map((i) => `${i.count}x ${shorten(i.name)}: ${gilFormat.format(i.value)} gil`);
   if (items.length > MAX_ITEMS_SHOWN) itemLines.push(`e mais ${items.length - MAX_ITEMS_SHOWN} itens`);
@@ -633,7 +796,9 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
     if (buffs.length === 0 || buffs.some((b) => !b.endTime)) activeLines.push(`Lido <t:${active.observedAt}:R>`);
   }
   const dalamud = dalamudLine(state.dalamud);
-  if (dalamud || state.updatedAt) activeLines.push('');
+  const house = houseLine(state.house, now);
+  if (dalamud || house || state.updatedAt) activeLines.push('');
+  if (house) activeLines.push(house);
   if (dalamud) activeLines.push(dalamud);
   if (state.updatedAt) activeLines.push(`||Atualizado <t:${state.updatedAt}:R>||`);
 
@@ -641,6 +806,7 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
   const subs = [...setupLines(subList), ...subList.map((s) => subLine(s, now))];
   const buffs = bySlot(state.buffs).map((b) => buffLine(b, now));
   const plotLines = renderPlots(activePlots(state, now), now);
+  const airships = bySlot(state.airships ?? {}).map((s) => airshipLine(s, now));
 
   return {
     allowed_mentions: { parse: [] },
@@ -649,8 +815,9 @@ export function renderPanel(state, todayVoyages, now, showItems = SHOW_ITEMS) {
       color: 0x3B82F6,
       fields: [
         { name: '🚢 Submarinos', value: subs.join('\n') || 'Nenhum dado ainda.' },
+        ...(airships.length > 0 ? [{ name: '✈️ Airships', value: airships.join('\n') }] : []),
         { name: '⚙️ Buffs', value: buffs.join('\n') || 'Nenhum dado ainda.' },
-        ...(state.supplies ? [{ name: '⛽ Estoque', value: suppliesText(state.supplies, subList, lowTanksOf(state)) }] : []),
+        ...(state.supplies ? [{ name: '⛽ Estoque', value: suppliesText(state.supplies, subList, lowTanksOf(state), supplyForecast(state, now)) }] : []),
         { name: '🌱 Plantação', value: plotLines },
         { name: `💰 Loot de hoje (${day}/${month})`, value: [
           `**${market > 0 ? '≈ ' : ''}${gilFormat.format(total)} gil**${market > 0 ? ` (inclui 🏷️ ${gilFormat.format(market)} de market)` : ''}`,
@@ -684,6 +851,10 @@ export function nextEvent(state, now) {
     ...Object.values(state.buffs).map((b) => b.readyTime),
     ...(state.activeBuffs?.buffs ?? []).map((b) => b.endTime ?? 0),
     ...(state.alerts ?? []).map((a) => a.deleteAt),
+    ...Object.values(state.airships ?? {}).map((s) => s.returnTime),
+    ...(state.house?.visitedAt ? [HOUSE_SHOW / 86400, ...HOUSE_WARNINGS].map((d) => state.house.visitedAt + (d * 86400)) : []),
+    ...['tanks', 'kits'].map((f) => supplyForecast(state, now)?.[f]?.until ?? 0).filter((t) => t > 0).map((t) => t - SUPPLY_WARN),
+    ...(state.weekly?.off ? [] : [nextWeekly(now)]),
     nextMidnight(now),
     ...(state.dalamud ? [state.dalamud.checkedAt + DALAMUD_CHECK] : []),
   ];
@@ -691,10 +862,15 @@ export function nextEvent(state, now) {
 }
 
 // O que o plugin recebe em GET /state: o estado sem os dados internos do Discord.
-export function publicState(state, voyages, now) {
+export function publicState(state, voyages, now, profit = null) {
+  const forecast = supplyForecast(state, now);
   return {
     now,
     subs: state.subs,
+    airships: state.airships ?? {},
+    house: state.house ? { visitedAt: state.house.visitedAt, by: state.house.by } : null,
+    forecast: forecast ? { tanksUntil: forecast.tanks?.until ?? 0, kitsUntil: forecast.kits?.until ?? 0 } : null,
+    profit,
     buffs: state.buffs,
     buffsObservedAt: state.buffsObservedAt,
     activeBuffs: state.activeBuffs,
@@ -721,11 +897,17 @@ export function subsSummary(state, now) {
     const wear = condition != null ? ` · peças ${percent(condition)}` : '';
     const exp = s.details ? ` · ${s.details.exp}% para o próximo rank` : '';
     return `${subLine(s, now).split(' · ')[0]}${exp}${wear}`;
-  })].join('\n');
+  }), ...airshipSummary(state, now)].join('\n');
 }
 
-export const suppliesSummary = (state) => (state.supplies
-  ? suppliesText(state.supplies, bySlot(state.subs), lowTanksOf(state))
+function airshipSummary(state, now) {
+  const ships = bySlot(state.airships ?? {});
+  if (ships.length === 0) return [];
+  return ['', '**✈️ Airships**', ...ships.map((s) => `${airshipLine(s, now)}${s.rank ? ` · ${s.exp}% para o próximo rank` : ''}`)];
+}
+
+export const suppliesSummary = (state, now = Math.floor(Date.now() / 1000)) => (state.supplies
+  ? suppliesText(state.supplies, bySlot(state.subs), lowTanksOf(state), supplyForecast(state, now))
   : 'Nenhuma contagem do estoque ainda. Abra a aba do baú da FC onde ficam os tanques.');
 
 export function lootSummary(voyages, title) {
@@ -734,10 +916,10 @@ export function lootSummary(voyages, title) {
   const perSub = new Map();
   const perItem = new Map();
   for (const voyage of voyages) {
-    const sub = perSub.get(voyage.slot) ?? { name: voyage.subName, value: 0, count: 0 };
-    sub.value += voyage.items.reduce((s, i) => s + bestValue(i), 0);
+    const sub = perSub.get(vesselKey(voyage)) ?? { name: voyage.subName, value: 0, count: 0, airship: Boolean(voyage.airship), slot: voyage.slot };
+    sub.value += voyageValue(voyage);
     sub.count += 1;
-    perSub.set(voyage.slot, sub);
+    perSub.set(vesselKey(voyage), sub);
     for (const item of voyage.items) {
       const entry = perItem.get(item.itemId) ?? { name: item.name, count: 0, value: 0 };
       entry.count += item.count;
@@ -745,9 +927,126 @@ export function lootSummary(voyages, title) {
       perItem.set(item.itemId, entry);
     }
   }
-  const subs = [...perSub.entries()].sort((a, b) => a[0] - b[0])
-    .map(([, s]) => `**${shorten(s.name)}**: ${gilFormat.format(s.value)} gil (${plural(s.count, 'viagem', 'viagens')})`);
+  const subs = sortVessels([...perSub.values()])
+    .map((s) => `${s.airship ? '✈️ ' : ''}**${shorten(s.name)}**: ${gilFormat.format(s.value)} gil (${plural(s.count, 'viagem', 'viagens')})`);
   const top = [...perItem.values()].sort((a, b) => b.value - a.value).slice(0, 5)
     .map((i) => `${i.count}x ${shorten(i.name)}: ${gilFormat.format(i.value)} gil`);
   return [`**${title}: ${gilFormat.format(total)} gil**`, ...subs, '', '**Itens que mais renderam**', ...top].join('\n');
+}
+
+// Lucro ao longo do tempo, a partir das viagens dos últimos 28 dias (do mais antigo para hoje):
+// total de cada uma das 4 últimas semanas e quanto cada rota dos subs rende por viagem e por tanque.
+export function profitReport(voyages, now) {
+  const days = recentDays(now, 28);
+  const byDay = new Map(days.map((d) => [d, []]));
+  for (const voyage of voyages) byDay.get(dayOf(voyage.returnTime))?.push(voyage);
+
+  const weeks = [];
+  for (let end = days.length; end > 0; end -= 7) {
+    const block = days.slice(Math.max(0, end - 7), end);
+    const list = block.flatMap((d) => byDay.get(d));
+    weeks.unshift({ from: block[0], to: block.at(-1), gil: list.reduce((s, v) => s + voyageValue(v), 0), voyages: list.length });
+  }
+
+  const routes = new Map();
+  for (const voyage of voyages.filter((v) => !v.airship && v.route)) {
+    const route = routes.get(voyage.route) ?? { route: voyage.route, voyages: 0, gil: 0, tanks: 0 };
+    route.voyages += 1;
+    route.gil += voyageValue(voyage);
+    route.tanks += voyage.tanks ?? 0;
+    routes.set(voyage.route, route);
+  }
+  const ranked = [...routes.values()].map((r) => ({
+    route: r.route, voyages: r.voyages, perVoyage: Math.round(r.gil / r.voyages), perTank: r.tanks > 0 ? Math.round(r.gil / r.tanks) : 0,
+  })).sort((a, b) => b.perTank - a.perTank || b.perVoyage - a.perVoyage);
+
+  return { weeks, routes: ranked.slice(0, 5) };
+}
+
+const dayLabel = (day) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+const change = (current, previous) => {
+  if (!(previous > 0)) return '';
+  const diff = Math.round(((current - previous) / previous) * 100);
+  return ` (${diff >= 0 ? '▲' : '▼'} ${Math.abs(diff)}% sobre a anterior)`;
+};
+
+// Resposta do /lucro.
+export function profitSummary(profit) {
+  const weeks = profit.weeks.filter((w) => w.voyages > 0);
+  if (weeks.length === 0) return 'Nenhuma viagem nos últimos 28 dias.';
+  const lines = ['**💰 Lucro das últimas 4 semanas**'];
+  profit.weeks.forEach((w, n) => {
+    const previous = profit.weeks[n - 1];
+    lines.push(`${dayLabel(w.from)} a ${dayLabel(w.to)}: **${gilFormat.format(w.gil)} gil** (${plural(w.voyages, 'viagem', 'viagens')})${change(w.gil, previous?.gil)}`);
+  });
+  if (profit.routes.length > 0) {
+    lines.push('', '**🗺️ Rotas dos subs**');
+    for (const r of profit.routes) {
+      const perTank = r.perTank > 0 ? ` · ${gilFormat.format(r.perTank)} por tanque` : '';
+      lines.push(`${r.route}: ${gilFormat.format(r.perVoyage)} gil por viagem${perTank} (${plural(r.voyages, 'viagem', 'viagens')})`);
+    }
+  }
+  return lines.join('\n');
+}
+
+const weekFormat = new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, weekday: 'short', hour: 'numeric', hourCycle: 'h23' });
+const isWeeklyHour = (t) => {
+  const parts = Object.fromEntries(weekFormat.formatToParts(new Date(t * 1000)).map((p) => [p.type, p.value]));
+  return parts.weekday === WEEKLY_DAY && Number(parts.hour) === WEEKLY_HOUR;
+};
+
+// A última segunda às 9h até agora, e a próxima depois de agora.
+export function lastWeekly(now) {
+  for (let t = Math.floor(now / 3600) * 3600; t > now - (8 * 86400); t -= 3600) if (isWeeklyHour(t)) return t;
+  return 0;
+}
+export const nextWeekly = (now) => lastWeekly(now) + (7 * 86400);
+
+// O resumo sai uma vez por semana. Se o serviço ficar parado mais de 1 dia depois da hora, pula aquela semana.
+export function weeklyDue(state, now) {
+  const at = lastWeekly(now);
+  if (state.weekly?.off || !at || now - at >= 86400) return null;
+  const id = dayOf(at);
+  if (state.weekly?.sent === id) return null;
+  // Serviço novo ou recém-atualizado: só marca a semana atual, e o primeiro resumo sai na segunda seguinte.
+  return { id, at, baseline: !state.weekly?.sent };
+}
+
+// Tanques e kits gastos entre dois horários, pelas quedas entre contagens.
+function suppliesUsed(state, from, to) {
+  const log = state.supplyLog ?? [];
+  const used = { tanks: 0, kits: 0 };
+  log.forEach((p, n) => {
+    if (n === 0 || p.at <= from || p.at > to) return;
+    for (const f of ['tanks', 'kits']) used[f] += Math.max(0, log[n - 1][f] - p[f]);
+  });
+  return used;
+}
+
+// Mensagem do resumo semanal. voyages: as viagens das 2 últimas semanas.
+export function weeklySummary(state, voyages, now) {
+  const end = lastWeekly(now) - (WEEKLY_HOUR * 3600);
+  const start = end - (7 * 86400);
+  const week = voyages.filter((v) => v.returnTime >= start && v.returnTime < end);
+  const before = voyages.filter((v) => v.returnTime >= start - (7 * 86400) && v.returnTime < start);
+  const gil = week.reduce((s, v) => s + voyageValue(v), 0);
+  const lines = [`📅 **Resumo da semana (${shortDate(start)} a ${shortDate(end - 1)})**`];
+  if (week.length === 0) {
+    lines.push('Nenhuma viagem registrada.');
+  } else {
+    lines.push(`💰 **${gilFormat.format(gil)} gil** em ${plural(week.length, 'viagem', 'viagens')}${change(gil, before.reduce((s, v) => s + voyageValue(v), 0))}`);
+    const perVessel = new Map();
+    for (const v of week) {
+      const entry = perVessel.get(vesselKey(v)) ?? { name: v.subName, gil: 0 };
+      entry.gil += voyageValue(v);
+      perVessel.set(vesselKey(v), entry);
+    }
+    const best = [...perVessel.values()].sort((a, b) => b.gil - a.gil)[0];
+    lines.push(`🏆 Quem mais rendeu: **${shorten(best.name)}** (${gilFormat.format(best.gil)} gil)`);
+  }
+  const used = suppliesUsed(state, start, end);
+  if (used.tanks > 0 || used.kits > 0) lines.push(`⛽ Gasto: ${gilFormat.format(used.tanks)} tanques e ${gilFormat.format(used.kits)} kits`);
+  const idle = (state.idleLog ?? []).filter((e) => e.at >= start && e.at < end).reduce((s, e) => s + e.seconds, 0);
+  if (idle > 0) lines.push(`⏱️ Subs parados esperando sair de novo: ${Math.round(idle / 3600)}h no total`);
+  return { content: lines.join('\n'), allowed_mentions: { parse: [] } };
 }

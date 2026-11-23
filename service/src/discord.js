@@ -70,9 +70,19 @@ export const COMMANDS = [
     options: [{
       type: 3,
       name: 'periodo',
-      description: 'Hoje ou os últimos 7 dias',
-      choices: [{ name: 'hoje', value: 'dia' }, { name: 'semana', value: 'semana' }],
+      description: 'Hoje, os últimos 7 dias ou os últimos 30 dias',
+      choices: [{ name: 'hoje', value: 'dia' }, { name: 'semana', value: 'semana' }, { name: 'mês', value: 'mes' }],
     }],
+  },
+  { name: 'lucro', description: 'Lucro das últimas 4 semanas e quanto cada rota rende' },
+  {
+    name: 'resumo',
+    description: 'Resumo semanal no canal (toda segunda às 9h)',
+    default_member_permissions: '32',
+    options: [
+      { type: 1, name: 'ligar', description: 'Liga o resumo semanal' },
+      { type: 1, name: 'desligar', description: 'Desliga o resumo semanal' },
+    ],
   },
   { name: 'estoque', description: 'Tanques, kits e quantas rodadas e reparos eles pagam' },
   { name: 'subs', description: 'Volta, rank e desgaste de cada submarino' },
