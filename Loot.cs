@@ -42,6 +42,13 @@ public static class LootLedger
 
     public static string VoyageKey(string subKey, long returnTime) => $"{subKey}:{returnTime}";
 
+    // Chave da airship: "<id da casa>:air:<slot>". O slot continua sendo o penúltimo pedaço da chave da viagem.
+    public const string AirshipTag = "air";
+
+    public static string AirshipKey(string house, int slot) => $"{house}:{AirshipTag}:{slot}";
+
+    public static bool IsAirship(string voyageKey) => voyageKey.Split(':') is { Length: >= 4 } parts && parts[^3] == AirshipTag;
+
     public static bool IsRealSlot(string slot) => int.TryParse(slot, out var value) && value < MaxSubmarines;
 
     // Chaves locais são "<id da casa>:<slot>:<hora de retorno>"; o slot é o penúltimo pedaço.

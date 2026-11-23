@@ -75,11 +75,12 @@ public class MainWindow : Window
             return;
 
         // A altura de cada linha de cartões acompanha o cartão com mais linhas, para nada ficar cortado.
-        var subsLines = Math.Max(1, view.Subs.Count) + (WorstCondition(view) < RepairShow ? 1 : 0);
+        var subsLines = Math.Max(1, view.Subs.Count) + (WorstCondition(view) < RepairShow ? 1 : 0)
+            + (view.Airships.Count > 0 ? view.Airships.Count + 1 : 0);
         var lootLines = 1 + view.Voyages.Select(v => v.Voyage).Where(v => LootLedger.DayOf(v, GameTime.PanelZone) == GameTime.Today)
             .Select(v => v.SubName).Distinct().Count();
         var gardenLines = Math.Clamp(view.Plots.Count(p => p.NextWaterAt != 0), 1, 4);
-        var buffLines = Math.Max(1, view.Wheels.Count) + 1;
+        var buffLines = Math.Max(Math.Max(1, view.Wheels.Count) + 1, 4);
 
         var top = UiKit.CardHeight(Math.Max(subsLines, lootLines));
         var middle = UiKit.CardHeight(Math.Max(gardenLines, 4));
@@ -93,6 +94,8 @@ public class MainWindow : Window
         UiKit.Card("##c-stock", FontAwesomeIcon.GasPump, L.Supplies, middle, () => OverviewSupplies(view, now));
         ImGui.TableNextColumn();
         UiKit.Card("##c-buffs", FontAwesomeIcon.Dharmachakra, L.TabBuffs, UiKit.CardHeight(buffLines), () => OverviewBuffs(view, now));
+        ImGui.TableNextColumn();
+        UiKit.Card("##c-house", FontAwesomeIcon.Home, L.House, UiKit.CardHeight(buffLines), () => OverviewHouse(view, now));
     }
 
     // Primeira vez: três passos com o que falta, e um botão para cada um.
@@ -157,6 +160,37 @@ public class MainWindow : Window
             UiKit.Icon(FontAwesomeIcon.Wrench, worst < RepairLow ? UiKit.Bad : UiKit.Soon);
             UiKit.Text(L.Wear($"{Math.Floor(worst)}%"), worst < RepairLow ? UiKit.Bad : UiKit.Soon);
         }
+
+        if (view.Airships.Count == 0)
+            return;
+
+        ImGui.TextColored(UiKit.Muted, L.Airships);
+        foreach (var ship in view.Airships.OrderBy(s => s.ReturnTime))
+        {
+            var state = ship.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(ship.ReturnTime - now);
+            UiKit.Text($"{ship.Name}: {state}", ship.ReturnTime == 0 ? null : UiKit.TimeColor(ship.ReturnTime, now));
+            UiKit.TimeTooltip(ship.ReturnTime);
+        }
+    }
+
+    // Dias desde a última entrada na casa da FC, com a barra até os 45 dias da derrubada.
+    private void OverviewHouse(FcView view, long now)
+    {
+        if (view.House is not { } house)
+        {
+            UiKit.Empty(FontAwesomeIcon.InfoCircle, plugin.Config.FcHouse.Length == 0 ? L.HouseUnknown : L.HouseNoVisit);
+            return;
+        }
+
+        var ago = Math.Max(0, now - house.VisitedAt);
+        var left = Plugin.HouseLimitSeconds - ago;
+        var color = ago >= 30 * 86400 ? UiKit.Bad : ago >= 7 * 86400 ? UiKit.Soon : UiKit.Good;
+        UiKit.Text(ago < 60 ? L.CountedNow : L.HouseVisited(Plugin.FormatRemaining(ago)), color);
+        UiKit.TimeTooltip(house.VisitedAt);
+        if (house.By is { Length: > 0 } by)
+            ImGui.TextColored(UiKit.Muted, L.HouseBy(by));
+        UiKit.Bar(Math.Clamp(ago / (float)Plugin.HouseLimitSeconds, 0, 1), L.HouseDemolish(Plugin.FormatRemaining(Math.Max(0, left))), color);
+        UiKit.Tooltip(L.HouseHint);
     }
 
     private static void OverviewLoot(FcView view)
@@ -200,13 +234,18 @@ public class MainWindow : Window
 
         var (tanksPerRound, kitsPerRepair, subs) = Costs(view);
         var rounds = tanksPerRound > 0 ? stock.Tanks / tanksPerRound : -1;
-        UiKit.Text(L.Tanks($"{stock.Tanks:N0}"), rounds is >= 0 and < 2 ? UiKit.Bad : null);
+        UiKit.Text(L.Tanks($"{stock.Tanks:N0}") + EndsAround(view.Forecast?.TanksUntil, now), rounds is >= 0 and < 2 ? UiKit.Bad : null);
         if (rounds >= 0)
             UiKit.Bar(Math.Min(rounds, 10) / 10f, L.Rounds(rounds), rounds < 2 ? UiKit.Bad : rounds < 4 ? UiKit.Soon : UiKit.Good);
-        ImGui.TextUnformatted(L.Kits($"{stock.Kits:N0}") + (kitsPerRepair > 0 ? $" ({L.Repairs(stock.Kits / kitsPerRepair, subs)})" : string.Empty));
+        ImGui.TextUnformatted(L.Kits($"{stock.Kits:N0}") + (kitsPerRepair > 0 ? $" ({L.Repairs(stock.Kits / kitsPerRepair, subs)})" : string.Empty)
+            + EndsAround(view.Forecast?.KitsUntil, now));
         var age = now - stock.ObservedAt;
         ImGui.TextColored(UiKit.Muted, age < 60 ? L.CountedNow : L.CountedAgo(Plugin.FormatRemaining(age)));
     }
+
+    // Data em que o estoque acaba pelo gasto dos últimos dias, calculada pelo serviço.
+    private static string EndsAround(long? until, long now)
+        => until is > 0 && until > now ? $" · {L.EndsAround(DateTimeOffset.FromUnixTimeSeconds(until.Value).ToLocalTime().ToString("dd/MM"))}" : string.Empty;
 
     private static void OverviewBuffs(FcView view, long now)
     {
@@ -277,6 +316,28 @@ public class MainWindow : Window
             }
         }
 
+        if (view.Airships.Count > 0)
+        {
+            ImGui.Spacing();
+            UiKit.Heading(FontAwesomeIcon.Plane, L.Airships);
+            using var ships = UiKit.Table("##airships", L.ColAirship, L.ColReturn, L.ColRank);
+            if (ships != null)
+            {
+                foreach (var ship in view.Airships.OrderBy(s => s.ReturnTime))
+                {
+                    ImGui.TableNextRow();
+                    UiKit.Cell(ship.Name);
+                    UiKit.Cell(ship.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(ship.ReturnTime - now), ship.ReturnTime == 0 ? null : UiKit.TimeColor(ship.ReturnTime, now));
+                    UiKit.TimeTooltip(ship.ReturnTime);
+                    ImGui.TableNextColumn();
+                    if (ship.Details is { Rank: > 0 } details)
+                        UiKit.Bar(details.ExpPercent / 100f, $"R{details.Rank} · {details.ExpPercent}%", UiKit.Muted);
+                    else
+                        ImGui.TextUnformatted("-");
+                }
+            }
+        }
+
         ImGui.Spacing();
         UiKit.Heading(FontAwesomeIcon.GasPump, L.Supplies);
         OverviewSupplies(view, now);
@@ -284,6 +345,7 @@ public class MainWindow : Window
 
     private static void DrawLoot(FcView view)
     {
+        DrawProfit(view);
         ImGui.TextColored(UiKit.Muted, L.LootTitle);
         if (view.Voyages.Count == 0)
             UiKit.Empty(FontAwesomeIcon.InfoCircle, L.NoVoyages);
@@ -325,6 +387,52 @@ public class MainWindow : Window
             }
         }
     }
+
+    // Lucro das 4 últimas semanas e o ranking das rotas, calculados pelo serviço com as viagens de todos.
+    private static void DrawProfit(FcView view)
+    {
+        if (view.Profit is not { } profit || profit.Weeks.All(w => w.Voyages == 0))
+            return;
+
+        UiKit.Heading(FontAwesomeIcon.ChartLine, L.Profit);
+        UiKit.Tooltip(L.ProfitHint);
+        using (var weeks = UiKit.Table("##weeks", L.ColWeek, L.ColGil, L.ColVoyages))
+        {
+            if (weeks != null)
+            {
+                var best = profit.Weeks.Max(w => w.Gil);
+                foreach (var week in profit.Weeks)
+                {
+                    ImGui.TableNextRow();
+                    UiKit.Cell($"{Day(week.From)} – {Day(week.To)}");
+                    ImGui.TableNextColumn();
+                    UiKit.Bar(best > 0 ? week.Gil / (float)best : 0, $"{week.Gil:N0}", UiKit.Good);
+                    UiKit.Cell($"{week.Voyages}");
+                }
+            }
+        }
+
+        if (profit.Routes.Count > 0)
+        {
+            using var routes = UiKit.Table("##routes", L.ColRoute, L.ColPerVoyage, L.ColPerTank);
+            if (routes != null)
+            {
+                foreach (var route in profit.Routes)
+                {
+                    ImGui.TableNextRow();
+                    UiKit.Cell(route.Route);
+                    UiKit.Tooltip(L.Voyages(route.Voyages));
+                    UiKit.Cell($"{route.PerVoyage:N0}");
+                    UiKit.Cell(route.PerTank > 0 ? $"{route.PerTank:N0}" : "-");
+                }
+            }
+        }
+
+        ImGui.Spacing();
+    }
+
+    // "2026-11-23" vira "23/11".
+    private static string Day(string day) => day.Length == 10 ? $"{day[8..10]}/{day[5..7]}" : day;
 
     private static void DrawBuffs(FcView view, long now)
     {

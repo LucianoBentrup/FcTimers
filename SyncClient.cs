@@ -30,11 +30,18 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, bool Indoor, DateTime ReadAt);
     private sealed record PendingName(string Key, string Name, bool Indoor, long At);
     private sealed record PendingSupplies(int Tanks, int Kits, DateTime ReadAt);
+    private sealed record PendingAirship(int Slot, string Name, long ReturnTime, int Rank, int Exp, DateTime ReadAt);
+    private sealed record PendingVisit(string Name, DateTime ReadAt);
     private sealed record SendResult(bool Success, string Status);
 
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(20) };
     private readonly Dictionary<int, string> lastSubs = [];
     private readonly Dictionary<int, PendingSub> pendingSubs = [];
+    private readonly Dictionary<int, string> lastAirships = [];
+    private readonly Dictionary<int, PendingAirship> pendingAirships = [];
+    private List<PendingAirship> sendingAirships = [];
+    private PendingVisit? pendingVisit;
+    private PendingVisit? sendingVisit;
     private string? lastBuffs;
     private PendingBuffs? pendingBuffs;
     private string? lastActive;
@@ -90,6 +97,23 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
         lastSubs[slot] = signature;
         pendingSubs[slot] = new PendingSub(slot, name, returnTime, details, DateTime.UtcNow);
+    }
+
+    public void ReportAirship(int slot, string name, long returnTime, int rank, int exp)
+    {
+        var signature = $"{name}|{returnTime}|{rank}|{exp}";
+        if (!Enabled || lastAirships.GetValueOrDefault(slot) == signature)
+            return;
+
+        lastAirships[slot] = signature;
+        pendingAirships[slot] = new PendingAirship(slot, name, returnTime, rank, exp, DateTime.UtcNow);
+    }
+
+    // Entrada na casa da FC, para o aviso de 45 dias sem visita.
+    public void ReportHouseVisit(long at, string character)
+    {
+        if (Enabled)
+            pendingVisit = new PendingVisit(character, DateTimeOffset.FromUnixTimeSeconds(at).UtcDateTime);
     }
 
     public void ReportBuffs(List<BuffReading> slots)
@@ -247,10 +271,12 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             nextVoyageScan = sendingVoyages.Count == MaxVoyagesPerRequest ? DateTime.MinValue : DateTime.UtcNow + VoyageScanDelay;
         }
 
-        if (pendingSubs.Count == 0 && pendingBuffs == null && pendingActive == null && pendingPlots.Count == 0 && pendingNames.Count == 0 && pendingRemovals.Count == 0 && pendingSupplies == null && sendingVoyages.Count == 0)
+        if (pendingSubs.Count == 0 && pendingAirships.Count == 0 && pendingVisit == null && pendingBuffs == null && pendingActive == null && pendingPlots.Count == 0 && pendingNames.Count == 0 && pendingRemovals.Count == 0 && pendingSupplies == null && sendingVoyages.Count == 0)
             return;
 
         sendingSubs = pendingSubs.Values.ToList();
+        sendingAirships = pendingAirships.Values.ToList();
+        sendingVisit = pendingVisit;
         sendingBuffs = pendingBuffs;
         sendingActive = pendingActive;
         sendingPlots = pendingPlots.Values.ToList();
@@ -281,6 +307,8 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
                     condition = s.Details.Condition == null ? (double?)null : Math.Round(s.Details.Condition.Value, 1),
                 },
             }),
+            airships = sendingAirships.Select(s => new { slot = s.Slot, name = s.Name, returnTime = s.ReturnTime, rank = s.Rank, exp = s.Exp, age = Age(s.ReadAt, now) }),
+            houseVisit = sendingVisit == null ? null : new { name = sendingVisit.Name, age = Age(sendingVisit.ReadAt, now) },
             buffs = sendingBuffs == null ? null : new
             {
                 age = Age(sendingBuffs.ReadAt, now),
@@ -301,6 +329,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
                 return new
                 {
                     slot = LootLedger.SlotOf(v.Key),
+                    airship = LootLedger.IsAirship(v.Key),
                     subName = voyage.SubName,
                     returnTime = voyage.ReturnTime,
                     world = marketWorld(),
@@ -402,6 +431,12 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         // Uma leitura nova que chegou durante o envio continua pendente.
         foreach (var sub in sendingSubs.Where(s => ReferenceEquals(pendingSubs.GetValueOrDefault(s.Slot), s)))
             pendingSubs.Remove(sub.Slot);
+
+        foreach (var ship in sendingAirships.Where(s => ReferenceEquals(pendingAirships.GetValueOrDefault(s.Slot), s)))
+            pendingAirships.Remove(ship.Slot);
+
+        if (ReferenceEquals(pendingVisit, sendingVisit))
+            pendingVisit = null;
 
         if (ReferenceEquals(pendingBuffs, sendingBuffs))
             pendingBuffs = null;

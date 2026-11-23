@@ -126,6 +126,8 @@ public class Configuration : IPluginConfiguration
     public bool AlertSubs { get; set; } = true;
     public bool AlertWheels { get; set; } = true;
     public bool AlertPlots { get; set; } = true;
+    public bool AlertAirships { get; set; } = true;
+    public bool AlertHouse { get; set; } = true;
     public bool AlertToast { get; set; } = true;
     public bool AlertChat { get; set; }
     public bool AlertSound { get; set; }
@@ -158,6 +160,13 @@ public class Configuration : IPluginConfiguration
 
     // Chave: "<id da casa>:<slot>"
     public Dictionary<string, WheelRecord> Wheels { get; set; } = [];
+
+    // Airships da FC. Chave: "<id da casa>:<slot>". O loot delas fica em Voyages, com a chave "<id da casa>:air:<slot>:<hora>".
+    public Dictionary<string, SubRecord> Airships { get; set; } = [];
+
+    // Casa da FC ("<mundo>:<ward>:<plot>"): aprendida pela oficina, que fica dentro dela. E a última entrada vista neste PC.
+    public string FcHouse { get; set; } = string.Empty;
+    public long HouseVisitAt { get; set; }
 
     // Último loot visto na memória de cada slot. Loot novo só é salvo quando muda.
     public Dictionary<int, string> LootSeen { get; set; } = [];

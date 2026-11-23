@@ -47,6 +47,33 @@ public static unsafe class SubmarineLoot
         return items.Count == 0 ? null : new VoyageRecord { SubName = name, ReturnTime = returnTime, Items = items, Unlocked = unlocked };
     }
 
+    // Airships: o jogo guarda o loot da última viagem do mesmo jeito, mas sem HQ e sem setor novo.
+    public static string Signature(HousingWorkshopAirshipSubData* ship)
+    {
+        var parts = new List<string>();
+        foreach (ref readonly var sector in ship->GatheredData)
+        {
+            if (sector.ItemIdPrimary != 0 && sector.ItemCountPrimary != 0)
+                parts.Add($"{sector.ItemIdPrimary}|{sector.ItemCountPrimary}");
+            if (sector.ItemIdAdditional != 0 && sector.ItemCountAdditional != 0)
+                parts.Add($"{sector.ItemIdAdditional}|{sector.ItemCountAdditional}");
+        }
+
+        return string.Join(';', parts);
+    }
+
+    public static VoyageRecord? Read(HousingWorkshopAirshipSubData* ship, string name, long returnTime, Func<uint, (string Name, uint Price)?> lookup)
+    {
+        var items = new List<LootItem>();
+        foreach (ref readonly var sector in ship->GatheredData)
+        {
+            Add(items, sector.ItemIdPrimary, sector.ItemCountPrimary, false, lookup);
+            Add(items, sector.ItemIdAdditional, sector.ItemCountAdditional, false, lookup);
+        }
+
+        return items.Count == 0 ? null : new VoyageRecord { SubName = name, ReturnTime = returnTime, Items = items };
+    }
+
     private static void Add(List<LootItem> items, uint itemId, ushort count, bool hq, Func<uint, (string Name, uint Price)?> lookup)
     {
         if (itemId == 0 || count == 0 || lookup(itemId) is not { } item)

@@ -80,6 +80,8 @@ public sealed class ConfigWindow : Window
         Toggle(L.AlertSubs, () => config.AlertSubs, v => config.AlertSubs = v);
         Toggle(L.AlertWheels, () => config.AlertWheels, v => config.AlertWheels = v);
         Toggle(L.AlertPlots, () => config.AlertPlots, v => config.AlertPlots = v);
+        Toggle(L.AlertAirships, () => config.AlertAirships, v => config.AlertAirships = v);
+        Toggle(L.AlertHouse, () => config.AlertHouse, v => config.AlertHouse = v);
         ImGui.Spacing();
         Toggle(L.AlertToast, () => config.AlertToast, v => config.AlertToast = v);
         Toggle(L.AlertChat, () => config.AlertChat, v => config.AlertChat = v);

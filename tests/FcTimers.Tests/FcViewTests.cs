@@ -103,4 +103,40 @@ public class FcViewTests
         Assert.Equal(495, Build(config, remote).Supplies!.Value.Tanks);
         Assert.Equal(579, Build(config).Supplies!.Value.Tanks);
     }
+    [Fact]
+    public void Airship_e_sub_na_mesma_posicao_e_horario_sao_viagens_diferentes()
+    {
+        var config = new Configuration();
+        config.Voyages[LootLedger.VoyageKey("1:0", 500)] = new VoyageRecord { SubName = "Navi", ReturnTime = 500, Items = [new LootItem { ItemId = 1, Count = 1, Value = 10 }] };
+        config.Voyages[LootLedger.VoyageKey(LootLedger.AirshipKey("1", 0), 500)] = new VoyageRecord { SubName = "Nuvem", ReturnTime = 500, Items = [new LootItem { ItemId = 2, Count = 1, Value = 5 }] };
+        var remote = new RemoteState { Voyages = [new RemoteVoyage { Slot = 0, Airship = true, SubName = "Nuvem", ReturnTime = 500, Items = [new LootItem { ItemId = 2, Count = 1, Value = 5 }] }] };
+
+        var voyages = Build(config, remote).Voyages;
+        Assert.Equal(2, voyages.Count);
+        Assert.Equal("Nuvem", voyages.Single(v => v.Airship).Voyage.SubName);
+    }
+
+    [Fact]
+    public void Airship_mais_recente_vale_entre_este_PC_e_o_servico()
+    {
+        var config = new Configuration();
+        config.Airships[LootLedger.AirshipKey("1", 2)] = new SubRecord { Name = "Nuvem", ReturnTime = Now + 100 };
+        var remote = new RemoteState { Airships = { ["2"] = new RemoteAirship { Name = "Nuvem", ReturnTime = Now + 900, ObservedAt = Now - 10, Rank = 12 } } };
+
+        var ship = Assert.Single(Build(config, remote).Airships);
+        Assert.Equal(2, ship.Slot);
+        Assert.Equal(Now + 900, ship.ReturnTime);
+        Assert.Equal(12, ship.Details!.Rank);
+    }
+
+    [Fact]
+    public void Visita_mais_recente_na_casa_vale_entre_este_PC_e_o_servico()
+    {
+        var config = new Configuration { HouseVisitAt = Now - 3600 };
+        Assert.Null(Build(new Configuration()).House);
+        Assert.Equal(Now - 3600, Build(config).House!.Value.VisitedAt);
+
+        var remote = new RemoteState { House = new RemoteHouse { VisitedAt = Now - 60, By = "Amigo" } };
+        Assert.Equal("Amigo", Build(config, remote).House!.Value.By);
+    }
 }

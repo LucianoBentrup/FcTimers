@@ -29,6 +29,11 @@ public sealed class Plugin : IDalamudPlugin
     private const int ActiveBuffStableSeconds = 5;
     private const int ActiveBuffSettleSeconds = 60;
     private const int MaxCompanySlots = 3;
+    private const int AirshipLootSeen = 100;
+    public const long HouseLimitSeconds = 45 * 86400;
+    private static readonly int[] HouseWarningDays = [30, 40, 44];
+    private const long HouseVisitStep = 600;
+    private const long HouseVisitLogGap = 6 * 3600;
 
     // Mensagens do jogo sobre a horta. A 4017 ("This crop is doing well.") aparece ao cuidar da planta,
     // e a 4015 ao plantar. Ainda falta confirmar no jogo que só aparecem nesses momentos.
@@ -75,6 +80,7 @@ public sealed class Plugin : IDalamudPlugin
     private HashSet<string> seenBuffs = [];
     private bool characterEnabled;
     private bool inWorkshop;
+    private string? lastIndoorHouse;
     private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
     private DateTime gardenWatchUntil = DateTime.MinValue;
@@ -445,6 +451,7 @@ public sealed class Plugin : IDalamudPlugin
             ReadWheels(now);
             ReadActiveBuffs(now);
             ReadSupplies(now);
+            CheckHouseVisit(now);
         }
 
         Sync.ReportSupplies(Config.Supplies.Tanks, Config.Supplies.Kits, Config.Supplies.ChangedAt);
@@ -598,6 +605,9 @@ public sealed class Plugin : IDalamudPlugin
             Sync.ReportSub(slot, name, returnTime, record.Details);
         }
 
+        changed |= ReadAirships(workshop, now);
+        changed |= LearnFcHouse(workshop->HouseId);
+
         if (conditions != null)
         {
             nextScan = DateTime.UtcNow.AddSeconds(1);
@@ -612,6 +622,130 @@ public sealed class Plugin : IDalamudPlugin
 
         if (changed)
             SaveConfig();
+    }
+
+    // Airships: nome, volta, rank e XP, e o loot de cada viagem, do mesmo jeito que os subs.
+    // Só lê o que a oficina já tem na memória.
+    private unsafe bool ReadAirships(WorkshopTerritory* workshop, long now)
+    {
+        var changed = false;
+        var ships = workshop->Airship.Data;
+        for (var slot = 0; slot < Math.Min(ships.Length, LootLedger.MaxSubmarines); slot++)
+        {
+            fixed (HousingWorkshopAirshipSubData* ship = &ships[slot])
+            {
+                if (ship->RankId == 0)
+                    continue;
+
+                var key = LootLedger.AirshipKey($"{workshop->HouseId}", slot);
+                var name = ship->NameString;
+                long returnTime = ship->ReturnTime;
+                changed |= CaptureAirshipLoot(slot, key, ship, name, now);
+                localReadings.Airships[slot] = now;
+
+                var details = new SubDetails
+                {
+                    Rank = ship->RankId,
+                    ExpPercent = ship->NextLevelExp == 0 ? 0 : (int)(100L * ship->CurrentExp / ship->NextLevelExp),
+                };
+                if (!Config.Airships.TryGetValue(key, out var record))
+                {
+                    record = new SubRecord { Name = name, ReturnTime = returnTime, Details = details };
+                    Config.Airships[key] = record;
+                    Diagnostics.Write($"Airship {name}: vista pela primeira vez, volta {DiagnosticLog.Time(returnTime)}");
+                    changed = true;
+                }
+                else if (record.Name != name || record.ReturnTime != returnTime || record.Details != details)
+                {
+                    if (record.ReturnTime != returnTime)
+                    {
+                        Diagnostics.Detail($"Airship {name}: volta mudou para {DiagnosticLog.Time(returnTime)}");
+                        record.PreviousReturnTime = record.ReturnTime;
+                    }
+
+                    record.Name = name;
+                    record.ReturnTime = returnTime;
+                    record.Details = details;
+                    changed = true;
+                }
+
+                Sync.ReportAirship(slot, name, returnTime, details.Rank, details.ExpPercent);
+            }
+        }
+
+        return changed;
+    }
+
+    private unsafe bool CaptureAirshipLoot(int slot, string key, HousingWorkshopAirshipSubData* ship, string name, long now)
+    {
+        var signature = SubmarineLoot.Signature(ship);
+        if (signature.Length == 0)
+            return false;
+
+        // As airships usam as posições 100 a 103 do registro de loot visto, para não misturar com os subs.
+        var seenKey = AirshipLootSeen + slot;
+        var firstSight = !Config.LootSeen.TryGetValue(seenKey, out var last);
+        if (!firstSight && last == signature)
+            return false;
+
+        Config.LootSeen[seenKey] = signature;
+        if (firstSight && Config.Voyages.Any(v => LootLedger.IsAirship(v.Key) && LootLedger.SlotOf(v.Key) == slot
+            && SubmarineLoot.Signature(v.Value.Items) == signature))
+            return true;
+
+        Config.Airships.TryGetValue(key, out var record);
+        var returnTime = new[] { (long)ship->ReturnTime, record?.ReturnTime ?? 0, record?.PreviousReturnTime ?? 0 }
+            .FirstOrDefault(t => t != 0 && t <= now);
+        if (returnTime == 0)
+            return true;
+
+        var voyage = SubmarineLoot.Read(ship, name, returnTime, LookupItem);
+        if (voyage != null && LootLedger.Upsert(Config.Voyages, LootLedger.VoyageKey(key, returnTime), voyage))
+        {
+            Diagnostics.Write($"Airship {name}: viagem de {DiagnosticLog.Time(returnTime)} salva, {voyage.Items.Count} itens, {LootLedger.Total([voyage]):N0} gil");
+            QueueLogUpload();
+        }
+
+        return true;
+    }
+
+    // Casa da FC: mundo, ward e plot da casa onde fica a oficina. Fica guardada para reconhecer as próximas entradas.
+    private static string? HouseKey(HouseId id)
+        => id.Id == 0 || id.IsApartment ? null : $"{id.WorldId}:{id.WardIndex}:{id.PlotIndex}";
+
+    private bool LearnFcHouse(HouseId id)
+    {
+        if (HouseKey(id) is not { } house || house == Config.FcHouse)
+            return false;
+
+        Config.FcHouse = house;
+        Diagnostics.Write($"Casa da FC reconhecida pela oficina ({house})");
+        return true;
+    }
+
+    // Entrar na casa da FC zera o prazo de 45 dias do jogo. O registro vale de 10 em 10 minutos, para não gravar a cada segundo.
+    private unsafe void CheckHouseVisit(long now)
+    {
+        var manager = HousingManager.Instance();
+        if (manager == null || Config.FcHouse.Length == 0 || !(manager->IsInside() || manager->IsInWorkshop()))
+            return;
+
+        // Toda casa em que o personagem entra vai ao log, para conferir no jogo se a casa da FC é reconhecida.
+        var current = HouseKey(manager->GetCurrentIndoorHouseId());
+        if (current != lastIndoorHouse)
+        {
+            lastIndoorHouse = current;
+            Diagnostics.Detail($"Dentro da casa {current ?? "?"} (casa da FC: {Config.FcHouse})");
+        }
+
+        if (current != Config.FcHouse || now - Config.HouseVisitAt < HouseVisitStep)
+            return;
+
+        if (now - Config.HouseVisitAt >= HouseVisitLogGap)
+            Diagnostics.Write("Entrou na casa da FC");
+        Config.HouseVisitAt = now;
+        SaveConfig();
+        Sync.ReportHouseVisit(now, CurrentCharacterName());
     }
 
     // O loot na memória muda quando o resultado de uma viagem chega. É esse o momento de salvar.
@@ -1001,6 +1135,19 @@ public sealed class Plugin : IDalamudPlugin
         {
             foreach (var sub in View.Subs.Where(s => s.ReturnTime != 0))
                 due[$"sub:{sub.Slot}"] = (sub.ReturnTime, L.SubReturned(sub.Name));
+        }
+
+        if (Config.AlertAirships)
+        {
+            foreach (var ship in View.Airships.Where(s => s.ReturnTime != 0))
+                due[$"air:{ship.Slot}"] = (ship.ReturnTime, L.AirshipReturned(ship.Name));
+        }
+
+        // Casa da FC: um aviso em cada marco (30, 40 e 44 dias). Uma visita nova muda o horário e recomeça.
+        if (Config.AlertHouse && View.House is { } house)
+        {
+            foreach (var days in HouseWarningDays)
+                due[$"house:{days}"] = (house.VisitedAt + (days * 86400), L.HouseWarning(days));
         }
 
         if (Config.AlertWheels)

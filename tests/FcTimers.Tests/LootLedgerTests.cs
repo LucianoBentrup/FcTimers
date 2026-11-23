@@ -69,4 +69,13 @@ public class LootLedgerTests
         Assert.False(cheapMarket.IsMarket);
         Assert.Equal(120000, cheapMarket.Best);
     }
+
+    [Fact]
+    public void Chave_de_airship_guarda_o_slot_e_se_separa_dos_subs()
+    {
+        var key = LootLedger.VoyageKey(LootLedger.AirshipKey("123", 3), 1000);
+        Assert.True(LootLedger.IsAirship(key));
+        Assert.Equal(3, LootLedger.SlotOf(key));
+        Assert.False(LootLedger.IsAirship(LootLedger.VoyageKey("123:3", 1000)));
+    }
 }
