@@ -26,7 +26,33 @@
 - O total do dia é sempre recalculado somando todas as viagens daquele dia. Nada zera entre coletas.
 - Reler ou reenviar a mesma viagem nunca soma de novo.
 - A viagem pertence ao dia em que o submarino voltou, no fuso de Brasília, no painel e na janela do plugin.
-- À meia-noite o painel passa a mostrar o novo dia. Os dias anteriores ficam salvos e nunca são apagados.
+- À meia-noite o painel passa a mostrar o novo dia. O serviço guarda as viagens por 120 dias, para o lucro por semana e por mês, e apaga as mais antigas uma vez por dia.
+- A viagem de um sub guarda a rota e os tanques que o sub tinha quando o loot chegou. É isso que permite comparar as rotas no `/lucro`.
+
+## Lucro
+- O `/lucro` e a seção Lucro da aba Loot mostram as últimas 4 semanas (blocos de 7 dias terminando hoje) e as rotas dos subs ordenadas por gil por tanque.
+- Viagens de antes da 0.10 não têm rota, então entram nas semanas mas não no ranking das rotas.
+
+## Resumo semanal
+- Toda segunda às 9h de Brasília sai uma mensagem no canal, sem marcar ninguém, que não é apagada: gil da semana anterior (segunda a domingo), comparação com a semana antes dela, quem mais rendeu, tanques e kits gastos e o tempo que os subs ficaram prontos esperando sair de novo.
+- Na primeira segunda depois de atualizar o serviço, ele só marca a semana. O primeiro resumo sai na segunda seguinte.
+- Se o serviço ficar mais de 1 dia sem rodar depois das 9h de segunda, aquela semana é pulada.
+- `/resumo desligar` e `/resumo ligar` (Gerenciar servidor) desligam e ligam o resumo.
+- O tempo parado é contado da volta do sub até a leitura que viu a viagem nova. Se ninguém com o plugin estava na oficina quando o sub saiu, ele conta a mais. Cada espera conta no máximo 7 dias.
+
+## Airships
+- O plugin lê na oficina o nome, a volta, o rank, o XP e o loot de cada airship, como faz com os subs. O jogo não guarda a rota nem o desgaste das airships do mesmo jeito, então eles não aparecem.
+- A FC só pode ter 4 viagens ao mesmo tempo, somando subs e airships.
+- O loot das airships entra no total do dia e no lucro, com ✈️ na frente do nome. Sub e airship na mesma posição são viagens diferentes.
+- Quando uma airship volta, sai o aviso "✈️ ... voltou!", com o mesmo agrupamento de 15 minutos dos subs.
+
+## Casa da FC
+- O jogo derruba a casa da FC depois de 45 dias sem nenhum membro entrar nela.
+- O plugin aprende qual é a casa da FC pela oficina, que fica dentro dela: mundo, ward e plot.
+- Toda vez que um personagem ativo está dentro dessa casa, a entrada é registrada (no máximo de 10 em 10 minutos) e vai ao serviço com o nome do personagem. Vale a entrada mais recente entre os membros.
+- O painel mostra "🏠 Última visita na casa" a partir de 7 dias, com ⚠️ a partir de 30.
+- Avisos marcando @Subs aos 30, 40 e 44 dias, um por marco. O de 44 dias sai com 🚨. Uma entrada nova recomeça a contagem.
+- Só conta quem usa o plugin. Um membro que entra sem o plugin não zera a contagem, então o aviso pode sair à toa, mas nunca deixa de sair.
 
 ## Buffs ativos
 - Os status do personagem dizem quais buffs estão ativos, e o valor do status indica o nível.
@@ -62,6 +88,8 @@
 - O painel mostra o estoque só depois da primeira contagem, com um ⚠️ no que estiver baixo.
 - Com os detalhes dos subs, o estoque mostra quantas rodadas os tanques aguentam (tanques ÷ soma dos tanques de cada rota) e quantos reparos completos os kits pagam.
 - Com menos de 2 rodadas de tanques (ou 120 tanques, enquanto as rotas não são conhecidas) ou 20 kits, sai um aviso marcando @Subs, uma vez só. Ele volta a avisar depois que o estoque for reposto e cair de novo.
+- Previsão: o serviço guarda as contagens dos últimos 14 dias e soma só as quedas dos últimos 7 (comprar ou repor não conta como gasto). Com pelo menos 3 dias de contagens, o painel, o `/estoque` e o plugin mostram "acaba ~dd/mm" para tanques e kits.
+- Com a previsão, o aviso de estoque baixo sai quando faltam 5 dias ou menos para acabar, no lugar dos limites fixos.
 
 ## Market
 - O plugin marca os itens do loot que podem ir para o market e manda junto o mundo dos preços: o mundo de origem do personagem, ou o escolhido em Configurações (mundos do mesmo data center ou o data center inteiro).

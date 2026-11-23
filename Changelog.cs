@@ -9,6 +9,17 @@ public static class Changelog
 {
     public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
     [
+        ("0.10.0",
+        [
+            ("Added",
+            [
+                "Airships: return time, rank and loot of each voyage, read from the workshop like the submarines. They also count in the daily loot and get their own alert.",
+                "FC house: the plugin recognizes the FC house from the workshop and records every visit. The Overview shows the days since the last visit by any member, and alerts go out at 30, 40 and 44 days, before the game demolishes it at 45.",
+                "Supply forecast: the date the ceruleum tanks and repair materials run out, based on the last days of use. The low supply alert now goes out 5 days before.",
+                "Profit section in the Loot tab: the last 4 weeks and how much each submarine route makes per voyage and per tank.",
+                "Discord: /lucro, /loot mes and a weekly summary every Monday at 9:00 (Brasília), which /resumo turns on or off.",
+            ]),
+        ]),
         ("0.9.0",
         [
             ("Added",

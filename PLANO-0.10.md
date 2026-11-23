@@ -1,72 +1,68 @@
-# Plano da 0.10: casa, lucro e estoque
+# Plano da 0.10: casa, airships, lucro e estoque
 
 ## Objetivo
-Usar melhor os dados que o plugin já pega, sem ler telas novas do jogo: avisar antes de a casa da FC ser derrubada, mostrar o lucro ao longo do tempo, prever quando o estoque acaba e mandar um resumo semanal no Discord.
+Usar melhor os dados que o plugin já pega: avisar antes de a casa da FC ser derrubada, acompanhar as airships, mostrar o lucro ao longo do tempo, prever quando o estoque acaba e mandar um resumo semanal no Discord.
 
 ## Fora desta versão
-- **Airships:** a FC só pode ter 4 viagens ao mesmo tempo, somando subs e airships. Os 4 subs ocupam todas, e o loot de airship rende bem menos.
-- **Várias FCs no mesmo serviço:** fica para quando outra FC for usar.
+- **Várias FCs no mesmo serviço:** fica para a 0.11, quando outra FC for usar.
 
-## 1. Aviso da casa sem visita
-**Regra do jogo:** a casa da FC é derrubada se nenhum membro entrar nela por 45 dias. Junto com a casa vão a oficina e os subs. Só logar no jogo não conta, tem que entrar na casa. O jogo manda um e-mail aos 42 dias, e a Square já suspendeu a derrubada algumas vezes.
+## 1. Aviso da casa sem visita (feito)
+- **Regra do jogo:** a casa da FC é derrubada depois de 45 dias sem nenhum membro entrar. Só logar no jogo não conta. O jogo manda e-mail aos 42 dias, e a Square já suspendeu a derrubada algumas vezes.
+- **Como o plugin reconhece a casa:** pela oficina, que fica dentro dela. Guarda mundo, ward e plot (`Config.FcHouse`).
+- **Visita:** um personagem ativo dentro dessa casa registra a entrada (de 10 em 10 minutos no máximo) e manda ao serviço com o nome. Vale a mais recente entre os membros.
+- **Painel:** a linha `🏠 Última visita na casa` aparece a partir de 7 dias.
+- **Avisos com ping:** aos 30, 40 e 44 dias.
+- **Plugin:** card "Casa da FC" na Visão geral, com a barra até os 45 dias, e o toggle de aviso nas configurações.
+- **Conferir no jogo:**
+  - se a casa é reconhecida, com o log detalhado ligado: "Dentro da casa ... (casa da FC: ...)";
+  - se entrar num quarto privado também conta.
 
-**Como o plugin sabe**
-- A casa da FC é aprendida sozinha: a oficina dos subs fica dentro dela, e o plugin já guarda o `HouseId` da oficina. Não tem nada para configurar.
-- Quando um personagem marcado está dentro de uma casa (`HousingManager.GetCurrentIndoorHouseId()`) e o ID bate com o da oficina, conta como visita. A checagem roda ao trocar de zona e de vez em quando enquanto está lá dentro.
-- A hora da visita vai para o serviço com o nome do personagem. Vale a visita mais recente entre os membros.
-- Ainda falta confirmar no jogo se entrar num quarto privado dentro da casa da FC também conta. Até lá, só conta a casa.
+## 2. Airships (feito)
+- O plugin lê na oficina o nome, a volta, o rank, o XP e o loot de cada airship. O jogo não guarda a rota nem o desgaste delas como faz com os subs.
+- O loot entra no total do dia e no lucro. A chave da viagem separa sub e airship na mesma posição.
+- Painel com a seção ✈️ Airships (só aparece se existir alguma), aviso "✈️ ... voltou!" e a tabela na aba Submarinos.
+- **Conferir no jogo:** se o loot da airship é salvo quando o resultado da viagem chega.
 
-**O que aparece**
-- **Painel:** a linha `🏠 Última visita na casa: há N dias (nome)` aparece a partir de 7 dias.
-- **Avisos com ping:** aos 30, 40 e 44 dias, um por marco, com o último em tom de urgência. Somem quando alguém entra.
-- **Plugin:** um card na Visão geral com os dias que faltam e um toggle "Avisar sobre a casa" nas configurações.
-- **Se a Square suspender a derrubada:** basta desligar o aviso nas configurações.
+## 3. Lucro ao longo do tempo (feito)
+- O serviço guarda as viagens por 120 dias e apaga as mais antigas uma vez por dia.
+- Cada viagem de sub guarda a rota e os tanques que o sub tinha quando o loot chegou.
+- `/loot mes`, `/lucro` (4 semanas e ranking das rotas por gil por tanque) e a seção Lucro na aba Loot.
 
-**Limite:** só conta quem tem o plugin. Se outro membro entrar sem o plugin, o aviso dispara à toa, o que é o lado seguro do erro.
+## 4. Previsão do estoque (feito)
+- O serviço guarda as contagens de 14 dias e soma só as quedas dos últimos 7.
+- Com 3 dias de contagens, mostra "acaba ~dd/mm" no painel, no `/estoque` e no plugin.
+- O aviso de estoque baixo passa a sair 5 dias antes de acabar.
 
-## 2. Lucro ao longo do tempo
-**O problema:** hoje o serviço guarda só 7 dias de histórico. O plugin guarda 60 dias de viagens, mas só deste PC.
+## 5. Resumo semanal (feito)
+- Toda segunda às 9h, sem ping: gil da semana e comparação com a anterior, quem mais rendeu, tanques e kits gastos e o tempo que os subs ficaram parados.
+- Começa na segunda seguinte à atualização do serviço.
+- `/resumo ligar` e `/resumo desligar`.
 
-**No serviço**
-- Guardar um resumo por dia: gil por sub, por rota (setores) e número de viagens. Esse resumo é pequeno e fica 120 dias.
-- As viagens completas continuam com 7 dias.
+## Para publicar
+1. Testar no jogo: casa, airships (se a FC tiver), previsão e lucro.
+2. Deploy do serviço e rodar `tools/registrar-comandos.ps1` de novo, para aparecer `/lucro`, `/resumo` e a opção mês no `/loot`.
+3. Tag `v0.10.0`.
 
-**No Discord**
-- `/loot` ganha a opção `mes`.
-- Novo `/lucro`: as últimas 4 semanas, a melhor rota e o gil por tanque gasto de cada rota.
+## Depois da 0.10: membros que não usam o plugin
+Hoje tudo depende de alguém com o plugin ver a coisa acontecer. As ideias abaixo cobrem esse buraco sem automatizar nada no jogo.
 
-**No plugin**
-- Uma seção nova na aba Loot com o total por semana e por mês.
-- Um ranking de rotas por gil por viagem e por tanque.
+**Casa**
+- `/casa visitei` no Discord, para quem entrou sem o plugin registrar a visita. É o que mais vale: o aviso da casa é o único que pode sair errado por falta do plugin.
 
-## 3. Previsão do estoque
-- **Gasto por dia:** calculado a partir das viagens dos últimos 7 dias (tanques gastos por rota) e dos reparos feitos.
-- **Painel e `/estoque`:** em vez de só "dá para X rodadas", mostram também a data estimada, tipo `⛽ acaba ~05/12`, separada para tanques e kits.
-- **Aviso:** quando faltarem 5 dias ou menos para acabar. Ele substitui o aviso de estoque baixo de hoje, que olha só a quantidade.
-- **Sem dado suficiente:** com menos de 3 dias de viagens, não mostra a previsão.
+**Subs**
+- Quando um sub muda de horário (saiu de novo) sem nenhum membro com plugin ter visto o loot, o painel marca "loot não registrado" naquela viagem, em vez de o dia ficar com menos gil sem explicação.
+- `/subs` mostra há quanto tempo cada sub foi lido, para ficar claro quando o dado está velho.
 
-## 4. Resumo semanal
-- Toda segunda às 09:00 (horário do painel), o serviço manda uma mensagem no canal, sem ping, com:
-  - o gil da semana;
-  - a comparação com a semana anterior;
-  - viagens e reparos feitos;
-  - tanques e kits gastos;
-  - o sub que mais rendeu;
-  - quanto tempo os subs ficaram parados esperando alguém mandar.
-- Usa o alarme do Durable Object que já existe. Não se apaga em 8 horas como os avisos.
-- Pode ser desligado com `/resumo desligar` (Gerenciar servidor).
+**Plantação**
+- `/regar` no Discord (com autocomplete dos campos cadastrados), para quem regou sem o plugin registrar a rega e o aviso não sair à toa.
+- O aviso de rega diz "regado por alguém sem o plugin?" quando o horário passou e ninguém leu.
 
-## Ordem
-1. Resumo por dia no serviço (base do 2, 3 e 4), com testes.
-2. Previsão do estoque.
-3. Lucro: `/loot mes`, `/lucro` e a seção no plugin.
-4. Resumo semanal.
-5. Aviso da casa: plugin, serviço, painel e avisos.
-6. Changelog, README, REGRAS, testes, e testar no jogo antes de publicar.
+**Estoque**
+- `/estoque comprei 100 tanques`: soma no estoque até a próxima contagem de verdade, para a previsão não ficar errada quando alguém sem plugin compra e guarda no baú.
 
-Tudo na `dev`, um commit por parte. Só vai para a `main` depois do teste no jogo.
+**Buffs**
+- Só o plugin lê o Wheel Stand. Uma linha "lido há X" no painel, como já existe nos buffs ativos, deixa claro quando ninguém olhou.
 
-## Riscos
-- **Resumo por dia:** só começa a acumular quando a 0.10 for para o ar. Dá para preencher os primeiros 60 dias com as viagens que o plugin guarda localmente, enviando uma vez.
-- **Previsão do estoque:** fica errada se mudarem de rota no meio da semana. Ela se ajusta sozinha em alguns dias.
-- **ID da casa:** se o ID da oficina mudar, por exemplo porque a FC mudou de casa, o plugin aprende o novo na próxima vez que abrir os subs.
+**Em geral**
+- Uma linha discreta no rodapé do painel: "Dados de: Luciano, Amigo" com quem mandou algo nas últimas 24 horas, para a FC saber quem está cobrindo o quê.
+- Os comandos de registro manual valem sempre menos que uma leitura do plugin, e o painel mostra ✍️ no que veio do Discord.
