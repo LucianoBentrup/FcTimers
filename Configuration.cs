@@ -166,6 +166,8 @@ public class Configuration : IPluginConfiguration
 
     // Casa da FC ("<mundo>:<ward>:<plot>"): aprendida pela oficina, que fica dentro dela. E a última entrada vista neste PC.
     public string FcHouse { get; set; } = string.Empty;
+    // True quando a casa foi marcada pelo botão. A oficina não troca mais a casa.
+    public bool FcHouseManual { get; set; }
     public long HouseVisitAt { get; set; }
 
     // Último loot visto na memória de cada slot. Loot novo só é salvo quando muda.

@@ -55,7 +55,10 @@ public static class L
     public static string AirshipReturned(string name) => T($"Airship {name} voltou!", $"Airship {name} is back!");
     public static string House => T("Casa da FC", "FC house");
     public static string AlertHouse => T("Casa da FC sem visita (30, 40 e 44 dias)", "FC house not visited (30, 40 and 44 days)");
-    public static string HouseUnknown => T("Abra a oficina uma vez para o plugin reconhecer a casa da FC.", "Open the workshop once so the plugin can recognize the FC house.");
+    public static string HouseUnknown => T("Abra a oficina uma vez, ou entre na casa da FC e clique em \"Esta é a casa da FC\".", "Open the workshop once, or enter the FC house and click \"This is the FC house\".");
+    public static string HouseMark => T("Esta é a casa da FC", "This is the FC house");
+    public static string HouseMarkHint => T("Marca a casa onde você está agora como a casa da FC.", "Marks the house you are in as the FC house.");
+    public static string HouseMarkReplace => T("Você está em outra casa. Clique só se esta for a casa da FC: ela passa a valer no lugar da atual.", "You are in another house. Click only if this is the FC house: it replaces the current one.");
     public static string HouseNoVisit => T("Nenhuma entrada registrada ainda.", "No visit recorded yet.");
     public static string HouseVisited(string ago) => T($"Última visita há {ago}", $"Last visit {ago} ago");
     public static string HouseBy(string name) => T($"por {name}", $"by {name}");

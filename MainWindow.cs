@@ -179,6 +179,7 @@ public class MainWindow : Window
         if (view.House is not { } house)
         {
             UiKit.Empty(FontAwesomeIcon.InfoCircle, plugin.Config.FcHouse.Length == 0 ? L.HouseUnknown : L.HouseNoVisit);
+            HouseMarkButton();
             return;
         }
 
@@ -191,6 +192,18 @@ public class MainWindow : Window
             ImGui.TextColored(UiKit.Muted, L.HouseBy(by));
         UiKit.Bar(Math.Clamp(ago / (float)Plugin.HouseLimitSeconds, 0, 1), L.HouseDemolish(Plugin.FormatRemaining(Math.Max(0, left))), color);
         UiKit.Tooltip(L.HouseHint);
+        HouseMarkButton();
+    }
+
+    // Dentro de uma casa que não é a da FC, deixa marcar essa casa sem precisar abrir a oficina.
+    private void HouseMarkButton()
+    {
+        if (plugin.CurrentHouse is not { } current || current == plugin.Config.FcHouse)
+            return;
+
+        if (ImGui.SmallButton(L.HouseMark))
+            plugin.MarkCurrentHouse();
+        UiKit.Tooltip(plugin.Config.FcHouse.Length == 0 ? L.HouseMarkHint : L.HouseMarkReplace);
     }
 
     private static void OverviewLoot(FcView view)

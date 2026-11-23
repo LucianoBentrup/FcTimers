@@ -49,6 +49,7 @@
 ## Casa da FC
 - O jogo derruba a casa da FC depois de 45 dias sem nenhum membro entrar nela.
 - O plugin aprende qual é a casa da FC pela oficina, que fica dentro dela: mundo, ward e plot.
+- Também dá para marcar à mão: dentro de uma casa que não é a da FC, o card "Casa da FC" da Visão geral mostra o botão "Esta é a casa da FC". A casa marcada à mão vale mais que a da oficina, que não troca mais a casa depois disso. Marcar outra casa pelo botão troca de novo.
 - Toda vez que um personagem ativo está dentro dessa casa, a entrada é registrada (no máximo de 10 em 10 minutos) e vai ao serviço com o nome do personagem. Vale a entrada mais recente entre os membros.
 - O painel mostra "🏠 Última visita na casa" a partir de 7 dias, com ⚠️ a partir de 30.
 - Avisos marcando @Subs aos 30, 40 e 44 dias, um por marco. O de 44 dias sai com 🚨. Uma entrada nova recomeça a contagem.

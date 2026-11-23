@@ -453,6 +453,8 @@ public sealed class Plugin : IDalamudPlugin
             ReadSupplies(now);
             CheckHouseVisit(now);
         }
+        else
+            lastIndoorHouse = null;
 
         Sync.ReportSupplies(Config.Supplies.Tanks, Config.Supplies.Kits, Config.Supplies.ChangedAt);
 
@@ -715,7 +717,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private bool LearnFcHouse(HouseId id)
     {
-        if (HouseKey(id) is not { } house || house == Config.FcHouse)
+        // A casa marcada à mão vale mais que a da oficina.
+        if (Config.FcHouseManual || HouseKey(id) is not { } house || house == Config.FcHouse)
             return false;
 
         Config.FcHouse = house;
@@ -723,22 +726,40 @@ public sealed class Plugin : IDalamudPlugin
         return true;
     }
 
+    // Casa em que o personagem ativo está agora (fora de apartamento). Null fora de casa.
+    public string? CurrentHouse => lastIndoorHouse;
+
+    // Botão do card da casa: marca a casa onde o personagem está como a casa da FC.
+    public void MarkCurrentHouse()
+    {
+        if (lastIndoorHouse is not { } house || house == Config.FcHouse)
+            return;
+
+        Config.FcHouse = house;
+        Config.FcHouseManual = true;
+        SaveConfig();
+        Diagnostics.Write($"Casa da FC marcada à mão ({house})");
+    }
+
     // Entrar na casa da FC zera o prazo de 45 dias do jogo. O registro vale de 10 em 10 minutos, para não gravar a cada segundo.
     private unsafe void CheckHouseVisit(long now)
     {
         var manager = HousingManager.Instance();
-        if (manager == null || Config.FcHouse.Length == 0 || !(manager->IsInside() || manager->IsInWorkshop()))
+        if (manager == null || !(manager->IsInside() || manager->IsInWorkshop()))
+        {
+            lastIndoorHouse = null;
             return;
+        }
 
         // Toda casa em que o personagem entra vai ao log, para conferir no jogo se a casa da FC é reconhecida.
         var current = HouseKey(manager->GetCurrentIndoorHouseId());
         if (current != lastIndoorHouse)
         {
             lastIndoorHouse = current;
-            Diagnostics.Detail($"Dentro da casa {current ?? "?"} (casa da FC: {Config.FcHouse})");
+            Diagnostics.Detail($"Dentro da casa {current ?? "?"} (casa da FC: {(Config.FcHouse.Length == 0 ? "?" : Config.FcHouse)})");
         }
 
-        if (current != Config.FcHouse || now - Config.HouseVisitAt < HouseVisitStep)
+        if (Config.FcHouse.Length == 0 || current != Config.FcHouse || now - Config.HouseVisitAt < HouseVisitStep)
             return;
 
         if (now - Config.HouseVisitAt >= HouseVisitLogGap)
