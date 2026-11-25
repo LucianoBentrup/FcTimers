@@ -1,12 +1,7 @@
-// Ligação entre o plugin, a FC e a conta do Discord. Decidido em 25/11/2026:
-//   1. Quem gerencia o servidor gera no /fcc um código curto da FC (FCC-XXXXXX), que pode trocar ou desligar.
-//   2. O membro cola o código no /fct. O plugin manda o código, o ID da FC do jogo (InfoProxyFreeCompany.Id) e o
-//      ID do dono (a instalação do plugin). O serviço responde "FC X no servidor Y" e só liga depois que o membro
-//      confirma no jogo. A primeira ligação grava qual FC do jogo é esta; depois, só a mesma FC liga.
-//   3. A ligação é com o dono, não com cada personagem. Personagem de outra FC (alt) nunca entra nesta FC.
-//   4. Ligar a conta do Discord é opcional (serve para eventos e DM): o /fcc mostra um código de 6 dígitos só para
-//      quem pediu, e o dono digita no jogo.
-// Tudo que depende da ligação passa por este arquivo.
+// Ligação plugin ↔ FC ↔ conta do Discord.
+// Código da FC (FCC-XXXXXX) gerado no /fcc; o plugin manda código + ID da FC do jogo + dono (instalação).
+// A primeira ligação fixa o ID da FC do jogo. Ligação é por dono, não por personagem; alt de outra FC não entra.
+// Conta do Discord é opcional: código de 6 dígitos no /fcc, digitado no jogo.
 
 export const CODE_PREFIX = 'FCC-';
 // Sem 0/O, 1/I/L e U: dá para ditar o código sem confusão. 30^6 ≈ 729 milhões de códigos.

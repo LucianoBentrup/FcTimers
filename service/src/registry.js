@@ -9,9 +9,8 @@
 //   member:<fc>:<id do membro>  -> { owner, name, world, role, status, requestedAt, joinedAt }
 //   fails:<dono ou ip>          -> { count, since }
 //
-// Membros (decidido em 25/11/2026): o código não liga direto. Quem cola o código vira um pedido, com o nick e o
-// mundo do personagem, e o dono da FC (ou um admin) aceita ou recusa pelo plugin. O primeiro a ligar uma FC é o
-// dono dela. O id do membro é um pedaço do hash do dono do plugin, para a lista nunca mostrar o ID de verdade.
+// Membros: o código vira pedido (nick + mundo); dono ou admin aceita pelo plugin. Primeiro a ligar = dono da FC.
+// id do membro = pedaço do hash do dono, pra lista não expor o ID real.
 
 import { DurableObject } from 'cloudflare:workers';
 import {

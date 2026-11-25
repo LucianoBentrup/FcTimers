@@ -7,8 +7,6 @@
 
 A Dalamud plugin for FFXIV that keeps track of your Free Company: submersibles, loot, workshop supplies, gardening and buffs. A Cloudflare service merges what each member has read and keeps a shared Discord panel, with alerts and commands.
 
-The plugin **only reads what the game already shows**. It doesn't automate anything, doesn't send anything to the game servers and doesn't open windows on its own. It is a third-party tool: using it is your choice, and the game's terms apply to it.
-
 ## Features
 
 **Submersibles**
