@@ -33,7 +33,7 @@ The plugin **only reads what the game already shows**. It doesn't automate anyth
 **Discord** (with the service)
 - A single panel, always edited in place, with everything above and today's loot.
 - Alerts that ping the FC role: 1-hour reminder, sub ready, sub forgotten, watering, plant about to die, repair, low supplies, expensive market item, new sector and Wheel Stand buff ready. Alerts that happen together go out as one message, and all of them are deleted after 8 hours.
-- FC Companion app commands: `/subs`, `/estoque`, `/loot [hoje|semana|mês]` and `/lucro` (last 4 weeks and the best routes) for everyone; `/painel`, `/avisos limpar`, `/resumo ligar|desligar` and `/log` for server managers.
+- One command, `/fcc`: a menu only you see, with buttons for the panel, subs, loot (today, 7 or 30 days), supplies and profit (last 4 weeks and the best routes), and a button to post any of them in the channel. Server managers also get Manage: repost the panel, group alerts, turn the weekly summary on or off, download the plugin log and pick the menu language (English or Portuguese).
 - A weekly summary every Monday at 9:00 (Brasília): last week's gil, the best sub, supplies used and how long subs sat ready.
 - The panel footer warns when Dalamud hasn't been updated yet for a new game patch.
 

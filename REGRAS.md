@@ -27,10 +27,10 @@
 - Reler ou reenviar a mesma viagem nunca soma de novo.
 - A viagem pertence ao dia em que o submarino voltou, no fuso de Brasília, no painel e na janela do plugin.
 - À meia-noite o painel passa a mostrar o novo dia. O serviço guarda as viagens por 120 dias, para o lucro por semana e por mês, e apaga as mais antigas uma vez por dia.
-- A viagem de um sub guarda a rota e os tanques que o sub tinha quando o loot chegou. É isso que permite comparar as rotas no `/lucro`.
+- A viagem de um sub guarda a rota e os tanques que o sub tinha quando o loot chegou. É isso que permite comparar as rotas na seção Lucro do `/fcc`.
 
 ## Lucro
-- O `/lucro` e a seção Lucro da aba Loot mostram as últimas 4 semanas (blocos de 7 dias terminando hoje) e as rotas dos subs ordenadas por gil por tanque.
+- A seção Lucro do `/fcc` e a seção Lucro da aba Loot mostram as últimas 4 semanas (blocos de 7 dias terminando hoje) e as rotas dos subs ordenadas por gil por tanque.
 - Viagens de antes da 0.10 não têm rota, então entram nas semanas mas não no ranking das rotas.
 
 ## Resumo semanal
@@ -89,7 +89,7 @@
 - O painel mostra o estoque só depois da primeira contagem, com um ⚠️ no que estiver baixo.
 - Com os detalhes dos subs, o estoque mostra quantas rodadas os tanques aguentam (tanques ÷ soma dos tanques de cada rota) e quantos reparos completos os kits pagam.
 - Com menos de 2 rodadas de tanques (ou 120 tanques, enquanto as rotas não são conhecidas) ou 20 kits, sai um aviso marcando @Subs, uma vez só. Ele volta a avisar depois que o estoque for reposto e cair de novo.
-- Previsão: o serviço guarda as contagens dos últimos 14 dias e soma só as quedas dos últimos 7 (comprar ou repor não conta como gasto). Com pelo menos 3 dias de contagens, o painel, o `/estoque` e o plugin mostram "acaba ~dd/mm" para tanques e kits.
+- Previsão: o serviço guarda as contagens dos últimos 14 dias e soma só as quedas dos últimos 7 (comprar ou repor não conta como gasto). Com pelo menos 3 dias de contagens, o painel, a seção Estoque do `/fcc` e o plugin mostram "acaba ~dd/mm" para tanques e kits.
 - Com a previsão, o aviso de estoque baixo sai quando faltam 5 dias ou menos para acabar, no lugar dos limites fixos.
 
 ## Market
@@ -127,3 +127,11 @@
 - No status de um submarino, vale a leitura feita por último, usando o horário do servidor em que ela chegou.
 - A edição da mensagem é sempre gerada a partir do estado salvo, nunca de um envio isolado.
 - Se o Discord falhar ou limitar as edições, o estado continua salvo e a próxima edição corrige o painel.
+
+## Discord: o /fcc
+- O app registra um comando só, `/fcc`, com o mesmo nome em qualquer idioma. Ele abre um menu que só quem chamou vê, e cada botão troca o conteúdo da mesma mensagem.
+- Seções para todos: Painel, Subs, Loot (hoje, 7 ou 30 dias), Estoque e Lucro. "Postar no canal" manda a seção aberta para todo mundo ver, dizendo quem postou e sem marcar ninguém.
+- Ajustes, só para quem tem "Gerenciar servidor": reenviar o painel, agrupar avisos, ligar ou desligar o resumo semanal, baixar o log do plugin e o idioma do menu. A permissão é conferida a cada clique, não só ao abrir o menu.
+- O idioma do menu é da FC (padrão português para a FC atual). Os textos das seções ainda vêm em português até a 0.14.
+- Os comandos antigos (`/subs`, `/loot`, `/estoque`, `/lucro`, `/painel`, `/avisos`, `/resumo`, `/log`) somem ao registrar o `/fcc`. Enquanto algum ainda aparecer no Discord, ele abre a seção equivalente do `/fcc`.
+- Servidor que não é o da FC recebe "ainda não está ligado a uma FC". Na 0.13 essa ligação vem do registro de FCs.

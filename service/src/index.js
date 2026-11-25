@@ -5,8 +5,12 @@ import {
   profitReport, profitSummary, VOYAGE_KEEP_DAYS, weeklyDue, weeklySummary,
 } from './logic.js';
 import {
-  canManage, COMMAND, commandPath, DEFERRED_REPLY, EPHEMERAL, optionValue, PING, privateReply, publicReply, REPLY, verifyDiscord,
+  canManage, COMMAND, EPHEMERAL, optionValue, PING, privateReply, REPLY, verifyDiscord,
 } from './discord.js';
+import {
+  DEFERRED_UPDATE_MESSAGE, fcFor, langOf, LEGACY, MESSAGE_COMPONENT, menuMessage, parseCustomId, sectionEmbed, sharedMessage, text,
+  UPDATE_MESSAGE, userOf,
+} from './menu.js';
 
 const DEBOUNCE_MS = 2000;
 const RETRY_MS = 60000;
@@ -16,6 +20,8 @@ const MAX_LOG_NAME = 40;
 // Viagens de até 1 dia atrás ainda geram aviso de setor novo e de item de market.
 const NOTICE_WINDOW = 86400;
 const UNIVERSALIS = 'https://universalis.app/api/v2';
+// O teste local troca por um Discord simulado (DISCORD_API no .dev.vars).
+const DISCORD_API = 'https://discord.com/api/v10';
 
 function addNotice(state, notice, returnTime, now) {
   if (!notice || now - returnTime > NOTICE_WINDOW) return;
@@ -26,15 +32,20 @@ function addNotice(state, notice, returnTime, now) {
 const json = (body, status = 200) => Response.json(body, { status });
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
+// Título do loot no idioma da FC: "Loot de hoje (25/11)", "Loot of the last 7 days".
+function lootTitle(lang, count, now) {
+  const [, month, day] = dayOf(now).split('-');
+  if (lang === 'en') return count === 1 ? `Loot today (${day}/${month})` : `Loot of the last ${count} days`;
+  return count === 1 ? `Loot de hoje (${day}/${month})` : `Loot dos últimos ${count} dias`;
+}
+
 function isAuthorized(request, env) {
   const expected = new TextEncoder().encode(`Bearer ${env.FC_KEY}`);
   const received = new TextEncoder().encode(request.headers.get('Authorization') ?? '');
   return env.FC_KEY && expected.byteLength === received.byteLength && crypto.subtle.timingSafeEqual(expected, received);
 }
 
-const MANAGER_ONLY = ['painel', 'avisos limpar', 'log', 'resumo ligar', 'resumo desligar'];
-
-// Comandos do Discord. A assinatura do app substitui a chave da FC nesta rota.
+// Comandos e botões do Discord. A assinatura do app substitui a chave da FC nesta rota.
 async function handleInteraction(request, env, ctx) {
   const body = await request.text();
   const signed = await verifyDiscord(
@@ -44,60 +55,82 @@ async function handleInteraction(request, env, ctx) {
 
   const interaction = JSON.parse(body);
   if (interaction.type === PING) return json({ type: PING });
-  if (interaction.type !== COMMAND) return json(privateReply('Comando desconhecido.'));
-  if (env.DISCORD_GUILD_ID && interaction.guild_id !== env.DISCORD_GUILD_ID) {
-    return json(privateReply('Este servidor não está configurado no FC Companion.'));
+
+  const fc = fcFor(interaction, env);
+  if (!fc) return json(privateReply(`${text('en', 'notLinked')}\n${text('pt', 'notLinked')}`));
+  const stub = env.FC_STATE.get(env.FC_STATE.idFromName(fc));
+  const internal = (route, payload) => stub.fetch(`https://fc/${route}`, { method: 'POST', body: payload ? JSON.stringify(payload) : undefined });
+  const viewModel = async (payload) => (await internal('menu', payload)).json();
+  const manager = canManage(interaction);
+
+  // Abre o menu numa mensagem nova (comando) ou troca o conteúdo da mensagem do botão.
+  const show = async (type, { view, arg, notice, action }) => {
+    const model = await viewModel({ view, arg, action });
+    const data = menuMessage(model.lang, { ...model, view, arg, manager, notice: notice?.(model.lang) ?? model.notice });
+    return json({ type, data });
+  };
+
+  if (interaction.type === COMMAND) {
+    const name = interaction.data?.name;
+    if (name === 'fcc') return show(REPLY, { view: 'panel' });
+    // Comando antigo ainda na lista do Discord: abre a seção equivalente do /fcc.
+    const legacy = LEGACY[name];
+    if (!legacy) return json(privateReply(text('en', 'unknown')));
+    const view = legacy.view === 'manage' && !manager ? 'panel' : legacy.view;
+    const arg = legacy.args?.[optionValue(interaction, 'periodo')];
+    return show(REPLY, { view, arg, notice: (lang) => text(lang, 'moved') });
   }
 
-  const path = commandPath(interaction);
-  if (MANAGER_ONLY.includes(path) && !canManage(interaction)) return json(privateReply('Só quem gerencia o servidor pode usar este comando.'));
+  if (interaction.type !== MESSAGE_COMPONENT) return json(privateReply(text('en', 'unknown')));
+  const parsed = parseCustomId(interaction.data?.custom_id);
+  if (!parsed) return json(privateReply(text('en', 'unknown')));
+  // A permissão é conferida a cada clique: o menu pode ter sido aberto antes de a pessoa perder o cargo.
+  if ((parsed.kind === 'action' || parsed.manager) && !manager) {
+    return json(privateReply(`${text('en', 'managersOnly')}\n${text('pt', 'managersOnly')}`));
+  }
 
-  const stub = env.FC_STATE.get(env.FC_STATE.idFromName('fc'));
-  const internal = (route, payload) => stub.fetch(`https://fc/${route}`, { method: 'POST', body: payload ? JSON.stringify(payload) : undefined });
+  if (parsed.kind === 'view') return show(UPDATE_MESSAGE, parsed);
+  if (parsed.kind === 'share') {
+    const model = await viewModel(parsed);
+    return json({ type: REPLY, data: sharedMessage(model.lang, model.embed, userOf(interaction)) });
+  }
 
-  switch (path) {
-    case 'painel':
+  switch (parsed.name) {
+    case 'repost':
       await internal('repost');
-      return json(publicReply('Painel reenviado no fim do canal.'));
-    case 'avisos limpar': {
+      return show(UPDATE_MESSAGE, { view: 'manage', notice: (lang) => text(lang, 'panelReposted') });
+    case 'regroup': {
       // Apagar e reenviar avisos passa dos 3 segundos que o Discord espera: responde já e termina depois.
-      const followUp = `https://discord.com/api/v10/webhooks/${env.DISCORD_APP_ID}/${interaction.token}/messages/@original`;
+      const original = `${env.DISCORD_API ?? DISCORD_API}/webhooks/${env.DISCORD_APP_ID}/${interaction.token}/messages/@original`;
       ctx.waitUntil((async () => {
-        let content;
+        let notice;
         try {
           const result = await (await internal('regroup')).json();
-          content = `Pronto: ${result.removed} avisos apagados, ${result.sent} agrupados enviados.`;
+          notice = (lang) => text(lang, 'regroupDone')(result.removed, result.sent);
         } catch (error) {
-          console.error('Falha no /avisos limpar', error);
-          content = 'Não consegui limpar os avisos agora. Tente de novo em alguns minutos.';
+          console.error('Falha ao agrupar os avisos', error);
+          notice = (lang) => text(lang, 'regroupFailed');
         }
-        await fetch(followUp, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
+        const { data } = await (await show(UPDATE_MESSAGE, { view: 'manage', notice })).json();
+        delete data.flags;
+        await fetch(original, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       })());
-      return json({ type: DEFERRED_REPLY });
+      return json({ type: DEFERRED_UPDATE_MESSAGE });
     }
-    case 'loot':
-    case 'lucro':
-    case 'estoque':
-    case 'subs':
-    case 'resumo ligar':
-    case 'resumo desligar':
     case 'log': {
-      const answer = await (await internal('discord', {
-        path, periodo: optionValue(interaction, 'periodo'), personagem: optionValue(interaction, 'personagem'),
-      })).json();
-      // O log fica só para quem pediu; o resto aparece para todos.
-      if (!answer.file) return json(path === 'log' ? privateReply(answer.content) : publicReply(answer.content));
-
+      const answer = await viewModel({ action: 'log' });
+      if (!answer.file) return json(privateReply(answer.notice));
       const form = new FormData();
       form.append('payload_json', JSON.stringify({
         type: REPLY,
-        data: { content: answer.content, flags: EPHEMERAL, attachments: [{ id: 0, filename: answer.file.name }] },
+        data: { content: answer.notice, flags: EPHEMERAL, allowed_mentions: { parse: [] }, attachments: [{ id: 0, filename: answer.file.name }] },
       }));
       form.append('files[0]', new Blob([answer.file.text], { type: 'text/plain' }), answer.file.name);
       return new Response(form);
     }
     default:
-      return json(privateReply('Comando desconhecido.'));
+      // Ligar e desligar o resumo e trocar o idioma: o objeto da FC grava e devolve os ajustes já mudados.
+      return show(UPDATE_MESSAGE, { view: 'manage', action: parsed.name });
   }
 }
 
@@ -123,7 +156,7 @@ export class FcState extends DurableObject {
       case 'POST /repost': return this.handleRepost();
       case 'POST /regroup': return this.handleRegroup();
       case 'POST /log': return this.handleLog(request);
-      case 'POST /discord': return this.handleDiscord(request);
+      case 'POST /menu': return this.handleMenu(request);
       case 'GET /state': return this.handleState();
       case 'GET /logs': return this.handleLogs();
       default: return this.handleHistory(request);
@@ -152,38 +185,63 @@ export class FcState extends DurableObject {
     return json({ ok: true });
   }
 
-  // Respostas dos comandos do Discord que só leem o estado.
-  async handleDiscord(request) {
-    const { path, periodo, personagem } = await request.json();
+  // O conteúdo de cada seção do /fcc e as ações que só mudam ajustes. Devolve o idioma da FC, o embed da seção e,
+  // para os ajustes, o que os botões precisam saber (resumo ligado ou não).
+  async handleMenu(request) {
+    const { view = 'panel', arg, action } = await request.json();
     const now = nowSeconds();
-    const state = (await this.ctx.storage.get('state')) ?? newState();
-    if (path === 'estoque') return json({ content: suppliesSummary(state, now) });
-    if (path === 'subs') return json({ content: subsSummary(state, now) });
-    if (path === 'lucro') return json({ content: profitSummary(await this.profit(now)) });
-    if (path === 'resumo ligar' || path === 'resumo desligar') {
-      const off = path === 'resumo desligar';
-      const latest = (await this.ctx.storage.get('state')) ?? newState();
-      latest.weekly = { ...(latest.weekly ?? {}), off };
-      await this.ctx.storage.put('state', latest);
-      await this.ctx.storage.setAlarm(Date.now());
-      return json({ content: off ? 'Resumo semanal desligado.' : 'Resumo semanal ligado: sai toda segunda às 9h.' });
+    const storage = this.ctx.storage;
+    let state = (await storage.get('state')) ?? newState();
+    let notice;
+
+    if (action === 'log') {
+      const lang = langOf(state);
+      const logs = [...(await storage.list({ prefix: 'log:' })).values()].sort((a, b) => b.uploadedAt - a.uploadedAt);
+      const log = logs[0];
+      if (!log) return json({ lang, notice: text(lang, 'noLog') });
+      return json({
+        lang,
+        notice: text(lang, 'logOf')(log.character, log.uploadedAt),
+        file: { name: `log-${log.character.replace(/[^\w-]+/g, '_')}.txt`, text: log.text },
+      });
     }
-    if (path === 'loot') {
-      const count = { semana: 7, mes: 30 }[periodo] ?? 1;
-      const voyages = await this.voyagesSince(now, count);
-      const [, month, day] = dayOf(now).split('-');
-      const titles = { 7: 'Loot dos últimos 7 dias', 30: 'Loot dos últimos 30 dias' };
-      return json({ content: lootSummary(voyages, titles[count] ?? `Loot de hoje (${day}/${month})`) });
+    if (['weekly-on', 'weekly-off', 'lang-en', 'lang-pt'].includes(action)) {
+      if (action.startsWith('weekly')) {
+        const off = action === 'weekly-off';
+        state.weekly = { ...(state.weekly ?? {}), off };
+        notice = off ? 'weeklyNowOff' : 'weeklyNowOn';
+      } else {
+        state.settings = { ...(state.settings ?? {}), lang: action.slice(5) };
+        notice = 'langNow';
+      }
+      await storage.put('state', state);
+      // O resumo ligado ou desligado muda o próximo alarme.
+      if (action.startsWith('weekly')) await storage.setAlarm(Date.now());
+      state = (await storage.get('state')) ?? state;
     }
 
-    const logs = [...(await this.ctx.storage.list({ prefix: 'log:' })).values()].sort((a, b) => b.uploadedAt - a.uploadedAt);
-    const wanted = typeof personagem === 'string' ? personagem.trim().toLowerCase() : '';
-    const log = wanted ? logs.find((l) => l.character.toLowerCase().includes(wanted)) : logs[0];
-    if (!log) return json({ content: wanted ? `Nenhum log de "${personagem}".` : 'Nenhum log enviado ainda.' });
+    const lang = langOf(state);
     return json({
-      content: `Log de **${log.character}**, enviado <t:${log.uploadedAt}:R>.`,
-      file: { name: `log-${log.character.replace(/[^\w-]+/g, '_')}.txt`, text: log.text },
+      lang,
+      embed: await this.sectionEmbedFor(view, arg, state, now, lang),
+      weeklyOff: Boolean(state.weekly?.off),
+      ...(notice ? { notice: text(lang, notice) } : {}),
     });
+  }
+
+  async sectionEmbedFor(view, arg, state, now, lang) {
+    const t = (key) => text(lang, key);
+    switch (view) {
+      case 'subs': return sectionEmbed(t('subsTitle'), subsSummary(state, now));
+      case 'supplies': return sectionEmbed(t('suppliesTitle'), suppliesSummary(state, now));
+      case 'profit': return sectionEmbed(t('profitTitle'), profitSummary(await this.profit(now)));
+      case 'manage': return sectionEmbed(t('manageTitle'), t('manageText'));
+      case 'loot': {
+        const count = { week: 7, month: 30 }[arg] ?? 1;
+        return sectionEmbed(t('lootTitle'), lootSummary(await this.voyagesSince(now, count), lootTitle(lang, count, now)));
+      }
+      default: return renderPanel(state, await this.voyagesOn(dayOf(now)), now).embeds[0];
+    }
   }
 
   async handleLogs() {

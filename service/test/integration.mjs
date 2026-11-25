@@ -26,6 +26,11 @@ const discord = createServer((req, res) => {
       res.writeHead(500).end();
       return;
     }
+    if (req.url.includes('/messages/@original')) {
+      calls.push({ method: req.method, original: true, body: JSON.parse(data) });
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+      return;
+    }
     const id = req.url.match(/messages\/(\d+)/)?.[1];
     if (req.method === 'DELETE') {
       messages.delete(id);
@@ -75,7 +80,8 @@ const persist = mkdtempSync(join(tmpdir(), 'fc-timers-'));
 const discordKeys = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
 const discordPublic = Buffer.from(await crypto.subtle.exportKey('raw', discordKeys.publicKey)).toString('hex');
 writeFileSync('.dev.vars', `DISCORD_WEBHOOK=http://127.0.0.1:${DISCORD_PORT}/api/webhooks/1/abc\nFC_KEY=${KEY}\nROLE_ID=999\n`
-  + `DISCORD_PUBLIC_KEY=${discordPublic}\nDISCORD_GUILD_ID=42\nDISCORD_APP_ID=7\n`);
+  + `DISCORD_PUBLIC_KEY=${discordPublic}\nDISCORD_GUILD_ID=42\nDISCORD_APP_ID=7\n`
+  + `DISCORD_API=http://127.0.0.1:${DISCORD_PORT}/api/v10\n`);
 
 async function interaction(payload, sign = true) {
   const body = JSON.stringify(payload);
@@ -91,7 +97,7 @@ async function interaction(payload, sign = true) {
 }
 await new Promise((resolve) => { discord.listen(DISCORD_PORT, '127.0.0.1', resolve); });
 
-const worker = spawn(`npx wrangler dev --port ${SERVICE_PORT} --persist-to "${persist}" --log-level error`, { shell: true, stdio: 'ignore' });
+const worker = spawn(`npx wrangler dev --port ${SERVICE_PORT} --persist-to "${persist}" --log-level error`, { shell: true, stdio: 'ignore', detached: process.platform !== 'win32' });
 
 let exitCode = 1;
 try {
@@ -233,26 +239,73 @@ try {
   assert.equal(logs[0].text, 'segundo');
   ok('o log de diagnóstico fica guardado no serviço');
 
-  // Comandos do Discord: assinatura, PING, permissão e respostas.
+  // Comandos do Discord: assinatura, PING, o /fcc e os botões do menu.
   assert.equal((await interaction({ type: 1 }, false)).status, 401);
   assert.deepEqual(await (await interaction({ type: 1 })).json(), { type: 1 });
+  const member = (permissions) => ({ permissions, user: { id: '555' } });
   const command = (name, permissions = '0', options) => ({
-    type: 2, guild_id: '42', token: 't', member: { permissions }, data: { name, ...(options ? { options } : {}) },
+    type: 2, guild_id: '42', token: 't', member: member(permissions), data: { name, ...(options ? { options } : {}) },
   });
-  const subsReply = await (await interaction(command('subs'))).json();
-  assert.equal(subsReply.type, 4);
-  assert.equal(subsReply.data.flags, undefined);
-  assert.match(subsReply.data.content, /Ciela/);
-  const blocked = await (await interaction(command('painel'))).json();
+  const click = (customId, permissions = '0') => ({
+    type: 3, guild_id: '42', token: 't', member: member(permissions), data: { custom_id: customId, component_type: 2 },
+  });
+  const customIds = (data) => data.components.flatMap((r) => r.components).map((b) => b.custom_id);
+
+  const menu = await (await interaction(command('fcc'))).json();
+  assert.equal(menu.type, 4);
+  assert.equal(menu.data.flags, 64);
+  assert.match(menu.data.embeds[0].fields[0].value, /Ciela/);
+  assert.ok(customIds(menu.data).includes('fc:subs'));
+  assert.ok(!customIds(menu.data).includes('fc:manage'));
+  const managerMenu = await (await interaction(command('fcc', '32'))).json();
+  assert.ok(customIds(managerMenu.data).includes('fc:manage'));
+
+  const subsView = await (await interaction(click('fc:subs'))).json();
+  assert.equal(subsView.type, 7);
+  assert.match(subsView.data.embeds[0].description, /Ciela/);
+  const lootView = await (await interaction(click('fc:loot:week'))).json();
+  assert.match(lootView.data.embeds[0].description, /7 dias/);
+  const shared = await (await interaction(click('fc:share:subs'))).json();
+  assert.equal(shared.type, 4);
+  assert.equal(shared.data.flags, undefined);
+  assert.match(shared.data.content, /<@555>/);
+
+  const blocked = await (await interaction(click('fc:do:repost'))).json();
   assert.match(blocked.data.content, /Só quem gerencia o servidor/);
-  const otherGuild = await (await interaction({ ...command('subs'), guild_id: '1' })).json();
-  assert.match(otherGuild.data.content, /não está configurado/);
-  const logReply = await interaction(command('log', '32'));
+  assert.match((await (await interaction(click('fc:manage'))).json()).data.content, /server managers/);
+  const otherGuild = await (await interaction({ ...command('fcc'), guild_id: '1' })).json();
+  assert.match(otherGuild.data.content, /não está ligado/);
+  const unknown = await (await interaction(click('fc:nada'))).json();
+  assert.equal(unknown.data.flags, 64);
+
+  const reposted = await (await interaction(click('fc:do:repost', '32'))).json();
+  assert.equal(reposted.type, 7);
+  assert.match(reposted.data.content, /Painel reenviado/);
+  const weeklyOff = await (await interaction(click('fc:do:weekly-off', '32'))).json();
+  assert.match(weeklyOff.data.content, /desligado/);
+  assert.ok(customIds(weeklyOff.data).includes('fc:do:weekly-on'));
+  const english = await (await interaction(click('fc:do:lang-en', '32'))).json();
+  assert.match(english.data.content, /English/);
+  assert.equal(english.data.embeds[0].footer.text, 'Only you can see this menu.');
+  await interaction(click('fc:do:lang-pt', '32'));
+  const logReply = await interaction(click('fc:do:log', '32'));
   assert.match(logReply.headers.get('content-type'), /multipart\/form-data/);
   assert.match(await logReply.text(), /segundo/);
-  const panelReply = await (await interaction(command('painel', '32'))).json();
-  assert.match(panelReply.data.content, /Painel reenviado/);
-  ok('os comandos do Discord respondem com assinatura e permissão');
+
+  // Agrupar avisos demora: responde já e edita o menu depois, com o resultado.
+  const deferred = await (await interaction(click('fc:do:regroup', '32'))).json();
+  assert.deepEqual(deferred, { type: 6 });
+  await waitFor(() => calls.some((c) => c.original && /agrupados/.test(c.body.content)), 'menu editado depois de agrupar');
+  const edited = calls.find((c) => c.original).body;
+  assert.equal(edited.flags, undefined);
+  assert.ok(edited.components.length > 0);
+
+  // Comando antigo ainda na lista do Discord: abre a seção certa do /fcc.
+  const legacy = await (await interaction(command('estoque'))).json();
+  assert.equal(legacy.data.flags, 64);
+  assert.match(legacy.data.content, /\/fcc/);
+  assert.ok(legacy.data.components);
+  ok('o /fcc abre o menu e os botões respondem com assinatura e permissão');
 
   console.log(`TODOS PASSARAM (${passed})`);
   exitCode = 0;
@@ -261,7 +314,8 @@ try {
 } finally {
   discord.close();
   try {
-    execSync(`taskkill /PID ${worker.pid} /T /F`, { stdio: 'ignore' });
+    if (process.platform === 'win32') execSync(`taskkill /PID ${worker.pid} /T /F`, { stdio: 'ignore' });
+    else process.kill(-worker.pid, 'SIGTERM');
   } catch {
     // O processo já terminou.
   }
