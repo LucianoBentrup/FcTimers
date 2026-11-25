@@ -25,6 +25,9 @@ public static class UiKit
 
     public static Vector4? ReturnColor(long returnTime, long now) => returnTime == 0 ? null : TimeColor(returnTime, now);
 
+    // Prazos longos em dias ("44 dias"); no último dia, em horas e minutos.
+    public static string DaysOrTime(long seconds) => seconds >= 86400 ? L.Days((int)(seconds / 86400)) : Plugin.FormatRemaining(seconds);
+
     public static string LocalTime(long unix, string format) => DateTimeOffset.FromUnixTimeSeconds(unix).ToLocalTime().ToString(format);
 
     // Ícone do Font Awesome que vem com o Dalamud, na mesma linha do que vier depois.

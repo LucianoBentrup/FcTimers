@@ -182,6 +182,7 @@ public static class L
     public static string MarkBuffEnds(string name) => T($"{name} acaba", $"{name} ends");
     public static string MarkHouse => T("Casa da FC é derrubada sem visita", "FC house is demolished without a visit");
     public static string InTime(string time) => T($"em {time}", $"in {time}");
+    public static string Days(int days) => days == 1 ? T("1 dia", "1 day") : T($"{days} dias", $"{days} days");
     public static string InDays(int days) => T($"em {days} d", $"in {days} d");
     public static string Hull => T("Casco", "Hull");
     public static string Stern => T("Popa", "Stern");

@@ -250,12 +250,13 @@ public class MainWindow : ThemedWindow
 
         var ago = Math.Max(0, now - house.VisitedAt);
         var left = Plugin.HouseLimitSeconds - ago;
-        var color = ago >= 30 * 86400 ? UiKit.Bad : ago >= 7 * 86400 ? UiKit.Soon : UiKit.Good;
-        UiKit.Text(ago < 60 ? L.CountedNow : L.HouseVisited(Plugin.FormatRemaining(ago)), color);
+        // O texto segue os avisos (30 e 40 dias). A barra é o caminho até a derrubada, então é sempre vermelha.
+        var color = ago >= 40 * 86400 ? UiKit.Bad : ago >= 30 * 86400 ? UiKit.Soon : UiKit.Good;
+        UiKit.Text(ago < 60 ? L.CountedNow : L.HouseVisited(UiKit.DaysOrTime(ago)), color);
         UiKit.TimeTooltip(house.VisitedAt);
         if (house.By is { Length: > 0 } by)
             ImGui.TextColored(UiKit.Muted, L.HouseBy(by));
-        UiKit.Bar(Math.Clamp(ago / (float)Plugin.HouseLimitSeconds, 0, 1), L.HouseDemolish(Plugin.FormatRemaining(Math.Max(0, left))), color);
+        UiKit.Bar(Math.Clamp(ago / (float)Plugin.HouseLimitSeconds, 0, 1), L.HouseDemolish(UiKit.DaysOrTime(Math.Max(0, left))), UiKit.Bad);
         UiKit.Tooltip(L.HouseHint);
         HouseMarkButton();
     }
