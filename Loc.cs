@@ -64,7 +64,7 @@ public static class L
     public static string HouseNoVisit => T("Nenhuma entrada registrada ainda.", "No visit recorded yet.");
     public static string HouseVisited(string ago) => T($"Última visita há {ago}", $"Last visit {ago} ago");
     public static string HouseBy(string name) => T($"por {name}", $"by {name}");
-    public static string HouseDemolish(string time) => T($"Derrubada em {time} sem visita", $"Demolished in {time} if nobody visits");
+    public static string HouseDemolish(string time) => T($"Vai ser derrubada em {time} sem visita", $"Will be demolished in {time} without a visit");
     public static string HouseHint => T("O jogo derruba a casa da FC depois de 45 dias sem nenhum membro entrar. Aqui só conta quem usa o plugin.", "The game demolishes the FC house after 45 days with no member going in. Only members with the plugin count here.");
     public static string HouseWarning(int days) => T($"Ninguém entra na casa da FC há {days} dias. Ela é derrubada aos 45!", $"Nobody has been in the FC house for {days} days. It gets demolished at 45!");
     public static string EndsAround(string date) => T($"acaba por volta de {date}", $"runs out around {date}");
