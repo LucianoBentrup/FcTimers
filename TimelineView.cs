@@ -12,7 +12,7 @@ namespace FcTimers;
 public static class TimelineView
 {
     private const float HitRadius = 8f;
-    private const float LaneHeight = 24f;
+    private const float LaneHeight = 20f;
     private const float ClusterGap = 12f;
     private const int MaxTooltip = 8;
 
@@ -99,7 +99,7 @@ public static class TimelineView
                 var position = new Vector2(X(first.Time), y);
                 DrawMarker(draw, position, MarkerColor(first, now), cluster.Any(m => m.Ready), scale);
                 if (cluster.Count > 1)
-                    draw.AddText(position + new Vector2(8 * scale, -laneHeight / 2), ImGui.GetColorU32(theme.Ink), $"{cluster.Count}");
+                    draw.AddText(position + new Vector2(9 * scale, -ImGui.GetTextLineHeight() / 2), ImGui.GetColorU32(theme.Ink), $"{cluster.Count}");
                 hits.Add((position, cluster));
             }
 
@@ -117,7 +117,7 @@ public static class TimelineView
 
         // "Agora" na ponta esquerda.
         draw.AddLine(new Vector2(left, top - (2 * scale)), new Vector2(left, bottom), ImGui.GetColorU32(theme.Accent), 2 * scale);
-        draw.AddText(new Vector2(left - (2 * scale), start.Y), ImGui.GetColorU32(theme.Accent), L.Now);
+        draw.AddText(new Vector2(left - (ImGui.CalcTextSize(L.Now).X / 2), start.Y), ImGui.GetColorU32(theme.Accent), L.Now);
 
         if (!hovered)
             return;

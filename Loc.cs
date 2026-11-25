@@ -67,7 +67,7 @@ public static class L
     public static string HouseDemolish(string time) => T($"Derrubada em {time} sem visita", $"Demolished in {time} if nobody visits");
     public static string HouseHint => T("O jogo derruba a casa da FC depois de 45 dias sem nenhum membro entrar. Aqui só conta quem usa o plugin.", "The game demolishes the FC house after 45 days with no member going in. Only members with the plugin count here.");
     public static string HouseWarning(int days) => T($"Ninguém entra na casa da FC há {days} dias. Ela é derrubada aos 45!", $"Nobody has been in the FC house for {days} days. It gets demolished at 45!");
-    public static string EndsAround(string date) => T($"acaba ~{date}", $"runs out ~{date}");
+    public static string EndsAround(string date) => T($"acaba por volta de {date}", $"runs out around {date}");
     public static string Profit => T("Lucro (submarinos e airships)", "Profit (submarines and airships)");
     public static string ColWeek => T("Semana", "Week");
     public static string ColVoyages => T("Viagens", "Voyages");
@@ -90,8 +90,8 @@ public static class L
     public static string NoSupplies => T("Nenhum dado ainda. Abra a aba do baú da FC onde ficam os tanques.", "No data yet. Open the FC chest tab where the tanks are kept.");
     public static string Tanks(string count) => T($"Tanques de ceruleum: {count}", $"Ceruleum tanks: {count}");
     public static string Kits(string count) => T($"Materiais de reparo: {count}", $"Repair materials: {count}");
-    public static string Rounds(int rounds) => rounds == 1 ? T("~1 rodada", "~1 round") : T($"~{rounds} rodadas", $"~{rounds} rounds");
-    public static string Repairs(int repairs, int subs) => repairs == 1 ? T($"~1 reparo dos {subs}", $"~1 repair of all {subs}") : T($"~{repairs} reparos dos {subs}", $"~{repairs} repairs of all {subs}");
+    public static string Rounds(int rounds) => rounds == 1 ? T("dá para 1 rodada", "enough for 1 round") : T($"dá para {rounds} rodadas", $"enough for {rounds} rounds");
+    public static string Repairs(int repairs, int subs) => repairs == 1 ? T($"dá para 1 reparo dos {subs}", $"enough for 1 repair of all {subs}") : T($"dá para {repairs} reparos dos {subs}", $"enough for {repairs} repairs of all {subs}");
     public static string CountedNow => T("Contado agora, no baú da FC e no inventário.", "Counted just now, from the FC chest and your inventory.");
     public static string CountedAgo(string time) => T($"Contado há {time}, no baú da FC e no inventário.", $"Counted {time} ago, from the FC chest and your inventory.");
 
@@ -99,6 +99,7 @@ public static class L
     public static string LootTitle => T("Loot por dia (valor de venda ao NPC, dias no horário de Brasília)", "Loot per day (NPC sell price, days in Brasília time)");
     public static string NoVoyages => T("Nenhuma viagem registrada ainda.", "No voyages recorded yet.");
     public static string Voyages(int count) => count == 1 ? T("1 viagem", "1 voyage") : T($"{count} viagens", $"{count} voyages");
+    public static string About(string value) => T($"cerca de {value}", $"about {value}");
     public static string DayTotal(string total, string voyages) => T($"{total} gil em {voyages}", $"{total} gil in {voyages}");
     public static string IncludesMarket(string value) => T($"inclui {value} gil de market", $"includes {value} gil from the market board");
     public static string Market => T("Preços do market", "Market prices");

@@ -42,7 +42,7 @@ public static partial class SubCards
         var gap = 5 * scale;
         var partSize = Math.Min(40 * scale, (inner - (3 * gap)) / 4);
         var line = ImGui.GetTextLineHeightWithSpacing();
-        var height = (style.WindowPadding.Y * 2) + (4 * line) + partSize + (22 * scale) + style.ItemSpacing.Y;
+        var height = (style.WindowPadding.Y * 2) + (4 * line) + partSize + (16 * scale) + style.ItemSpacing.Y;
 
         var ready = sub.ReturnTime > 0 && sub.ReturnTime <= now;
         using var border = ImRaii.PushColor(ImGuiCol.Border, Theme.Good, ready);

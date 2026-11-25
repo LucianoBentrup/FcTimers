@@ -26,6 +26,8 @@ public class MainWindow : ThemedWindow
     public MainWindow(Plugin plugin) : base("FC Companion###FC Timers")
     {
         this.plugin = plugin;
+        Size = new Vector2(620, 560);
+        SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(520, 360) };
         if (Support.Ready)
             TitleBarButtons.Add(Support.TitleButton());
@@ -158,9 +160,9 @@ public class MainWindow : ThemedWindow
             + (view.Airships.Count > 0 ? view.Airships.Count + 1 : 0);
         // O melhor item do dia ocupa duas linhas, por causa do ícone maior.
         var today = Loot(view).Today;
-        var lootLines = 3 + (today?.BySub.Count ?? 0);
+        var lootLines = today == null ? 1 : 3 + today.BySub.Count;
         var gardenLines = Math.Clamp(view.Plots.Count(p => p.NextWaterAt != 0), 1, 4);
-        var buffLines = Math.Max(Math.Max(1, view.Wheels.Count) + 1, 4);
+        var buffLines = Math.Max(Math.Max(1, view.Wheels.Count) + 1, 3);
 
         var top = UiKit.CardHeight(Math.Max(subsLines, lootLines));
         var middle = UiKit.CardHeight(Math.Max(gardenLines, 4));
@@ -271,7 +273,8 @@ public class MainWindow : ThemedWindow
         UiKit.TimeTooltip(house.VisitedAt);
         if (house.By is { Length: > 0 } by)
             ImGui.TextColored(UiKit.Muted, L.HouseBy(by));
-        UiKit.Bar(Math.Clamp(ago / (float)Plugin.HouseLimitSeconds, 0, 1), L.HouseDemolish(UiKit.DaysOrTime(Math.Max(0, left))), UiKit.Bad);
+        ImGui.TextColored(UiKit.Muted, L.HouseDemolish(UiKit.DaysOrTime(Math.Max(0, left))));
+        UiKit.ThinBar(Math.Clamp(ago / (float)Plugin.HouseLimitSeconds, 0, 1), UiKit.Bad);
         UiKit.Tooltip(L.HouseHint);
         HouseMarkButton();
     }
@@ -422,7 +425,7 @@ public class MainWindow : ThemedWindow
         foreach (var day in Loot(view).Days)
         {
             var extra = day.Market > 0 ? $" ({L.IncludesMarket($"{day.Market:N0}")})" : string.Empty;
-            var label = $"{day.Day:dd/MM}: {L.DayTotal($"{(day.Market > 0 ? "~" : string.Empty)}{day.Total:N0}", L.Voyages(day.Voyages))}{extra}###{day.Day:yyyyMMdd}";
+            var label = $"{day.Day:dd/MM}: {L.DayTotal(day.Market > 0 ? L.About($"{day.Total:N0}") : $"{day.Total:N0}", L.Voyages(day.Voyages))}{extra}###{day.Day:yyyyMMdd}";
             var flags = day.Day == today ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
             if (!ImGui.CollapsingHeader(label, flags))
                 continue;

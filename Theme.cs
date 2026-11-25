@@ -87,10 +87,10 @@ public sealed record Theme
             .Push(ImGuiStyleVar.TabRounding, 4 * scale)
             .Push(ImGuiStyleVar.GrabRounding, 4 * scale)
             .Push(ImGuiStyleVar.ScrollbarRounding, 6 * scale)
-            .Push(ImGuiStyleVar.WindowPadding, new Vector2(14, 12) * scale)
-            .Push(ImGuiStyleVar.FramePadding, new Vector2(10, 5) * scale)
-            .Push(ImGuiStyleVar.ItemSpacing, new Vector2(8, 7) * scale)
-            .Push(ImGuiStyleVar.CellPadding, new Vector2(8, 5) * scale)
+            .Push(ImGuiStyleVar.WindowPadding, new Vector2(10, 8) * scale)
+            .Push(ImGuiStyleVar.FramePadding, new Vector2(8, 3) * scale)
+            .Push(ImGuiStyleVar.ItemSpacing, new Vector2(7, 4) * scale)
+            .Push(ImGuiStyleVar.CellPadding, new Vector2(6, 3) * scale)
             .Push(ImGuiStyleVar.ChildBorderSize, 1f)
             .Push(ImGuiStyleVar.WindowBorderSize, 1f);
     }
