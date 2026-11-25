@@ -209,6 +209,10 @@ export function codeScreen(lang, code, linked) {
       button(code ? t('codeNew') : t('codeOn'), 'fc:do:code-new', code ? SECONDARY : SUCCESS, '🔄'),
       ...(code ? [button(t('codeOff'), 'fc:do:code-off', DANGER)] : []),
       button(t('back'), 'fc:manage'),
+    ]), row([
+      button(t('panelHere'), 'fc:do:panel-here', SECONDARY, '📋'),
+      button(t('alertsHere'), 'fc:do:alerts-here', SECONDARY, '🔔'),
+      button(t('eventsHere'), 'fc:do:events-here', SECONDARY, '📅'),
     ])],
   });
 }

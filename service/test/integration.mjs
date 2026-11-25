@@ -521,7 +521,7 @@ try {
   assert.equal((await sendAs(confirmed.token, { fcId: FC_ID, subs: [sub] })).status, 200);
   const off = await (await interaction(click('fc:do:code-off', '32'))).json();
   assert.doesNotMatch(off.data.embeds[0].description, /FCC-/);
-  assert.match((await (await interaction(click('fc:do:code', '32'))).json()).data.embeds[0].description, /Sem código/);
+  assert.match((await (await interaction(click('fc:do:code', '32'))).json()).data.embeds[0].description, /Código desligado/);
   assert.equal((await linkPost('check', { code: renewed, fcId: FC_ID, owner: 'dono-0003' })).status, 404);
   // Sair: o token para de valer.
   assert.deepEqual(await (await linkPost('leave', {}, confirmed.token)).json(), { ok: true });
