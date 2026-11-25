@@ -56,12 +56,6 @@ public sealed class ConfigWindow : ThemedWindow
             }
         }
 
-        if (config.Characters.Values.Any(c => c.OtherFc))
-        {
-            using (ImRaii.PushColor(ImGuiCol.Text, UiKit.Muted))
-                ImGui.TextWrapped(L.OtherFcHint);
-        }
-
         ImGui.Spacing();
         var current = Array.FindIndex(Languages, l => l.Code == plugin.LanguageCode);
         ImGui.SetNextItemWidth(ComboWidth);
@@ -163,9 +157,9 @@ public sealed class ConfigWindow : ThemedWindow
             if (link.Linked)
             {
                 ImGui.TextColored(UiKit.Good, L.LinkedTo(config.LinkedFcName.Length > 0 ? config.LinkedFcName : "?", config.LinkedServerName));
-                ImGui.TextColored(UiKit.Muted, L.LinkAccountHint);
                 ImGui.SetNextItemWidth(120 * ImGuiHelpers.GlobalScale);
                 ImGui.InputText(L.LinkAccountCode, ref accountCode, 6, ImGuiInputTextFlags.CharsDecimal);
+                UiKit.Tooltip(L.LinkAccountHint);
                 ImGui.SameLine();
                 using (ImRaii.Disabled(accountCode.Length != 6))
                 {
@@ -196,12 +190,12 @@ public sealed class ConfigWindow : ThemedWindow
             }
             else
             {
-                ImGui.TextColored(UiKit.Muted, L.LinkHint);
                 if (plugin.CurrentFcId == 0)
                     ImGui.TextColored(UiKit.Soon, L.LinkNeedsFcId);
 
                 ImGui.SetNextItemWidth(160 * ImGuiHelpers.GlobalScale);
                 ImGui.InputText(L.LinkCode, ref fcCode, 16);
+                UiKit.Tooltip(L.LinkHint);
                 ImGui.SameLine();
                 using (ImRaii.Disabled(fcCode.Trim().Length < 6 || plugin.CurrentFcId == 0))
                 {
@@ -247,8 +241,7 @@ public sealed class ConfigWindow : ThemedWindow
         ImGui.SameLine();
         ImGui.TextColored(UiKit.Muted, DateTime.Now - copiedAt < TimeSpan.FromSeconds(5)
             ? L.Copied
-            : plugin.Sync.LogStatus.Length > 0 ? plugin.Sync.LogStatus : L.LogHasNoKey);
-        ImGui.TextColored(UiKit.Muted, L.SendLogHint);
+            : plugin.Sync.LogStatus);
 
         ImGui.Spacing();
         if (ImGui.Button(L.WhatsNew))

@@ -61,14 +61,14 @@ public static class L
     public static string TypeOther => T("Outro", "Other");
     // Ligação por código
     public static string LinkTitle => T("Ligar à FC", "Link to your FC");
-    public static string LinkHint => T("Peça o código da FC para quem gerencia o servidor (no /fcc do Discord, em Ajustes) e cole aqui.", "Ask a server manager for the FC code (in /fcc on Discord, under Manage) and paste it here.");
+    public static string LinkHint => T("Código de /fcc → Ajustes, no Discord.", "From /fcc → Manage, on Discord.");
     public static string LinkCode => T("Código da FC", "FC code");
     public static string LinkCheck => T("Conferir", "Check");
     public static string LinkConfirm(string fc, string server) => server.Length > 0 ? T($"Ligar à FC {fc} no servidor {server}?", $"Link to the FC {fc} on the {server} server?") : T($"Ligar à FC {fc}?", $"Link to the FC {fc}?");
     public static string LinkYes => T("Ligar", "Link");
-    public static string LinkNeedsFcId => T("O plugin ainda não leu o ID da sua FC. Abra a janela da Free Company no jogo uma vez.", "The plugin hasn't read your FC id yet. Open the Free Company window in the game once.");
+    public static string LinkNeedsFcId => T("Abra a janela da Free Company uma vez.", "Open the Free Company window once.");
     public static string LinkedTo(string fc, string server) => server.Length > 0 ? T($"Ligado à FC {fc} ({server})", $"Linked to the FC {fc} ({server})") : T($"Ligado à FC {fc}", $"Linked to the FC {fc}");
-    public static string LinkAccountHint => T("Para eventos e DM: no /fcc do Discord, em Eventos, clique em Ligar minha conta e digite aqui o código de 6 números.", "For events and DMs: in /fcc on Discord, under Events, press Link my account and type the 6-digit code here.");
+    public static string LinkAccountHint => T("Código de /fcc → Eventos → Ligar minha conta.", "From /fcc → Events → Link my account.");
     public static string LinkAccountCode => T("Código da conta", "Account code");
     public static string LinkAccount => T("Ligar minha conta", "Link my account");
     public static string LinkLeave => T("Desligar desta FC", "Unlink from this FC");
@@ -145,7 +145,7 @@ public static class L
     public static string CountedAgo(string time) => T($"Contado há {time} no baú e no inventário", $"Counted {time} ago in the chest and inventory");
 
     // Loot
-    public static string LootTitle => T("Loot por dia (valor de venda ao NPC, dias no horário de Brasília)", "Loot per day (NPC sell price, days in Brasília time)");
+    public static string LootTitle => T("Loot por dia", "Loot per day");
     public static string NoVoyages => T("Nenhuma viagem registrada ainda.", "No voyages recorded yet.");
     public static string Voyages(int count) => count == 1 ? T("1 viagem", "1 voyage") : T($"{count} viagens", $"{count} voyages");
     public static string About(string value) => T($"cerca de {value}", $"about {value}");
@@ -186,26 +186,19 @@ public static class L
     public static string Current => T("atual", "current");
     public static string UnknownWorld => T("entre no personagem para ver o mundo", "log in to see the world");
     public static string OtherFc => T("outra FC", "other FC");
-    public static string OtherFcHint => T(
-        "Personagens de outra FC (alts de submarino, por exemplo) não leem nem enviam nada, para não misturar com o painel da FC. Se a FC mudou de casa, entre na casa nova e clique em \"Esta é a casa da FC\" na Visão geral.",
-        "Characters in another FC (submarine alts, for example) don't read or send anything, so they stay out of the FC panel. If the FC moved, go into the new house and press \"This is the FC house\" on the Overview.");
-    public static string OtherFcNow => T(
-        "Este personagem é de outra FC. O plugin não lê nem envia nada dele, para não misturar com o painel da FC.",
-        "This character is in another FC. The plugin doesn't read or send anything for it, so it stays out of the FC panel.");
+    public static string OtherFcNow => T("Personagem de outra FC: nada é lido nem enviado.", "Character in another FC: nothing is read or sent.");
     public static string SyncEnabled => T("Enviar e receber os dados do painel da FC", "Send and receive the FC panel data");
     public static string ServiceUrl => T("Endereço do serviço", "Service address");
     public static string ServiceKey => T("Chave da FC", "FC key");
     public static string Sent(string status) => T($"Envio: {status}", $"Sending: {status}");
     public static string Received(string time) => T($"Recebido: {time}", $"Received: {time}");
-    public static string NothingReceived => T("Recebido: ainda nada, mostrando só os dados deste PC", "Received: nothing yet, showing only this PC's data");
+    public static string NothingReceived => T("Recebido: nada ainda", "Received: nothing yet");
     public static string Diagnostics => T("Diagnóstico", "Diagnostics");
     public static string DetailedLog => T("Log detalhado", "Detailed log");
     public static string DetailedLogHint => T("Desligado: só loot, rega, estoque e erros. Ligado: também cada leitura e envio.", "Off: only loot, watering, supplies and errors. On: every reading and upload too.");
     public static string CopyLog => T("Copiar log", "Copy log");
     public static string SendLog => T("Enviar log", "Send log");
     public static string Copied => T("Copiado. Cole no Discord.", "Copied. Paste it in Discord.");
-    public static string LogHasNoKey => T("O log nunca inclui a chave da FC.", "The log never includes the FC key.");
-    public static string SendLogHint => T("Enviar log guarda o log no serviço da FC. Ele também é enviado sozinho logo depois de coletas, regas e mudanças no estoque, e ao fechar o jogo.", "Send log stores the log on the FC service. It is also sent automatically right after collections, watering and supply changes, and when the game closes.");
 
     // Chat e barra do jogo
     public static string SubReturned(string name) => T($"Submarino {name} voltou!", $"Submarine {name} is back!");
