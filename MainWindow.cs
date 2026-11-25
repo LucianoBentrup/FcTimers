@@ -78,6 +78,12 @@ public class MainWindow : ThemedWindow
             ImGui.Spacing();
         }
 
+        using (var timeline = ImRaii.Child("##timeline", new Vector2(-1, TimelineHeight(view, now)), true))
+        {
+            if (timeline)
+                TimelineView.Draw(view, now);
+        }
+
         using var grid = ImRaii.Table("##cards", 2, ImGuiTableFlags.SizingStretchSame);
         if (!grid)
             return;
@@ -104,6 +110,16 @@ public class MainWindow : ThemedWindow
         UiKit.Card("##c-buffs", FontAwesomeIcon.Dharmachakra, L.TabBuffs, UiKit.CardHeight(buffLines), () => OverviewBuffs(view, now));
         ImGui.TableNextColumn();
         UiKit.Card("##c-house", FontAwesomeIcon.Home, L.House, UiKit.CardHeight(buffLines), () => OverviewHouse(view, now));
+    }
+
+    // Cabeçalho, o rótulo do "agora", uma faixa por assunto e a linha das horas.
+    private static float TimelineHeight(FcView view, long now)
+    {
+        var lanes = Timeline.Lanes(Timeline.Build(view, now, Plugin.HouseLimitSeconds)).Count;
+        var style = ImGui.GetStyle();
+        var line = ImGui.GetTextLineHeight();
+        var body = lanes == 0 ? line : line + (lanes * 24 * Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale) + line + 4;
+        return (style.WindowPadding.Y * 2) + line + style.ItemSpacing.Y + body + 4;
     }
 
     // Primeira vez: três passos com o que falta, e um botão para cada um.

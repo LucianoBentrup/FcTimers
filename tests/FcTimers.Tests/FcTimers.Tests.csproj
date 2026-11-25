@@ -15,6 +15,7 @@
     <Compile Include="../../FcView.cs" Link="Plugin/FcView.cs" />
     <Compile Include="../../ActiveBuffs.cs" Link="Plugin/ActiveBuffs.cs" />
     <Compile Include="../../GameTime.cs" Link="Plugin/GameTime.cs" />
+    <Compile Include="../../Timeline.cs" Link="Plugin/Timeline.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

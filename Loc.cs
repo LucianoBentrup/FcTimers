@@ -164,4 +164,27 @@ public static class L
     public static string WateredAll => T("Rega registrada em todos os plots.", "Watering recorded on every plot.");
     public static string DtrReady(int count) => count == 1 ? T("1 pronto", "1 ready") : T($"{count} prontos", $"{count} ready");
     public static string HelpMain => T("Abre a janela do FC Companion. Use \"/fcc regar\" depois de regar a plantação.", "Opens the FC Companion window. Use \"/fcc water\" after watering the garden.");
+    // Linha do tempo e cartões (UI-1)
+    public static string Next24h => T("Próximas 24 horas", "Next 24 hours");
+    public static string Now => T("agora", "now");
+    public static string NextUp(string what) => T($"Próximo: {what}", $"Next: {what}");
+    public static string NothingNext => T("Nada marcado nas próximas 24 horas.", "Nothing in the next 24 hours.");
+    public static string LaneHouse => T("Casa", "House");
+    public static string LaneGarden => T("Rega", "Garden");
+    public static string MarkReturns(string name) => T($"{name} volta", $"{name} returns");
+    public static string MarkBack(string name) => T($"{name} voltou", $"{name} is back");
+    public static string MarkWater(string name) => T($"{name} pode ser regado", $"{name} can be watered");
+    public static string MarkWaterNow(string name) => T($"{name} já pode ser regado", $"{name} can be watered now");
+    public static string MarkDies(string name) => T($"{name} morre sem rega", $"{name} dies without water");
+    public static string MarkWheel(string name) => T($"{name} pronto", $"{name} ready");
+    public static string MarkBuffEnds(string name) => T($"{name} acaba", $"{name} ends");
+    public static string MarkHouse => T("Casa da FC é derrubada sem visita", "FC house is demolished without a visit");
+    public static string InTime(string time) => T($"em {time}", $"in {time}");
+    public static string InDays(int days) => T($"em {days} d", $"in {days} d");
+    public static string Hull => T("Casco", "Hull");
+    public static string Stern => T("Popa", "Stern");
+    public static string Bow => T("Proa", "Bow");
+    public static string Bridge => T("Ponte", "Bridge");
+    public static string PartsNotRead => T("Peças ainda não lidas neste PC. Abra a lista de subs na oficina.", "Parts not read on this PC yet. Open the submarine list in the workshop.");
+    public static string BestItem => T("Melhor item", "Best item");
 }
