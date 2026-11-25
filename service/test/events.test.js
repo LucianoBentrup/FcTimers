@@ -176,7 +176,7 @@ test('o post tem no máximo 5 botões por linha, todos entendidos pelo parser', 
     assert.deepEqual(post.allowed_mentions, { parse: [] });
   }
   const labels = eventPost(make('group'), 'en').components[0].components.map((b) => b.label);
-  assert.deepEqual(labels, ['Tank', 'Healer', 'DPS', 'Backup', "Can't go"]);
+  assert.deepEqual(labels, ['Tank', 'Healer', 'DPS', 'Reserve', "Can't go"]);
   assert.deepEqual(eventPost(make('gathering'), 'pt').components[0].components.map((b) => b.label), ['Vou', 'Talvez', 'Não vou']);
 });
 
