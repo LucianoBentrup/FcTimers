@@ -1,199 +1,250 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 namespace FcTimers;
 
-// Abre sozinho uma vez depois de cada atualização. O texto fica em inglês.
+// As novidades vêm do CHANGELOG.md, que vai dentro do plugin. O texto fica em inglês, como no arquivo.
 public static class Changelog
 {
-    public static readonly (string Version, (string Section, string[] Notes)[] Sections)[] Entries =
-    [
-        ("0.10.0",
-        [
-            ("Added",
-            [
-                "Airships: return time, rank and loot of each voyage, read from the workshop like the submarines. They also count in the daily loot and get their own alert.",
-                "FC house: the plugin recognizes the FC house from the workshop and records every visit. The Overview shows the days since the last visit by any member, and alerts go out at 30, 40 and 44 days, before the game demolishes it at 45. You can also mark the house you are in with a button on the card.",
-                "Supply forecast: the date the ceruleum tanks and repair materials run out, based on the last days of use. The low supply alert now goes out 5 days before.",
-                "Profit section in the Loot tab: the last 4 weeks and how much each submarine route makes per voyage and per tank.",
-                "Discord: /lucro, /loot mes and a weekly summary every Monday at 9:00 (Brasília), which /resumo turns on or off.",
-            ]),
-        ]),
-        ("0.9.0",
-        [
-            ("Added",
-            [
-                "Discord commands: /painel, /avisos limpar, /loot, /estoque, /subs and /log, answered by the FC Companion app.",
-                "Fields section in the Garden tab: target a garden patch or pot and press + to add it with a name. Names and removals are shared with the other members.",
-            ]),
-            ("Changed",
-            [
-                "FC Timers is now called FC Companion.",
-                "Submarines, loot, buffs and the garden are shown in tables, with colors for ready (green), soon (yellow) and urgent (red).",
-                "New Overview tab with cards for submarines, today's loot, garden, supplies and buffs, plus icons and progress bars.",
-                "Settings moved to their own window (the cog in the plugin installer or at the top of the main window), with a sync status dot always visible.",
-                "Welcome steps on first use, and alerts as Dalamud notifications with optional chat message and sound, configurable per type.",
-                "Hovering a remaining time shows the exact local time.",
-                "Only enabled characters send the diagnostic log, including the one sent when the game closes.",
-            ]),
-        ]),
-        ("0.8.6",
-        [
-            ("Changed",
-            [
-                "Repair materials are counted per repair of all submarines together, since they are always repaired as a group.",
-                "Submarines that need repair are reported in a single Discord message instead of one per submarine.",
-            ]),
-        ]),
-        ("0.8.5",
-        [
-            ("Fixed",
-            [
-                "Garden patch names no longer carry the game's icon character, which showed up as a box on Discord.",
-                "Opening a garden patch menu renames an automatically named patch to its number from the game (\"Canteiro 2\").",
-            ]),
-        ]),
-        ("0.8.4",
-        [
-            ("Changed",
-            [
-                "The diagnostic log records every game message for 30 seconds after a house object menu, to find out how watering an indoor pot is reported.",
-            ]),
-        ]),
-        ("0.8.3",
-        [
-            ("Fixed",
-            [
-                "The same garden patch no longer shows up twice when members use different system languages.",
-                "Outdoor garden patches are named after the game menu (\"Canteiro 2\" for the 2nd Patch) instead of a blank name.",
-                "The general \"Plantação\" entry is hidden once an identified patch is watered after it.",
-            ]),
-        ]),
-        ("0.8.2",
-        [
-            ("Changed",
-            [
-                "The diagnostic log is sent automatically about 20 seconds after important actions (collections, submarines leaving, watering, supply and part changes) and when the game closes, instead of every 30 minutes.",
-            ]),
-        ]),
-        ("0.8.1",
-        [
-            ("Changed",
-            [
-                "The diagnostic log is sent to the FC service automatically every 30 minutes when it has new entries, in addition to right after missed loot.",
-                "Submarine alerts that arrive minutes apart are grouped into a single Discord message.",
-            ]),
-        ]),
-        ("0.8.0",
-        [
-            ("Added",
-            [
-                "Ceruleum tank and repair material stock, counted from the FC chest and the inventory, with how many rounds and full repairs it covers.",
-                "Submarine rank, experience, build, route and part condition in the main window and the Discord panel.",
-                "Discord alerts when a submarine needs repair (below 30%), when stock falls below 2 rounds of tanks or 20 repair materials (with how many voyages are left), and when a voyage unlocks a new sector.",
-                "Reminders for a submarine that has been back for over 2 hours without being sent out again, and for an indoor pot left unwatered after the others were watered.",
-                "Discord alerts name only indoor and private chamber pots. Outdoor garden patches are watered together, so they are mentioned as the garden.",
-                "Market board prices from Universalis: items worth more on the market count at the market price, with a Discord alert for drops worth 100,000 gil or more. The world defaults to the character's home world and can be changed in Settings.",
-                "English translation. The language can be changed in Settings.",
-            ]),
-            ("Changed",
-            [
-                "The main window is split into tabs: Submarines, Loot, Buffs, Garden and Settings.",
-            ]),
-        ]),
-        ("0.7.4",
-        [
-            ("Changed",
-            [
-                "Changelog reorganized by type of change.",
-            ]),
-        ]),
-        ("0.7.3",
-        [
-            ("Fixed",
-            [
-                "Watering is assigned to the correct plot when the target is cleared before the confirmation message.",
-            ]),
-            ("Changed",
-            [
-                "The Discord panel lists each plot on its own line.",
-            ]),
-        ]),
-        ("0.7.2",
-        [
-            ("Changed",
-            [
-                "Watering times are fixed at 24 hours until the next watering and 48 hours until the plant withers, based on the shortest wilt time of any seed.",
-            ]),
-            ("Removed",
-            [
-                "Watering time settings from the main window.",
-            ]),
-        ]),
-        ("0.7.1",
-        [
-            ("Added",
-            [
-                "\"Enviar log\" button to upload the diagnostic log to the FC service.",
-                "Automatic log upload when submarine loot is missed, limited to once every 10 minutes.",
-            ]),
-            ("Changed",
-            [
-                "\"Plantas\" renamed to \"Plantação\".",
-            ]),
-        ]),
-        ("0.7.0",
-        [
-            ("Added",
-            [
-                "Two-way sync: the main window, server info bar and chat alerts include data reported by other FC members.",
-                "Per-plot watering tracking, detected automatically or registered with \"Reguei todos agora\" and /fct regar.",
-                "Discord alerts for submarines and plots: 1-hour reminders, ready notifications and wither warnings 3, 2 and 1 hours in advance. Alerts are deleted after 8 hours.",
-                "Diagnostic log with a \"Copiar log\" button and an optional detailed mode.",
-                "In-game changelog.",
-            ]),
-            ("Changed",
-            [
-                "Submarine loot is captured as soon as the voyage result is received, including during AutoRetainer runs.",
-                "Loot is grouped by day in Brasília time (UTC-3) on all clients.",
-                "The Discord panel no longer lists the day's items. Loot totals are still shown.",
-            ]),
-        ]),
-        ("0.6.1",
-        [
-            ("Fixed",
-            [
-                "Duplicate fifth submarine entry.",
-            ]),
-        ]),
-    ];
+    private static List<Release>? releases;
+
+    public static List<Release> Releases => releases ??= Load();
+
+    private static List<Release> Load()
+    {
+        using var stream = typeof(Changelog).Assembly.GetManifestResourceStream("FcTimers.CHANGELOG.md");
+        if (stream == null)
+            return [];
+
+        using var reader = new StreamReader(stream);
+        return ChangelogDoc.Parse(reader.ReadToEnd());
+    }
 }
 
+// Abre sozinha uma vez depois de cada atualização. Em cima, o que é novo desde a última versão vista:
+// os destaques em cards com ícone e o resto em lista curta, por tipo. Embaixo, as versões anteriores fechadas.
 public sealed class ChangelogWindow : ThemedWindow
 {
+    private const float CardMinWidth = 260;
+
+    private static readonly (string Word, FontAwesomeIcon Icon)[] Icons =
+    [
+        ("airship", FontAwesomeIcon.Plane),
+        ("submarine", FontAwesomeIcon.Ship),
+        ("house", FontAwesomeIcon.Home),
+        ("suppl", FontAwesomeIcon.GasPump),
+        ("profit", FontAwesomeIcon.ChartLine),
+        ("loot", FontAwesomeIcon.Coins),
+        ("item", FontAwesomeIcon.Gem),
+        ("market", FontAwesomeIcon.Coins),
+        ("discord", FontAwesomeIcon.Comments),
+        ("field", FontAwesomeIcon.Seedling),
+        ("water", FontAwesomeIcon.Seedling),
+        ("timeline", FontAwesomeIcon.Stream),
+        ("overview", FontAwesomeIcon.ThLarge),
+        ("look", FontAwesomeIcon.Palette),
+        ("sync", FontAwesomeIcon.Sync),
+        ("english", FontAwesomeIcon.Language),
+    ];
+
+    private List<Release> fresh = [];
+
     public ChangelogWindow() : base("FC Companion - What's new###FcTimersChangelog")
     {
-        SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(420, 200) };
+        Size = new Vector2(640, 560);
+        SizeCondition = ImGuiCond.FirstUseEver;
+        SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(420, 260) };
+    }
+
+    // lastSeen: a versão que a pessoa tinha antes. Vazio mostra só a versão mais recente.
+    public void Show(string? lastSeen)
+    {
+        fresh = ChangelogDoc.NewSince(Changelog.Releases, lastSeen);
+        IsOpen = true;
+    }
+
+    public override void OnOpen()
+    {
+        if (fresh.Count == 0)
+            fresh = ChangelogDoc.NewSince(Changelog.Releases, null);
     }
 
     public override void Draw()
     {
-        foreach (var (version, sections) in Changelog.Entries)
+        var footer = ImGui.GetFrameHeightWithSpacing() + ImGui.GetStyle().ItemSpacing.Y;
+        using (var body = ImRaii.Child("##changes", new Vector2(-1, -footer), false))
         {
-            ImGui.TextUnformatted($"Version {version}");
-            ImGui.Separator();
-            foreach (var (section, notes) in sections)
-            {
-                ImGui.TextDisabled(section);
-                foreach (var note in notes)
-                    ImGui.TextWrapped($"- {note}");
-            }
-
-            ImGui.Spacing();
+            if (body)
+                DrawBody();
         }
 
+        ImGui.Separator();
         if (ImGui.Button("Close"))
             IsOpen = false;
     }
+
+    private void DrawBody()
+    {
+        var theme = Theme.Current;
+        if (Changelog.Releases.Count == 0)
+        {
+            ImGui.TextColored(theme.Muted, "The list of changes could not be read.");
+            return;
+        }
+
+        foreach (var release in fresh)
+        {
+            Header(release);
+            Highlights(release);
+            Lists(release, false);
+            ImGui.Spacing();
+            ImGui.Spacing();
+        }
+
+        var older = Changelog.Releases.Where(r => !r.IsUnreleased && !fresh.Contains(r)).ToList();
+        if (older.Count == 0)
+            return;
+
+        ImGui.TextColored(theme.Muted, "Earlier versions");
+        foreach (var release in older)
+        {
+            var date = Date(release.Date);
+            if (!ImGui.CollapsingHeader($"{release.Version}{(date.Length > 0 ? $"   {date}" : string.Empty)}###v{release.Version}"))
+                continue;
+
+            using (ImRaii.PushIndent(8 * ImGuiHelpers.GlobalScale))
+                Lists(release, true);
+            ImGui.Spacing();
+        }
+    }
+
+    private static void Header(Release release)
+    {
+        var theme = Theme.Current;
+        using (ImRaii.PushFont(UiBuilder.IconFont))
+            ImGui.TextColored(theme.Accent, FontAwesomeIcon.Star.ToIconString());
+        ImGui.SameLine();
+        ImGui.TextUnformatted($"What's new in {release.Version}");
+        var date = Date(release.Date);
+        if (date.Length > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(theme.Muted, date);
+        }
+
+        var min = ImGui.GetCursorScreenPos();
+        ImGui.GetWindowDrawList().AddLine(min, min with { X = min.X + ImGui.GetContentRegionAvail().X }, ImGui.GetColorU32(theme.Accent), 1.5f * ImGuiHelpers.GlobalScale);
+        ImGui.Dummy(new Vector2(1, 4 * ImGuiHelpers.GlobalScale));
+    }
+
+    // Um card por destaque, em colunas que cabem na largura. A altura de cada linha acompanha o card mais alto.
+    private static void Highlights(Release release)
+    {
+        var cards = release.Sections.SelectMany(s => s.Entries.Where(e => e.Title.Length > 0).Select(e => (s.Type, Entry: e))).ToList();
+        if (cards.Count == 0)
+            return;
+
+        var scale = ImGuiHelpers.GlobalScale;
+        var style = ImGui.GetStyle();
+        var available = ImGui.GetContentRegionAvail().X;
+        var columns = Math.Clamp((int)((available + style.ItemSpacing.X) / ((CardMinWidth * scale) + style.ItemSpacing.X)), 1, Math.Min(cards.Count, 3));
+        var cardWidth = (available - ((columns - 1) * style.ItemSpacing.X)) / columns;
+        var textWidth = cardWidth - (style.WindowPadding.X * 2);
+
+        using var grid = ImRaii.Table($"##cards{release.Version}", columns, ImGuiTableFlags.SizingStretchSame);
+        if (!grid)
+            return;
+
+        for (var row = 0; row < cards.Count; row += columns)
+        {
+            var inRow = cards.Skip(row).Take(columns).ToList();
+            var height = inRow.Max(c => ImGui.CalcTextSize(ChangelogDoc.Plain(c.Entry.Text), false, textWidth).Y)
+                + ImGui.GetTextLineHeightWithSpacing() + (style.WindowPadding.Y * 2) + (4 * scale);
+
+            ImGui.TableNextRow();
+            foreach (var (type, entry) in inRow)
+            {
+                ImGui.TableNextColumn();
+                Card($"##{release.Version}{row}{entry.Title}", type, entry, height);
+            }
+        }
+    }
+
+    private static void Card(string id, ChangeType type, ChangeEntry entry, float height)
+    {
+        var theme = Theme.Current;
+        using var child = ImRaii.Child(id, new Vector2(-1, height), true, ImGuiWindowFlags.NoScrollbar);
+        if (!child)
+            return;
+
+        // Faixa da cor do tipo na borda esquerda.
+        var min = ImGui.GetWindowPos();
+        ImGui.GetWindowDrawList().AddRectFilled(min, min + new Vector2(3 * ImGuiHelpers.GlobalScale, ImGui.GetWindowHeight()), ImGui.GetColorU32(TypeColor(type)));
+
+        using (ImRaii.PushFont(UiBuilder.IconFont))
+            ImGui.TextColored(TypeColor(type), IconFor(entry.Title).ToIconString());
+        ImGui.SameLine();
+        ImGui.TextUnformatted(ChangelogDoc.Plain(entry.Title));
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - ImGui.CalcTextSize(TypeName(type)).X);
+        ImGui.TextColored(TypeColor(type), TypeName(type));
+
+        using (ImRaii.PushColor(ImGuiCol.Text, theme.Muted))
+            ImGui.TextWrapped(ChangelogDoc.Plain(entry.Text));
+    }
+
+    // Itens sem destaque, agrupados por tipo. Nas versões antigas, os destaques entram na lista também.
+    private static void Lists(Release release, bool withHighlights)
+    {
+        foreach (var section in release.Sections)
+        {
+            var entries = section.Entries.Where(e => withHighlights || e.Title.Length == 0).ToList();
+            if (entries.Count == 0)
+                continue;
+
+            ImGui.Spacing();
+            ImGui.TextColored(TypeColor(section.Type), TypeName(section.Type));
+            foreach (var entry in entries)
+            {
+                ImGui.TextColored(TypeColor(section.Type), "·");
+                ImGui.SameLine();
+                var text = entry.Title.Length > 0 ? $"{entry.Title}: {entry.Text}" : entry.Text;
+                ImGui.TextWrapped(ChangelogDoc.Plain(text));
+            }
+        }
+    }
+
+    // Cores da decoração, não as de estado: novo, mudado e corrigido não são "pronto" ou "urgente".
+    private static Vector4 TypeColor(ChangeType type) => type switch
+    {
+        ChangeType.Added => Theme.Current.Accent,
+        ChangeType.Changed => Theme.Current.Brass,
+        ChangeType.Fixed => Theme.Current.Sky,
+        _ => Theme.Current.Muted,
+    };
+
+    private static string TypeName(ChangeType type) => type switch
+    {
+        ChangeType.Added => "New",
+        ChangeType.Changed => "Changed",
+        ChangeType.Fixed => "Fixed",
+        ChangeType.Removed => "Removed",
+        _ => "Other",
+    };
+
+    private static FontAwesomeIcon IconFor(string title)
+        => Icons.FirstOrDefault(i => title.Contains(i.Word, StringComparison.OrdinalIgnoreCase)) is { Word: not null } match ? match.Icon : FontAwesomeIcon.Star;
+
+    // "2026-11-23" vira "23 Nov 2026".
+    private static string Date(string iso)
+        => DateTime.TryParseExact(iso, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day)
+            ? day.ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty;
 }

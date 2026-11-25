@@ -8,4 +8,8 @@
     <Compile Remove="service/**" />
     <Compile Remove="tests/**" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Única fonte das novidades: a janela "What's new" lê este arquivo. -->
+    <EmbeddedResource Include="CHANGELOG.md" LogicalName="FcTimers.CHANGELOG.md" />
+  </ItemGroup>
 </Project>

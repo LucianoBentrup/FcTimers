@@ -137,7 +137,7 @@ public sealed partial class Plugin : IDalamudPlugin
         // O changelog abre uma vez depois de cada atualização, nunca na primeira instalação.
         if (Config.LastChangelogVersion != Version)
         {
-            changelogWindow.IsOpen = true;
+            changelogWindow.Show(Config.LastChangelogVersion);
             Config.LastChangelogVersion = Version;
             SaveConfig();
         }
@@ -212,6 +212,8 @@ public sealed partial class Plugin : IDalamudPlugin
     }
 
     public void OpenSettings() => configWindow.IsOpen = true;
+
+    public void OpenChangelog() => changelogWindow.Show(null);
 
     public void EnableCurrentCharacter()
     {

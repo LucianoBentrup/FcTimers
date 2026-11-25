@@ -173,6 +173,10 @@ public sealed class ConfigWindow : ThemedWindow
             : plugin.Sync.LogStatus.Length > 0 ? plugin.Sync.LogStatus : L.LogHasNoKey);
         ImGui.TextColored(UiKit.Muted, L.SendLogHint);
 
+        ImGui.Spacing();
+        if (ImGui.Button(L.WhatsNew))
+            plugin.OpenChangelog();
+
         if (plugin.IsDevBuild)
         {
             ImGui.Spacing();

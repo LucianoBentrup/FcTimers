@@ -46,6 +46,7 @@ public static class L
     public static string Test => T("Testar", "Test");
     public static string SendLogInactive => T("Só um personagem ativo envia o log. Ative este personagem nas configurações.", "Only an enabled character sends the log. Enable this character in the settings.");
     public static string ReplayWelcome => T("Testar boas-vindas", "Test welcome");
+    public static string WhatsNew => T("Novidades", "What's new");
     public static string DevOnly => T("Só aparece na versão de dev.", "Only shown in the dev build.");
     public static string Airships => T("Airships", "Airships");
     public static string ColAirship => T("Airship", "Airship");
