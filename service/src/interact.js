@@ -124,7 +124,7 @@ export const InteractMethods = {
         if (!draft || draft.type !== p.type) draft = newDraft(p.type, p.user);
         applyFields(draft, p.fields ?? {}, now);
         await this.saveDraft(p.user, draft, now);
-        return update(screenMessage(draftReview(draft, lang, state.settings?.eventsChannel)));
+        return update(screenMessage(draftReview(draft, lang)));
       }
       case 'evdraft': return this.draftOp(p, state, lang, now);
       case 'signup': return this.signUp(p, state, lang);
@@ -159,7 +159,7 @@ export const InteractMethods = {
       case 'profit': return sectionEmbed(t('profitTitle'), profitSummary(await this.profit(now)));
       case 'manage': {
         const channels = t('channels')(settings.panelChannel, settings.alertsChannel, settings.eventsChannel);
-        return sectionEmbed(t('manageTitle'), `${t('manageText')}\n\n${channels}`);
+        return sectionEmbed(t('manageTitle'), channels);
       }
       case 'events': {
         const lines = openEvents(await this.events()).map((e) => eventLine(e, lang, p.user));
@@ -326,7 +326,7 @@ export const InteractMethods = {
     const draft = await this.draft(p.user, now);
     if (!draft) return eventsMenu(t('draftGone'));
     const review = (problem) => {
-      const screen = draftReview(draft, lang, settings.eventsChannel);
+      const screen = draftReview(draft, lang);
       if (problem) screen.content = `⚠️ ${problem}`;
       return update(screenMessage(screen));
     };

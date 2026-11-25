@@ -367,7 +367,7 @@ export function typePicker(lang) {
   return {
     embed: {
       title: `${t('eventsTitle')} · ${t('newEvent')}`,
-      description: [t('pickType'), '', ...Object.keys(EVENT_TYPES).map((type) => `**${t(type)}**: ${t(`${type}Hint`)}`)].join('\n'),
+      description: t('pickType'),
       color: COLOR,
     },
     components: [row([
@@ -417,7 +417,7 @@ export function modalFields(data) {
 }
 
 // A revisão antes de postar: o post como vai ficar e os ajustes em botões.
-export function draftReview(draft, lang, channelId) {
+export function draftReview(draft, lang) {
   const t = (key) => text(lang, key);
   const preview = { ...eventFromDraft(draft, 'draft', 0), start: draft.start ?? 0 };
   const embeds = [];
@@ -438,7 +438,7 @@ export function draftReview(draft, lang, channelId) {
     button(t('cancel'), 'fc:evd:cancel', DANGER),
   ]));
   return {
-    content: problem ? `⚠️ ${problem}` : t('reviewText')(channelId),
+    content: problem ? `⚠️ ${problem}` : '',
     embeds,
     components: rows,
   };

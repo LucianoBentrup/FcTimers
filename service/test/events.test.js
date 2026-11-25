@@ -217,14 +217,14 @@ test('campos do formulário enviado, com ou sem embrulho', () => {
 
 test('revisão: com erro, Postar fica desligado e o motivo aparece', () => {
   const bad = applyFields(newDraft('group', 'u'), { title: 'X', when: 'logo' }, NOW);
-  const screen = draftReview(bad, 'pt', '5');
+  const screen = draftReview(bad, 'pt');
   assert.match(screen.content, /Não entendi a data/);
   assert.equal(screen.embeds.length, 0);
   const post = screen.components.flatMap((r) => r.components).find((b) => b.custom_id === 'fc:evd:post');
   assert.equal(post.disabled, true);
   const good = applyFields(newDraft('group', 'u'), { title: 'X', when: 'amanhã 21:00' }, NOW);
-  const ok = draftReview(good, 'pt', '5');
-  assert.match(ok.content, /<#5>/);
+  const ok = draftReview(good, 'pt');
+  assert.equal(ok.content, '');
   assert.equal(ok.embeds.length, 1);
   assert.ok(ok.components[0].components.some((b) => b.custom_id === 'fc:evd:size:24'));
   for (const id of ok.components.flatMap((r) => r.components).map((b) => b.custom_id)) assert.ok(parseCustomId(id), id);

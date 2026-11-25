@@ -266,7 +266,7 @@ try {
   assert.equal(menu.type, 4);
   assert.equal(menu.data.flags, undefined);
   assert.match(menu.data.embeds[0].fields[0].value, /Ciela/);
-  assert.match(menu.data.embeds[0].footer.text, /Todo mundo aqui/);
+  assert.equal(menu.data.embeds[0].footer, undefined);
   assert.ok(customIds(menu.data).includes('fc:subs'));
   assert.ok(customIds(menu.data).includes('fc:manage'));
   assert.ok(!customIds(menu.data).some((id) => id.startsWith('fc:share')));
@@ -328,7 +328,6 @@ try {
   assert.ok(customIds(weeklyOff.data).includes('fc:do:weekly-on'));
   const english = await (await interaction(click('fc:do:lang-en', '32'))).json();
   assert.match(english.data.content, /English/);
-  assert.equal(english.data.embeds[0].footer.text, 'Only you can see this menu.');
   await interaction(click('fc:do:lang-pt', '32'));
   const logReply = await interaction(click('fc:do:log', '32'));
   assert.match(logReply.headers.get('content-type'), /multipart\/form-data/);

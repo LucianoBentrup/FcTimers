@@ -164,10 +164,10 @@ test('o menu do canal é de todos, o privado é só de quem abriu, e nenhum marc
   assert.equal(message.flags, EPHEMERAL);
   assert.deepEqual(message.allowed_mentions, { parse: [] });
   assert.equal(message.content, 'oi');
-  assert.equal(message.embeds[0].footer.text, 'Só você vê este menu.');
+  assert.equal(message.embeds[0].footer, undefined);
   const pub = menuMessage('pt', { embed: sectionEmbed('Subs', 'x'), view: 'subs', manager: false, pub: true });
   assert.equal(pub.flags, undefined);
-  assert.match(pub.embeds[0].footer.text, /Todo mundo aqui/);
+  assert.equal(pub.embeds[0].footer, undefined);
   const pubIds = pub.components.flatMap((r) => r.components).map((b) => b.custom_id);
   assert.ok(pubIds.includes('fc:manage'));
   assert.ok(!pubIds.some((id) => id.startsWith('fc:share')));

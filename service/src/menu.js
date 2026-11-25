@@ -180,7 +180,7 @@ export function menuComponents(lang, {
 export function menuMessage(lang, { embed, notice, pub = false, ...options }) {
   return {
     content: notice ?? '',
-    embeds: [{ ...embed, footer: { text: text(lang, pub ? 'footerPublic' : 'footer') } }],
+    embeds: [embed],
     components: menuComponents(lang, { ...options, pub }),
     ...(pub ? {} : { flags: EPHEMERAL }),
     allowed_mentions: { parse: [] },
