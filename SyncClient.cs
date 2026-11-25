@@ -360,6 +360,8 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             // 202: envio de personagem de outra FC, aceito e descartado pelo serviço. Conta como enviado.
             return response.IsSuccessStatusCode
                 ? new SendResult(true, "Conectado")
+                : response.StatusCode == System.Net.HttpStatusCode.Forbidden
+                    ? new SendResult(false, "Aguardando aprovação na FC")
                 : response.StatusCode == System.Net.HttpStatusCode.Unauthorized
                     ? new SendResult(false, "Ligação inválida: cole o código da FC de novo")
                     : new SendResult(false, $"Erro {(int)response.StatusCode} ao enviar");

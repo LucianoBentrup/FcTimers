@@ -212,6 +212,10 @@ public class Configuration : IPluginConfiguration
     public string LinkedFcName { get; set; } = string.Empty;
     public string LinkedServerName { get; set; } = string.Empty;
 
+    // "pending" até o dono da FC ou um admin aceitar; "member" depois. Papel: owner, admin ou member.
+    public string LinkStatus { get; set; } = string.Empty;
+    public string LinkRole { get; set; } = string.Empty;
+
     // Último loot visto na memória de cada slot. Loot novo só é salvo quando muda.
     public Dictionary<int, string> LootSeen { get; set; } = [];
 

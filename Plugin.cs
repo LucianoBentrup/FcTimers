@@ -121,7 +121,7 @@ public sealed partial class Plugin : IDalamudPlugin
             () => Config.DetailedLog);
         Diagnostics.Write($"Plugin {DisplayVersion} iniciado");
 
-        Link = new FcLink(Config, SaveConfig, message => Diagnostics.Write(message));
+        Link = new FcLink(Config, SaveConfig, message => Diagnostics.Write(message), Notify);
         Sync = new SyncClient(Config, SaveConfig, Diagnostics.Write, IsMarketable, () => MarketWorld);
         Diagnostics.Write($"Itens do estoque: {LookupItem(Supplies.CeruleumTank)?.Name ?? "?"} e {LookupItem(Supplies.RepairMaterials)?.Name ?? "?"}");
 
@@ -338,6 +338,7 @@ public sealed partial class Plugin : IDalamudPlugin
         L.English = LanguageCode == "en";
         Sync.WindowOpen = mainWindow.IsOpen;
         Sync.Tick();
+        Link.Tick();
         if (Sync.Remote is { } remote && !ReferenceEquals(remote, appliedRemote))
         {
             appliedRemote = remote;

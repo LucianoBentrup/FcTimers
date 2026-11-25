@@ -178,8 +178,8 @@ const bearer = (request) => (request.headers.get('Authorization') ?? '').replace
 async function pluginCaller(request, env) {
   const token = bearer(request);
   if (token.startsWith('fco_')) {
-    const entry = await ask(registryOf(env), '/token', { token });
-    return entry ? { fc: entry.fc, owner: entry.owner, gameFcId: entry.gameFcId } : null;
+    const entry = await ask(registryOf(env), '/caller', { token });
+    return entry ? { fc: entry.fc, owner: entry.owner, gameFcId: entry.gameFcId, status: entry.status, role: entry.role } : null;
   }
   return isAuthorized(request, env) ? { fc: LEGACY_FC, legacy: true } : null;
 }
@@ -204,11 +204,14 @@ async function handleLink(request, env, pathname) {
   }
   if (pathname === '/link/confirm') {
     const result = await ask(registry, '/confirm', {
-      code: body.code, gameFcId: body.fcId, gameFcName: cleanFcName(body.fcName), owner: body.owner, ip,
+      code: body.code, gameFcId: body.fcId, gameFcName: cleanFcName(body.fcName), owner: body.owner, ip, requester: body.requester,
     });
     if (result.error) return json({ error: result.error, fcName: result.fcName ?? null, serverName: result.serverName ?? null }, status[result.error]);
     await ask(fcStub(result.fc), '/link/owner', { owner: body.owner, characters: charactersOf(body.characters, body.fcId) });
-    return json({ token: result.token, fcName: result.fcName, serverName: result.serverName, relinked: result.relinked });
+    // status "pending": pedido enviado, esperando o dono da FC ou um admin aceitar no plugin.
+    return json({
+      token: result.token, fcName: result.fcName, serverName: result.serverName, relinked: result.relinked, status: result.status, role: result.role,
+    });
   }
 
   const caller = await pluginCaller(request, env);
@@ -216,6 +219,16 @@ async function handleLink(request, env, pathname) {
   if (pathname === '/link/account') {
     const result = await ask(fcStub(caller.fc), '/link/account', { owner: caller.owner, code: body.code });
     return json(result, result.ok ? 200 : 404);
+  }
+  if (pathname === '/link/me') return json(await ask(registry, '/me', { token: bearer(request) }));
+  if (pathname === '/link/members') {
+    const result = await ask(registry, '/members', { token: bearer(request) });
+    return json(result, result.error ? 403 : 200);
+  }
+  if (pathname === '/link/manage') {
+    const result = await ask(registry, '/manage', { token: bearer(request), action: body.action, member: body.member });
+    if (result.ok && result.owner) await ask(fcStub(result.fc), '/link/remove', { owner: result.owner });
+    return json(result.ok ? { ok: true } : result, result.ok ? 200 : result.error === 'unknown-member' ? 404 : 403);
   }
   if (pathname === '/link/leave') {
     const result = await ask(registry, '/leave', { token: bearer(request) });
@@ -253,6 +266,8 @@ export default {
     const forKey = (request.method === 'POST' && ['/repost', '/regroup'].includes(pathname))
       || (request.method === 'GET' && pathname === '/logs');
     if (!(forOwner || (caller.legacy && forKey))) return json({ error: 'not found' }, 404);
+    // Pedido ainda não aceito: nada entra nem sai até o dono da FC ou um admin aceitar.
+    if (caller.status === 'pending') return json({ error: 'pending' }, 403);
 
     const stub = env.FC_STATE.get(env.FC_STATE.idFromName(caller.fc));
     // Envio de um personagem de outra FC (alt): fica de fora desta FC, sem erro para o plugin.

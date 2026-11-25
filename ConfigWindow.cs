@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -153,7 +154,20 @@ public sealed class ConfigWindow : ThemedWindow
 
         using (ImRaii.Disabled(link.Busy))
         {
-            if (link.Linked)
+            if (link.Pending)
+            {
+                ImGui.TextColored(UiKit.Soon, L.LinkRequested);
+                if (ImGui.Button(L.LinkRefresh))
+                    link.RefreshNow();
+                ImGui.SameLine();
+                if (ImGui.Button(leaveArmed ? L.LinkLeaveSure : L.LinkCancelRequest))
+                {
+                    if (leaveArmed)
+                        link.Leave();
+                    leaveArmed = !leaveArmed;
+                }
+            }
+            else if (link.Linked)
             {
                 ImGui.TextColored(UiKit.Good, L.LinkedTo(config.LinkedFcName.Length > 0 ? config.LinkedFcName : "?", config.LinkedServerName));
                 ImGui.SetNextItemWidth(120 * ImGuiHelpers.GlobalScale);
@@ -177,12 +191,12 @@ public sealed class ConfigWindow : ThemedWindow
                     leaveArmed = !leaveArmed;
                 }
             }
-            else if (link.Pending is { } pending)
+            else if (link.Checked is { } pending)
             {
                 var fcName = pending.FcName ?? (plugin.CurrentFcTag.Length > 0 ? $"«{plugin.CurrentFcTag}»" : "?");
                 ImGui.TextUnformatted(L.LinkConfirm(fcName, pending.ServerName ?? string.Empty));
                 if (ImGui.Button(L.LinkYes))
-                    link.Confirm(plugin.CurrentFcId, fcName, config.Characters.Values);
+                    link.Confirm(plugin.CurrentFcId, fcName, config.Characters.GetValueOrDefault(plugin.CurrentCharacterId), config.Characters.Values);
                 ImGui.SameLine();
                 if (ImGui.Button(L.Cancel))
                     link.CancelPending();

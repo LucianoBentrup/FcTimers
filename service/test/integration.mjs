@@ -476,6 +476,33 @@ try {
   assert.equal((await fetch(`${service}/state`, { headers: auth })).status, 200, 'a chave antiga ainda vale');
   ok('o token do dono substitui a chave, e envio de alt fica de fora');
 
+  // Pedido: quem liga depois do dono fica esperando, e o dono aceita, promove e expulsa pelo plugin.
+  assert.equal(confirmed.status, 'member');
+  assert.equal(confirmed.role, 'owner');
+  const request = await (await linkPost('confirm', {
+    code, fcId: FC_ID, owner: 'dono-0004', requester: { name: 'Nova Pessoa', world: 'Behemoth' },
+  })).json();
+  assert.equal(request.status, 'pending');
+  const stateOf = (token) => fetch(`${service}/state`, { headers: { Authorization: `Bearer ${token}` } });
+  assert.equal((await stateOf(request.token)).status, 403);
+  assert.equal((await sendAs(request.token, { fcId: FC_ID, subs: [sub] })).status, 403);
+  assert.equal((await (await linkPost('me', {}, confirmed.token)).json()).pending, 1);
+  assert.equal((await linkPost('members', {}, request.token)).status, 403, 'pedido não vê a lista');
+  const list = (await (await linkPost('members', {}, confirmed.token)).json()).members;
+  const asked = list.find((m) => m.status === 'pending');
+  assert.equal(asked.name, 'Nova Pessoa');
+  assert.ok(!JSON.stringify(list).includes('dono-0004'), 'a lista não mostra o ID do dono do plugin');
+  assert.equal((await linkPost('manage', { action: 'accept', member: asked.id }, request.token)).status, 403);
+  assert.equal((await linkPost('manage', { action: 'accept', member: asked.id }, confirmed.token)).status, 200);
+  assert.equal((await stateOf(request.token)).status, 200);
+  assert.equal((await linkPost('manage', { action: 'promote', member: asked.id }, confirmed.token)).status, 200);
+  assert.equal((await (await linkPost('me', {}, request.token)).json()).role, 'admin');
+  const self = list.find((m) => m.you);
+  assert.equal((await linkPost('manage', { action: 'kick', member: self.id }, request.token)).status, 403, 'admin não expulsa o dono');
+  assert.equal((await linkPost('manage', { action: 'kick', member: asked.id }, confirmed.token)).status, 200);
+  assert.equal((await stateOf(request.token)).status, 401);
+  ok('pedido para entrar, aceitar, promover e expulsar');
+
   // Ligar a conta do Discord: código só para quem pediu, digitado no jogo.
   const askAccount = await (await interaction(person('1002', 'fc:linkme'))).json();
   const accountCode = askAccount.data.embeds[0].description.match(/\d{6}/)[0];

@@ -19,6 +19,8 @@ public class MainWindow : ThemedWindow
     private readonly Plugin plugin;
     private (string Key, bool Indoor)? newField;
     private string newFieldName = string.Empty;
+    private bool manageLoaded;
+    private string armed = string.Empty;
     private LootSummary loot = new();
     private FcView? lootView;
     private DateTime lootDay;
@@ -102,6 +104,21 @@ public class MainWindow : ThemedWindow
             {
                 UiKit.ActiveTabLine();
                 DrawGarden(plugin.Config, view, now);
+            }
+        }
+
+        if (plugin.Link.Manager)
+        {
+            var count = plugin.Link.PendingRequests;
+            using var tab = ImRaii.TabItem($"{L.TabManage}{(count > 0 ? $" ({count})" : string.Empty)}###manage");
+            if (tab)
+            {
+                UiKit.ActiveTabLine();
+                DrawManage();
+            }
+            else
+            {
+                manageLoaded = false;
             }
         }
     }
@@ -541,6 +558,102 @@ public class MainWindow : ThemedWindow
             UiKit.Cell(buff.EndTime == 0 ? "?" : Plugin.FormatRemaining(buff.EndTime - now), buff.EndTime != 0 && buff.EndTime - now < 3600 ? UiKit.Soon : null);
             UiKit.TimeTooltip(buff.EndTime);
         }
+    }
+
+    private void DrawManage()
+    {
+        var link = plugin.Link;
+        if (!manageLoaded)
+        {
+            manageLoaded = true;
+            link.LoadMembers();
+        }
+
+        using (ImRaii.Disabled(link.Busy))
+        {
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.Sync))
+                link.LoadMembers();
+        }
+
+        if (link.Status.Length > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(UiKit.Muted, link.Status);
+        }
+
+        var requests = link.Members.Where(m => m.Status == "pending").ToList();
+        UiKit.Heading(FontAwesomeIcon.UserPlus, L.Requests);
+        if (requests.Count == 0)
+            ImGui.TextColored(UiKit.Muted, L.NoRequests);
+
+        using (var table = UiKit.Table("##requests", L.ColName, L.ColWorld, string.Empty))
+        {
+            if (table != null)
+            {
+                foreach (var member in requests)
+                {
+                    ImGui.PushID(member.Id);
+                    ImGui.TableNextRow();
+                    UiKit.Cell(member.Name ?? "?");
+                    UiKit.Cell(member.World ?? "-", UiKit.Muted);
+                    ImGui.TableNextColumn();
+                    using (ImRaii.Disabled(link.Busy))
+                    {
+                        if (ImGui.SmallButton(L.Accept))
+                            link.Manage("accept", member.Id);
+                        ImGui.SameLine();
+                        if (Confirmed($"reject{member.Id}", L.Reject))
+                            link.Manage("reject", member.Id);
+                    }
+
+                    ImGui.PopID();
+                }
+            }
+        }
+
+        UiKit.Heading(FontAwesomeIcon.Users, L.Members);
+        using var members = UiKit.Table("##members", L.ColName, L.ColWorld, L.ColRole, string.Empty);
+        if (members == null)
+            return;
+
+        foreach (var member in link.Members.Where(m => m.Status != "pending"))
+        {
+            ImGui.PushID(member.Id);
+            ImGui.TableNextRow();
+            UiKit.Cell(member.You ? $"{member.Name ?? "?"} ({L.You})" : member.Name ?? "?");
+            UiKit.Cell(member.World ?? "-", UiKit.Muted);
+            UiKit.Cell(member.Role switch { "owner" => L.RoleOwner, "admin" => L.RoleAdmin, _ => L.RoleMember },
+                member.Role == "owner" ? Theme.Current.Brass : member.Role == "admin" ? Theme.Current.Accent : null);
+            ImGui.TableNextColumn();
+
+            // O dono mexe em todos; um admin só em membro comum. Ninguém mexe no dono nem em si mesmo.
+            var canTouch = !member.You && member.Role != "owner" && (link.IsOwner || member.Role == "member");
+            using (ImRaii.Disabled(link.Busy))
+            {
+                if (canTouch && link.IsOwner)
+                {
+                    if (ImGui.SmallButton(member.Role == "admin" ? L.Demote : L.Promote))
+                        link.Manage(member.Role == "admin" ? "demote" : "promote", member.Id);
+                    ImGui.SameLine();
+                }
+
+                if (canTouch && Confirmed($"kick{member.Id}", L.Kick))
+                    link.Manage("kick", member.Id);
+            }
+
+            ImGui.PopID();
+        }
+    }
+
+    // Recusar e expulsar pedem dois cliques.
+    private bool Confirmed(string id, string label)
+    {
+        var ready = armed == id;
+        if (!ImGui.SmallButton(ready ? $"{L.SureClick}###{id}" : $"{label}###{id}"))
+            return false;
+
+        armed = ready ? string.Empty : id;
+        return ready;
     }
 
     // Em cima, o estado da plantação. Embaixo, a seção Campos, que só cadastra, renomeia e remove.

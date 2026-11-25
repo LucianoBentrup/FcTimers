@@ -19,6 +19,8 @@ e é o que a janela de novidades mostra quando o plugin está em português. Reg
 - **Botão do Ko-fi:** na janela, nas configurações e aqui.
 - **Código da FC:** ligue o plugin à FC com um código curto.
 - **Conta do Discord:** ligue com um código de 6 números, para eventos.
+- **Pedidos de entrada:** o código da FC vira um pedido; o dono ou um admin aceita.
+- **Aba Gerenciar:** membros, pedidos, admins e expulsões, para o dono e os admins.
 
 ### Changed
 - **Um comando só:** `/fcc` no jogo e no Discord.

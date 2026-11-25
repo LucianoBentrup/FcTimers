@@ -13,7 +13,7 @@ namespace FcTimers;
 // Ligação por código (contrato em Plugin FF\plano\CONTRATO-LIGACAO.md): quem gerencia o servidor gera o código
 // no /fcc do Discord, e cada membro cola o código aqui e confirma a FC. O serviço devolve um token, que entra
 // no lugar da chave da FC. A ligação é da instalação (o dono), não de cada personagem.
-public sealed class FcLink(Configuration config, Action save, Action<string> log) : IDisposable
+public sealed class FcLink(Configuration config, Action save, Action<string> log, Action<string> notify) : IDisposable
 {
     // Serviço da FC Companion. A configuração ainda aceita outro endereço, para quem roda o próprio.
     public const string DefaultServiceUrl = "https://fc-timers.lucianobentrup.workers.dev";
@@ -25,7 +25,27 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
 
     private sealed record CheckReply(string Code, string? FcName, string? ServerName, bool FirstLink, string? Error);
 
-    private sealed record ConfirmReply(string? Token, string? FcName, string? ServerName, string? Error);
+    private sealed record ConfirmReply(string? Token, string? FcName, string? ServerName, string? Status, string? Role, string? Error);
+
+    private sealed record MeReply(string? Status, string? Role, string? FcName, int Pending);
+
+    private sealed record MembersReply(List<Member>? Members, string? Error);
+
+    public sealed record Member(string Id, string? Name, string? World, string Role, string Status, long RequestedAt, long? JoinedAt, bool You);
+
+    private static readonly TimeSpan MeInterval = TimeSpan.FromMinutes(5);
+    private DateTime nextMe = DateTime.MinValue;
+
+    public bool Pending => Linked && config.LinkStatus == "pending";
+
+    public bool Manager => Linked && config.LinkStatus != "pending" && config.LinkRole is "owner" or "admin";
+
+    public bool IsOwner => Linked && config.LinkRole == "owner";
+
+    // Pedidos esperando resposta, para o dono e os admins.
+    public int PendingRequests { get; private set; }
+
+    public List<Member> Members { get; private set; } = [];
 
     private sealed record AccountReply(bool Ok, string? Error);
 
@@ -39,7 +59,9 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
     public string Status { get; private set; } = string.Empty;
 
     // Resultado do /link/check, esperando o "sim" na tela.
-    public Check? Pending { get; private set; }
+    public Check? Checked => pending;
+
+    private Check? pending;
 
     public string ServiceUrl => (config.ServiceUrl.Trim().Length > 0 ? config.ServiceUrl.Trim() : DefaultServiceUrl).TrimEnd('/');
 
@@ -47,7 +69,7 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
 
     public void CancelPending()
     {
-        Pending = null;
+        pending = null;
         Status = string.Empty;
     }
 
@@ -56,7 +78,7 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
         var (status, reply) = await Post<CheckReply>("/link/check", new { code, fcId = fcId.ToString(), owner = config.OwnerId });
         if (status == HttpStatusCode.OK && reply != null)
         {
-            Pending = new Check(reply.Code, reply.FcName, reply.ServerName, reply.FirstLink);
+            pending = new Check(reply.Code, reply.FcName, reply.ServerName, reply.FirstLink);
             Status = string.Empty;
             return;
         }
@@ -65,13 +87,17 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
     });
 
     // characters: todos os personagens conhecidos com ID de FC. O serviço guarda só os da mesma FC.
-    public void Confirm(ulong fcId, string fcName, IEnumerable<CharacterRecord> characters) => Run(async () =>
+    public void Confirm(ulong fcId, string fcName, CharacterRecord? requester, IEnumerable<CharacterRecord> characters) => Run(async () =>
     {
-        if (Pending is not { } pending)
+        if (this.pending is not { } pending)
             return;
 
         var list = characters.Where(c => c.FcId != 0).Select(c => new { name = c.Name, world = c.World, fcId = c.FcId.ToString() }).ToList();
-        var (status, reply) = await Post<ConfirmReply>("/link/confirm", new { code = pending.Code, fcId = fcId.ToString(), fcName, owner = config.OwnerId, characters = list });
+        var (status, reply) = await Post<ConfirmReply>("/link/confirm", new
+        {
+            code = pending.Code, fcId = fcId.ToString(), fcName, owner = config.OwnerId, characters = list,
+            requester = requester == null ? null : new { name = requester.Name, world = requester.World },
+        });
         if (status == HttpStatusCode.OK && reply?.Token is { Length: > 0 } token)
         {
             config.ServiceKey = token;
@@ -79,10 +105,12 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
             config.SyncEnabled = true;
             config.LinkedFcName = reply.FcName ?? fcName;
             config.LinkedServerName = reply.ServerName ?? pending.ServerName ?? string.Empty;
+            config.LinkStatus = reply.Status ?? "member";
+            config.LinkRole = reply.Role ?? "member";
             save();
-            Pending = null;
-            Status = L.LinkDone;
-            log($"Plugin ligado à FC {config.LinkedFcName} pelo código");
+            this.pending = null;
+            Status = config.LinkStatus == "pending" ? L.LinkRequested : L.LinkDone;
+            log(config.LinkStatus == "pending" ? $"Pedido para entrar na FC {config.LinkedFcName} enviado" : $"Plugin ligado à FC {config.LinkedFcName}");
             return;
         }
 
@@ -106,6 +134,8 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
             config.ServiceKey = string.Empty;
             config.LinkedFcName = string.Empty;
             config.LinkedServerName = string.Empty;
+            config.LinkStatus = string.Empty;
+            config.LinkRole = string.Empty;
             save();
             Status = L.LinkLeft;
             log("Plugin desligado da FC");
@@ -115,13 +145,94 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
         Status = Error(status, null, null);
     });
 
-    private void Run(Func<Task> work)
+    // A cada 5 minutos: situação do pedido, papel e pedidos novos. Avisa quando o pedido é aceito,
+    // quando chega pedido para o dono ou um admin, e quando o plugin foi tirado da FC.
+    public void Tick()
+    {
+        if (!Linked || Busy || DateTime.UtcNow < nextMe)
+            return;
+
+        nextMe = DateTime.UtcNow + MeInterval;
+        RefreshNow();
+    }
+
+    public void RefreshNow() => Run(async () =>
+    {
+        var (status, reply) = await Post<MeReply>("/link/me", new { }, config.ServiceKey);
+        if (status != HttpStatusCode.OK || reply == null)
+        {
+            Status = string.Empty;
+            return;
+        }
+
+        if (reply.Status == null)
+        {
+            // Token que não vale mais: recusado ou expulso.
+            config.ServiceKey = string.Empty;
+            config.LinkStatus = string.Empty;
+            config.LinkRole = string.Empty;
+            save();
+            notify(L.LinkRemoved);
+            log("Este plugin saiu da FC (pedido recusado ou expulso)");
+            Status = string.Empty;
+            return;
+        }
+
+        if (config.LinkStatus == "pending" && reply.Status == "member")
+            notify(L.LinkAccepted);
+        if (reply.Pending > PendingRequests && reply.Role is "owner" or "admin")
+            notify(L.NewRequests(reply.Pending));
+
+        PendingRequests = reply.Pending;
+        if (config.LinkStatus != reply.Status || config.LinkRole != reply.Role)
+        {
+            config.LinkStatus = reply.Status;
+            config.LinkRole = reply.Role ?? "member";
+            save();
+        }
+
+        Status = string.Empty;
+    }, quiet: true);
+
+    public void LoadMembers() => Run(async () =>
+    {
+        var (status, reply) = await Post<MembersReply>("/link/members", new { }, config.ServiceKey);
+        if (status == HttpStatusCode.OK && reply?.Members != null)
+        {
+            Members = reply.Members;
+            PendingRequests = Members.Count(m => m.Status == "pending");
+            Status = string.Empty;
+            return;
+        }
+
+        Status = Error(status, reply?.Error, null);
+    }, quiet: true);
+
+    // accept, reject, kick, promote ou demote. Recarrega a lista no fim.
+    public void Manage(string action, string member) => Run(async () =>
+    {
+        var (status, reply) = await Post<AccountReply>("/link/manage", new { action, member }, config.ServiceKey);
+        if (status != HttpStatusCode.OK || reply?.Ok != true)
+        {
+            Status = Error(status, reply?.Error, null);
+            return;
+        }
+
+        log($"Gerenciamento: {action}");
+        var (_, list) = await Post<MembersReply>("/link/members", new { }, config.ServiceKey);
+        Members = list?.Members ?? Members;
+        PendingRequests = Members.Count(m => m.Status == "pending");
+        Status = string.Empty;
+    });
+
+    private void Run(Func<Task> work, bool quiet = false)
     {
         if (Busy)
             return;
 
         Busy = true;
-        Status = L.LinkWorking;
+        if (!quiet)
+            Status = L.LinkWorking;
         _ = Task.Run(async () =>
         {
             try

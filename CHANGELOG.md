@@ -23,6 +23,8 @@ Portuguese). Rules for every entry:
 - **Ko-fi button:** in the window, in Settings and here.
 - **FC code:** link the plugin to your FC with a short code.
 - **Discord account:** link it with a 6-digit code for events.
+- **Join requests:** the FC code sends a request; the owner or an admin accepts.
+- **Manage tab:** members, requests, admins and kicks, for the owner and admins.
 
 ### Changed
 - **One command:** `/fcc` in the game and on Discord.
