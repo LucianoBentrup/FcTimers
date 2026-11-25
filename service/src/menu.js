@@ -51,7 +51,9 @@ export const SECTIONS = [
   { id: 'events', emoji: '📅' },
 ];
 const MANAGE = { id: 'manage', emoji: '⚙️', manager: true };
-export const ACTIONS = ['repost', 'regroup', 'weekly-on', 'weekly-off', 'log', 'lang-en', 'lang-pt', 'panel-here', 'alerts-here', 'events-here'];
+export const ACTIONS = [
+  'repost', 'regroup', 'weekly-on', 'weekly-off', 'log', 'lang-en', 'lang-pt', 'panel-here', 'alerts-here', 'events-here', 'code', 'code-new', 'code-off',
+];
 const DRAFT_OPS = ['size', 'repeat', 'notify', 'lead', 'post', 'edit', 'cancel'];
 const sectionOf = (id) => [...SECTIONS, MANAGE].find((s) => s.id === id);
 
@@ -71,6 +73,8 @@ const ID = /^[a-z0-9]{1,16}$/;
 //   fc:do:<ação>                ajuste de quem gerencia o servidor
 //   fc:set:eventrole            lista de cargos dos ajustes
 //   fc:pref:dm                  lembrete de evento por DM, de cada um
+//   fc:setup                    servidor novo: criar a FC e o código
+//   fc:linkme                   ligar a minha conta do Discord ao plugin (código de 6 dígitos)
 //   fc:evnew[:<tipo>]           novo evento: escolher o tipo, depois o formulário
 //   fc:evm:<tipo>               formulário do evento enviado
 //   fc:evd:<op>[:<valor>]       botões da revisão do rascunho
@@ -84,6 +88,8 @@ export function parseCustomId(id) {
     case 'do': return ACTIONS.includes(name) && extra === undefined ? { kind: 'action', name } : null;
     case 'set': return name === 'eventrole' ? { kind: 'eventrole' } : null;
     case 'pref': return name === 'dm' ? { kind: 'pref', name } : null;
+    case 'setup': return name === undefined ? { kind: 'setup' } : null;
+    case 'linkme': return name === undefined ? { kind: 'linkme' } : null;
     case 'evnew': return name === undefined || isType(name) ? { kind: 'evnew', type: name ?? null } : null;
     case 'evm': return isType(name) ? { kind: 'evmodal', type: name } : null;
     case 'evd': return DRAFT_OPS.includes(name) ? { kind: 'evdraft', op: name, value: extra ?? null } : null;
@@ -120,7 +126,7 @@ export const sectionEmbed = (title, body) => ({ title, description: truncate(bod
 // Ajustes aparecem sempre (a permissão é conferida no clique), o botão de DM não mostra o estado de ninguém e não
 // tem Postar no canal, porque o menu já está no canal.
 export function menuComponents(lang, {
-  view, arg, manager, weeklyOff, canCreate, dmOn, eventRole, pub = false, supportUrl = SUPPORT_URL,
+  view, arg, manager, weeklyOff, canCreate, dmOn, eventRole, accountLinked, pub = false, supportUrl = SUPPORT_URL,
 }) {
   const t = (key) => text(lang, key);
   const tab = (s) => button(t(s.id), `fc:${s.id}`, s.id === view ? PRIMARY : SECONDARY, s.emoji);
@@ -135,6 +141,8 @@ export function menuComponents(lang, {
     if (canCreate || pub) options.push(button(t('newEvent'), 'fc:evnew', SUCCESS, '➕'));
     if (pub) options.push(button(t('dmToggle'), 'fc:pref:dm', SECONDARY, '✉️'));
     else options.push(button(dmOn ? t('dmOn') : t('dmOff'), 'fc:pref:dm', dmOn ? PRIMARY : SECONDARY, '✉️'));
+    // No menu do canal o botão é igual para todos; a tela com o código abre só para quem clicou.
+    options.push(button(!pub && accountLinked ? t('accountLinked') : t('linkAccount'), 'fc:linkme', SECONDARY, '🔗'));
     rows.push(row(options));
   }
   if (view === 'manage') {
@@ -149,6 +157,7 @@ export function menuComponents(lang, {
       button(t('panelHere'), 'fc:do:panel-here', SECONDARY, '📋'),
       button(t('alertsHere'), 'fc:do:alerts-here', SECONDARY, '🔔'),
       button(t('eventsHere'), 'fc:do:events-here', SECONDARY, '📅'),
+      button(t('fcCode'), 'fc:do:code', SUCCESS, '🔑'),
     ]));
     rows.push(row([{
       type: ROLE_SELECT, custom_id: 'fc:set:eventrole', placeholder: t('eventRole'), min_values: 0, max_values: 1,
@@ -182,6 +191,36 @@ export function menuMessage(lang, { embed, notice, pub = false, ...options }) {
 export const screenMessage = ({ content = '', embeds = [], components = [] }) => ({
   content, embeds, components, flags: EPHEMERAL, allowed_mentions: { parse: [] },
 });
+
+// Servidor sem FC: só quem gerencia vê. Um botão cria a FC e mostra o código.
+export function setupMessage() {
+  return screenMessage({
+    content: `${text('en', 'setupText')}\n${text('pt', 'setupText')}`,
+    components: [row([button(`${text('en', 'setup')} / ${text('pt', 'setup')}`, 'fc:setup', SUCCESS, '🔑')])],
+  });
+}
+
+// O código da FC, com trocar e desligar. `code` null: desligado.
+export function codeScreen(lang, code, linked) {
+  const t = (key) => text(lang, key);
+  return screenMessage({
+    embeds: [{ title: `🔑 ${t('fcCode')}`, description: code ? t('codeText')(code, linked) : t('codeOffText')(linked), color: COLOR }],
+    components: [row([
+      button(code ? t('codeNew') : t('codeOn'), 'fc:do:code-new', code ? SECONDARY : SUCCESS, '🔄'),
+      ...(code ? [button(t('codeOff'), 'fc:do:code-off', DANGER)] : []),
+      button(t('back'), 'fc:manage'),
+    ])],
+  });
+}
+
+// O código de 6 dígitos para ligar a conta do Discord, só para quem pediu.
+export function accountScreen(lang, code) {
+  const t = (key) => text(lang, key);
+  return screenMessage({
+    embeds: [{ title: `🔗 ${t('linkAccount')}`, description: t('accountText')(code), color: COLOR }],
+    components: [row([button(t('back'), 'fc:events')])],
+  });
+}
 
 // A seção postada no canal: sem botões e sem marcar ninguém.
 export function sharedMessage(lang, embed, userId) {

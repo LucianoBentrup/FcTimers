@@ -10,8 +10,11 @@ import {
   dayOf, lootSummary, newState, profitSummary, renderPanel, subsSummary, suppliesSummary, alertDeleteAt,
 } from './logic.js';
 import {
-  MODAL, menuMessage, screenMessage, sectionEmbed, sharedMessage, UPDATE_MESSAGE,
+  accountScreen, codeScreen, MODAL, menuMessage, screenMessage, sectionEmbed, sharedMessage, UPDATE_MESSAGE,
 } from './menu.js';
+import {
+  accountLinked, addOwner, confirmAccount, linkedOwners, removeOwner, requestAccount,
+} from './link.js';
 import { langOf, text } from './texts.js';
 import { sendDm, transportOf, DISCORD_API } from './transport.js';
 
@@ -107,6 +110,14 @@ export const InteractMethods = {
         if (p.pub) return note(pref.dm ? t('dmNowOn') : t('dmNowOff'));
         return menu(UPDATE_MESSAGE, 'events', null, pref.dm ? t('dmNowOn') : t('dmNowOff'));
       }
+      case 'linkme': {
+        const latest = await this.state();
+        const code = requestAccount(latest, p.user, now);
+        await this.ctx.storage.put('state', latest);
+        // O código é só de quem pediu: no menu do canal, abre numa mensagem que só essa pessoa vê.
+        const screen = accountScreen(lang, code);
+        return p.pub ? { response: { type: REPLY, data: screen } } : update(screen);
+      }
       case 'evnew': return this.newEvent(p, state, lang);
       case 'evmodal': {
         let draft = await this.draft(p.user, now);
@@ -135,7 +146,7 @@ export const InteractMethods = {
     return menuMessage(lang, {
       embed, notice, view: shown, arg, manager: p.manager, pub: Boolean(p.pub),
       weeklyOff: Boolean(state.weekly?.off), eventRole: settings.eventRole ?? null,
-      canCreate: canCreate(p, settings), dmOn: Boolean(pref.dm),
+      canCreate: canCreate(p, settings), dmOn: Boolean(pref.dm), accountLinked: accountLinked(state, p.user),
     });
   },
 
@@ -212,6 +223,22 @@ export const InteractMethods = {
           file: { name: `log-${log.character.replace(/[^\w-]+/g, '_')}.txt`, text: log.text },
         };
       }
+      case 'code':
+      case 'code-new':
+      case 'code-off': {
+        // O código mora no registro, que é quem o plugin consulta. A FC guarda uma cópia para mostrar.
+        let code = state.settings?.code ?? null;
+        const off = Boolean(state.settings?.codeOff);
+        if (p.name !== 'code' || (!code && !off)) {
+          const registry = this.env.REGISTRY.get(this.env.REGISTRY.idFromName('registry'));
+          const answer = await (await registry.fetch('https://r/code', {
+            method: 'POST', body: JSON.stringify({ fc: p.fc, off: p.name === 'code-off' }),
+          })).json();
+          code = answer.code;
+          await this.saveSettings({ code, codeOff: !code });
+        }
+        return update(codeScreen(lang, code, linkedOwners(state)));
+      }
       case 'panel-here':
       case 'alerts-here':
       case 'events-here': {
@@ -230,6 +257,33 @@ export const InteractMethods = {
       }
       default: return note(t('unknown'));
     }
+  },
+
+  // ---------- ligação do plugin ----------
+
+  async handleLinkOwner(request) {
+    const { owner, characters } = await request.json();
+    const state = await this.state();
+    addOwner(state, owner, characters ?? [], nowSeconds());
+    await this.ctx.storage.put('state', state);
+    return json({ ok: true });
+  },
+
+  async handleLinkAccount(request) {
+    const { owner, code } = await request.json();
+    const state = await this.state();
+    const user = confirmAccount(state, owner, code, nowSeconds());
+    if (!user) return json({ ok: false, error: 'unknown-code' });
+    await this.ctx.storage.put('state', state);
+    return json({ ok: true, discordUser: user });
+  },
+
+  async handleLinkRemove(request) {
+    const { owner } = await request.json();
+    const state = await this.state();
+    removeOwner(state, owner);
+    await this.ctx.storage.put('state', state);
+    return json({ ok: true });
   },
 
   // ---------- eventos ----------

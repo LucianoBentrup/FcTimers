@@ -159,3 +159,15 @@
 - O evento fecha 2 horas depois do início: o post perde os botões. Se repete toda semana, o da semana seguinte é postado na hora, com a lista limpa. Fechado, fica guardado 14 dias.
 - No máximo 25 eventos abertos.
 - O plugin recebe em `/state` os eventos abertos (título, tipo, hora, inscritos e vagas), sem quem se inscreveu. A ligação entre a conta do Discord e o personagem ainda não existe; tudo que depende dela fica em `service/src/link.js`.
+
+## Ligação por código
+- Quem gerencia o servidor abre o `/fcc`, Ajustes, **Código da FC**. Servidor sem FC: o `/fcc` mostra só pra quem gerencia o botão **Criar código da FC**, e o servidor ganha uma FC nova, separada das outras.
+- O código tem o formato `FCC-XXXXXX` (6 letras e números, sem 0, O, 1, I, L e U). Maiúscula, minúscula, espaço e traço não importam.
+- **Código novo** troca o código: o antigo para de valer na hora, e quem já ligou continua ligado. **Desligar código** impede ligações novas.
+- No plugin, o membro cola o código. O serviço responde "FC X no servidor Y" e só liga depois que ele confirma no jogo.
+- A primeira ligação grava qual FC do jogo é esta (o ID da FC). Depois disso, só personagem da mesma FC liga com o código.
+- A ligação é com o dono (a instalação do plugin), não com cada personagem. Ela devolve um token, que substitui a chave da FC.
+- Com o token, o envio de um personagem de outra FC (alt) é aceito e descartado: nada dele entra nesta FC. Só os personagens desta FC ficam guardados.
+- 10 códigos errados por hora, por dono e por IP. Depois disso, o serviço recusa até a hora passar.
+- Ligar a conta do Discord é opcional e só serve pros eventos e pra DM. No `/fcc`, em Eventos, **Ligar minha conta** mostra um código de 6 dígitos só pra quem pediu, e o dono digita no jogo. O código vale 15 minutos e uma vez só. Uma conta do Discord liga a um dono só.
+- **Compatibilidade:** a chave da FC (`FC_KEY`) e o webhook continuam valendo nesta versão, só pra FC antiga. Saem na versão seguinte.

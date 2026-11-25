@@ -15,6 +15,14 @@ DISCORD_GUILD_ID = "1128490333819392112"
 name = "FC_STATE"
 class_name = "FcState"
 
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "Registry"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["FcState"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Registry"]

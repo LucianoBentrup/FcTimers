@@ -10,10 +10,14 @@ import {
 import { eventsForPlugin, modalFields } from './events.js';
 import { InteractMethods } from './interact.js';
 import {
-  DEFERRED_UPDATE_MESSAGE, fcFor, LEGACY, MESSAGE_COMPONENT, MODAL_SUBMIT, panelComponents, parseCustomId, text, userOf,
+  DEFERRED_UPDATE_MESSAGE, fcFor, LEGACY, MESSAGE_COMPONENT, MODAL_SUBMIT, panelComponents, parseCustomId, setupMessage, text, userOf,
 } from './menu.js';
 import { langOf } from './texts.js';
 import { DISCORD_API, transportFor, transportOf } from './transport.js';
+import { charactersOf } from './link.js';
+import { LEGACY_FC } from './registry.js';
+
+export { Registry } from './registry.js';
 
 const DEBOUNCE_MS = 2000;
 const RETRY_MS = 60000;
@@ -52,9 +56,6 @@ async function handleInteraction(request, env, ctx) {
   if (interaction.type === PING) return json({ type: PING });
 
   const both = (key) => `${text('en', key)}\n${text('pt', key)}`;
-  const fc = fcFor(interaction, env);
-  if (!fc) return json(privateReply(both('notLinked')));
-
   const manager = canManage(interaction);
   let asked;
   if (interaction.type === COMMAND) {
@@ -72,11 +73,30 @@ async function handleInteraction(request, env, ctx) {
     else asked.fields = modalFields(interaction.data);
   }
   if (!asked) return json(privateReply(text('en', 'unknown')));
+
+  // Qual FC atende este servidor: o registro primeiro, depois a FC antiga do DISCORD_GUILD_ID.
+  const registry = registryOf(env);
+  let fc = interaction.guild_id ? (await ask(registry, '/guild', { guildId: interaction.guild_id }))?.fc : null;
+  fc ??= fcFor(interaction, env);
+  const codeAction = asked.kind === 'setup' || (asked.kind === 'action' && ['code', 'code-new', 'code-off'].includes(asked.name));
+  if (!fc) {
+    // Servidor novo: quem gerencia vê o botão de criar a FC; os outros, que ainda não está ligado.
+    if (!manager || !interaction.guild_id) return json(privateReply(both('notLinked')));
+    if (asked.kind !== 'setup') return json({ type: REPLY, data: setupMessage() });
+  }
+  if (codeAction && manager && interaction.guild_id) {
+    const entry = await ask(registry, '/create', {
+      guildId: interaction.guild_id, guildName: await guildName(env, interaction.guild_id), legacy: fc === LEGACY_FC,
+    });
+    fc = entry.fc;
+    if (asked.kind === 'setup') asked = { kind: 'action', name: 'code' };
+  }
   // A permissão é conferida a cada clique: o menu pode ter sido aberto antes de a pessoa perder o cargo.
-  if ((asked.kind === 'action' || asked.kind === 'eventrole' || asked.manager) && !manager) return json(privateReply(both('managersOnly')));
+  if ((asked.kind === 'action' || asked.kind === 'eventrole' || asked.kind === 'setup' || asked.manager) && !manager) return json(privateReply(both('managersOnly')));
 
   const payload = {
     ...asked,
+    fc,
     user: userOf(interaction),
     manager,
     roles: interaction.member?.roles ?? [],
@@ -149,18 +169,106 @@ async function replaceMenu(env, stub, hook, channel, token, openedAt) {
   if (removed && !removed.ok && removed.status !== 404) console.error(`Discord respondeu ${removed.status} ao apagar o menu anterior`);
 }
 
+const registryOf = (env) => env.REGISTRY.get(env.REGISTRY.idFromName('registry'));
+const ask = async (stub, route, body) => (await stub.fetch(`https://r${route}`, { method: 'POST', body: JSON.stringify(body ?? {}) })).json();
+const bearer = (request) => (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+
+// Quem está chamando do plugin. O token do dono (fco_...) vem da ligação por código. A chave antiga da FC
+// (FC_KEY) ainda vale por uma versão, só para a FC antiga.
+async function pluginCaller(request, env) {
+  const token = bearer(request);
+  if (token.startsWith('fco_')) {
+    const entry = await ask(registryOf(env), '/token', { token });
+    return entry ? { fc: entry.fc, owner: entry.owner, gameFcId: entry.gameFcId } : null;
+  }
+  return isAuthorized(request, env) ? { fc: LEGACY_FC, legacy: true } : null;
+}
+
+// Rotas da ligação, chamadas pelo plugin. Ver plano/CONTRATO-LIGACAO.md.
+async function handleLink(request, env, pathname) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid json' }, 400);
+  }
+  const registry = registryOf(env);
+  const ip = request.headers.get('CF-Connecting-IP') ?? null;
+  const fcStub = (fc) => env.FC_STATE.get(env.FC_STATE.idFromName(fc));
+  const status = { invalid: 400, 'unknown-code': 404, 'other-fc': 409, 'too-many': 429 };
+
+  if (pathname === '/link/check') {
+    const result = await ask(registry, '/check', { code: body.code, gameFcId: body.fcId, owner: body.owner, ip });
+    if (result.error) return json({ error: result.error, fcName: result.fcName ?? null, serverName: result.serverName ?? null }, status[result.error]);
+    return json({ code: result.code, fcName: result.fcName, serverName: result.serverName, firstLink: result.sameFc === null });
+  }
+  if (pathname === '/link/confirm') {
+    const result = await ask(registry, '/confirm', {
+      code: body.code, gameFcId: body.fcId, gameFcName: cleanFcName(body.fcName), owner: body.owner, ip,
+    });
+    if (result.error) return json({ error: result.error, fcName: result.fcName ?? null, serverName: result.serverName ?? null }, status[result.error]);
+    await ask(fcStub(result.fc), '/link/owner', { owner: body.owner, characters: charactersOf(body.characters, body.fcId) });
+    return json({ token: result.token, fcName: result.fcName, serverName: result.serverName, relinked: result.relinked });
+  }
+
+  const caller = await pluginCaller(request, env);
+  if (!caller?.owner) return json({ error: 'unauthorized' }, 401);
+  if (pathname === '/link/account') {
+    const result = await ask(fcStub(caller.fc), '/link/account', { owner: caller.owner, code: body.code });
+    return json(result, result.ok ? 200 : 404);
+  }
+  if (pathname === '/link/leave') {
+    const result = await ask(registry, '/leave', { token: bearer(request) });
+    if (result.ok) await ask(fcStub(result.fc), '/link/remove', { owner: result.owner });
+    return json({ ok: result.ok });
+  }
+  return json({ error: 'not found' }, 404);
+}
+
+// Nome do servidor, para o plugin mostrar "FC X no servidor Y". Só com o bot; sem ele, fica sem nome.
+async function guildName(env, guildId) {
+  if (!env.DISCORD_BOT_TOKEN) return null;
+  try {
+    const response = await fetch(`${env.DISCORD_API ?? DISCORD_API}/guilds/${guildId}`, { headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
+    return response.ok ? ((await response.json()).name ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+const cleanFcName = (value) => (typeof value === 'string' ? value.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40) || null : null);
+
 export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     if (request.method === 'POST' && pathname === '/interactions') return handleInteraction(request, env, ctx);
-    if (!isAuthorized(request, env)) return json({ error: 'unauthorized' }, 401);
+    if (request.method === 'POST' && pathname.startsWith('/link/')) return handleLink(request, env, pathname);
 
-    const allowed = (request.method === 'POST' && ['/update', '/repost', '/log', '/regroup'].includes(pathname))
-      || (request.method === 'GET' && ['/history', '/state', '/logs'].includes(pathname));
-    if (!allowed) return json({ error: 'not found' }, 404);
+    const caller = await pluginCaller(request, env);
+    if (!caller) return json({ error: 'unauthorized' }, 401);
 
-    // Todo pedido passa pelo mesmo objeto, que é o único ponto de gravação.
-    return env.FC_STATE.get(env.FC_STATE.idFromName('fc')).fetch(request);
+    // Com o token do dono: só o que o plugin usa. Reenviar o painel, agrupar e baixar logs ficam com a chave antiga.
+    const forOwner = (request.method === 'POST' && ['/update', '/log'].includes(pathname))
+      || (request.method === 'GET' && ['/history', '/state'].includes(pathname));
+    const forKey = (request.method === 'POST' && ['/repost', '/regroup'].includes(pathname))
+      || (request.method === 'GET' && pathname === '/logs');
+    if (!(forOwner || (caller.legacy && forKey))) return json({ error: 'not found' }, 404);
+
+    const stub = env.FC_STATE.get(env.FC_STATE.idFromName(caller.fc));
+    // Envio de um personagem de outra FC (alt): fica de fora desta FC, sem erro para o plugin.
+    if (request.method === 'POST' && caller.gameFcId) {
+      const text = await request.text();
+      let fcId = null;
+      try {
+        fcId = JSON.parse(text)?.fcId ?? null;
+      } catch {
+        // O objeto da FC responde ao JSON inválido.
+      }
+      if (fcId != null && String(fcId) !== caller.gameFcId) return json({ ok: true, stored: false, reason: 'other-fc' }, 202);
+      return stub.fetch(new Request(request.url, { method: 'POST', headers: request.headers, body: text }));
+    }
+    // Todo pedido da FC passa pelo mesmo objeto, que é o único ponto de gravação.
+    return stub.fetch(request);
   },
 };
 
@@ -173,6 +281,9 @@ export class FcState extends DurableObject {
       case 'POST /log': return this.handleLog(request);
       case 'POST /interact': return this.handleInteract(request);
       case 'POST /menu': return this.handleMenu(request);
+      case 'POST /link/owner': return this.handleLinkOwner(request);
+      case 'POST /link/account': return this.handleLinkAccount(request);
+      case 'POST /link/remove': return this.handleLinkRemove(request);
       case 'GET /state': return this.handleState();
       case 'GET /logs': return this.handleLogs();
       default: return this.handleHistory(request);

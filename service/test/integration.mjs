@@ -35,6 +35,11 @@ const discord = createServer((req, res) => {
       res.writeHead(req.method === 'DELETE' ? 204 : 200, { 'Content-Type': 'application/json' }).end(req.method === 'DELETE' ? undefined : JSON.stringify({ id: originals.get(token) }));
       return;
     }
+    if (req.method === 'GET' && req.url.startsWith('/api/v10/guilds/')) {
+      calls.push({ method: 'GET', url: req.url });
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ id: req.url.split('/').at(-1), name: 'Servidor Teste' }));
+      return;
+    }
     const id = req.url.match(/messages\/(\d+)/)?.[1];
     if (req.method === 'DELETE') {
       messages.delete(id);
@@ -424,6 +429,92 @@ try {
   const afterCancel = await (await fetch(`${service}/state`, { headers: auth })).json();
   assert.deepEqual(afterCancel.events, []);
   ok('cancelar o evento avisa e fecha as inscrições');
+
+  // Ligação por código: quem gerencia gera o código, o plugin confere, confirma e passa a usar o token.
+  const linkPost = (route, body, token) => fetch(`${service}/link/${route}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
+  });
+  const FC_ID = '9223372036854775001';
+  const codeOf = (reply) => reply.data.embeds[0].description.match(/FCC-[0-9A-Z]{6}/)[0];
+  const codeReply = await (await interaction(click('fc:do:code', '32'))).json();
+  const code = codeOf(codeReply);
+  assert.equal(codeReply.data.flags, 64);
+  assert.match(codeReply.data.embeds[0].description, /Plugins ligados: 0/);
+  // Abrir de novo mostra o mesmo código.
+  assert.equal(codeOf(await (await interaction(click('fc:do:code', '32'))).json()), code);
+  assert.match((await (await interaction(click('fc:do:code'))).json()).data.content, /Só quem gerencia/);
+
+  assert.equal((await linkPost('check', { code: 'FCC-ZZZZZZ', fcId: FC_ID, owner: 'dono-0001' })).status, 404);
+  assert.equal((await linkPost('check', { code, fcId: 123, owner: 'dono-0001' })).status, 400);
+  const checked = await (await linkPost('check', { code: code.toLowerCase().replace('-', ' '), fcId: FC_ID, owner: 'dono-0001' })).json();
+  assert.equal(checked.serverName, 'Servidor Teste');
+  assert.equal(checked.firstLink, true);
+  const confirmed = await (await linkPost('confirm', {
+    code, fcId: FC_ID, fcName: 'Maré Alta', owner: 'dono-0001',
+    characters: [{ name: 'Lumi Noctis', world: 'Behemoth', fcId: FC_ID, jobs: { healer: 'WHM' } }, { name: 'Alt Secreto', fcId: '77' }],
+  })).json();
+  assert.match(confirmed.token, /^fco_/);
+  assert.equal(confirmed.fcName, 'Maré Alta');
+  // Personagem de outra FC não liga com o código desta.
+  const otherFc = await linkPost('check', { code, fcId: '77', owner: 'dono-0002' });
+  assert.equal(otherFc.status, 409);
+  assert.equal((await otherFc.json()).fcName, 'Maré Alta');
+  ok('código da FC: gerar, conferir no plugin e confirmar');
+
+  // O token substitui a chave: envio da FC certa entra, de alt é ignorado sem erro.
+  const sendAs = (token, body) => fetch(`${service}/update`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const sub = { slot: 2, name: 'Tubarao', returnTime: Math.floor(Date.now() / 1000) + 7200, age: 0 };
+  assert.equal((await sendAs(confirmed.token, { fcId: FC_ID, subs: [sub] })).status, 200);
+  const alt = await sendAs(confirmed.token, { fcId: '77', subs: [{ ...sub, name: 'DoAlt' }] });
+  assert.equal(alt.status, 202);
+  assert.equal((await alt.json()).stored, false);
+  const viaToken = await (await fetch(`${service}/state`, { headers: { Authorization: `Bearer ${confirmed.token}` } })).json();
+  assert.equal(viaToken.subs[2].name, 'Tubarao');
+  assert.ok(!JSON.stringify(viaToken).includes('DoAlt'));
+  assert.ok(!JSON.stringify(viaToken).includes('Alt Secreto'));
+  assert.equal((await fetch(`${service}/logs`, { headers: { Authorization: `Bearer ${confirmed.token}` } })).status, 404);
+  assert.equal((await fetch(`${service}/state`, { headers: { Authorization: 'Bearer fco_inventado' } })).status, 401);
+  assert.equal((await fetch(`${service}/state`, { headers: auth })).status, 200, 'a chave antiga ainda vale');
+  ok('o token do dono substitui a chave, e envio de alt fica de fora');
+
+  // Ligar a conta do Discord: código só para quem pediu, digitado no jogo.
+  const askAccount = await (await interaction(person('1002', 'fc:linkme'))).json();
+  const accountCode = askAccount.data.embeds[0].description.match(/\d{6}/)[0];
+  assert.equal((await linkPost('account', { code: '000000' }, confirmed.token)).status, 404);
+  assert.equal((await linkPost('account', { code: accountCode })).status, 401);
+  const linkedAccount = await (await linkPost('account', { code: accountCode }, confirmed.token)).json();
+  assert.equal(linkedAccount.discordUser, '1002');
+  assert.equal((await linkPost('account', { code: accountCode }, confirmed.token)).status, 404, 'o código vale uma vez');
+  ok('ligar a conta do Discord com código digitado no jogo');
+
+  // Código novo: o antigo para de valer, quem já ligou continua. Desligado, ninguém liga.
+  const renewed = codeOf(await (await interaction(click('fc:do:code-new', '32'))).json());
+  assert.notEqual(renewed, code);
+  assert.equal((await linkPost('check', { code, fcId: FC_ID, owner: 'dono-0003' })).status, 404);
+  assert.equal((await linkPost('check', { code: renewed, fcId: FC_ID, owner: 'dono-0003' })).status, 200);
+  assert.equal((await sendAs(confirmed.token, { fcId: FC_ID, subs: [sub] })).status, 200);
+  const off = await (await interaction(click('fc:do:code-off', '32'))).json();
+  assert.doesNotMatch(off.data.embeds[0].description, /FCC-/);
+  assert.match((await (await interaction(click('fc:do:code', '32'))).json()).data.embeds[0].description, /Sem código/);
+  assert.equal((await linkPost('check', { code: renewed, fcId: FC_ID, owner: 'dono-0003' })).status, 404);
+  // Sair: o token para de valer.
+  assert.deepEqual(await (await linkPost('leave', {}, confirmed.token)).json(), { ok: true });
+  assert.equal((await fetch(`${service}/state`, { headers: { Authorization: `Bearer ${confirmed.token}` } })).status, 401);
+  ok('código novo, código desligado e sair da FC');
+
+  // Servidor novo: quem gerencia cria a FC; ela é outra, sem os dados da primeira.
+  const elsewhere = (data) => ({ ...data, guild_id: '77' });
+  assert.match((await (await interaction(elsewhere(command('fcc')))).json()).data.content, /not linked/);
+  const setup = await (await interaction(elsewhere(command('fcc', '32')))).json();
+  assert.equal(setup.data.components[0].components[0].custom_id, 'fc:setup');
+  const created = await (await interaction(elsewhere(click('fc:setup', '32')))).json();
+  const newCode = codeOf(created);
+  const second = await (await linkPost('confirm', { code: newCode, fcId: '555000', fcName: 'Ferro Velho', owner: 'dono-0009' })).json();
+  const secondState = await (await fetch(`${service}/state`, { headers: { Authorization: `Bearer ${second.token}` } })).json();
+  assert.deepEqual(secondState.subs, {});
+  const newMenu = await (await interaction(elsewhere(command('fcc')))).json();
+  assert.equal(newMenu.type, 4);
+  ok('servidor novo cria a própria FC pelo /fcc');
 
   console.log(`TODOS PASSARAM (${passed})`);
   exitCode = 0;

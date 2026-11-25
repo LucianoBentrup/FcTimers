@@ -52,6 +52,13 @@ export const TEXT = {
     unknown: 'Unknown command.',
     moved: 'This command moved into **/fcc**.',
 
+    fcCode: 'FC code', setup: 'Create FC code', setupText: 'This server has no FC in FC Companion yet. Create the FC code and share it with your members: they paste it in the plugin (/fct).',
+    codeText: (code, linked) => `**${code}**\n\nIn game: open /fct, paste the code and confirm the FC.\nPlugins linked: ${linked}\n\nNew code: this one stops working, but whoever already linked stays linked.`,
+    codeOffText: (linked) => `No code right now: nobody new can link.\nPlugins linked: ${linked}`,
+    codeNew: 'New code', codeOn: 'Turn code on', codeOff: 'Turn code off',
+    linkAccount: 'Link my account', accountLinked: 'Account linked',
+    accountText: (code) => `Your code: **${code}**\n\nIn game: open /fct and type it under "Link Discord account". It works for 15 minutes and only once.\nOnly needed for events and DMs.`,
+
     eventsEmpty: 'No events coming up.',
     newEvent: 'New event', dmToggle: 'My DM reminders', dmOn: 'DM reminders: on', dmOff: 'DM reminders: off',
     dmNowOn: "✅ You'll get reminders by DM for events you sign up for.", dmNowOff: '✅ No more event DMs.',
@@ -133,6 +140,13 @@ export const TEXT = {
     managersOnly: 'Só quem gerencia o servidor pode usar isto.',
     unknown: 'Comando desconhecido.',
     moved: 'Este comando agora fica dentro do **/fcc**.',
+
+    fcCode: 'Código da FC', setup: 'Criar código da FC', setupText: 'Este servidor ainda não tem FC no FC Companion. Crie o código da FC e passe para os membros: eles colam no plugin (/fct).',
+    codeText: (code, linked) => `**${code}**\n\nNo jogo: abra o /fct, cole o código e confirme a FC.\nPlugins ligados: ${linked}\n\nCódigo novo: este para de valer, mas quem já ligou continua ligado.`,
+    codeOffText: (linked) => `Sem código agora: ninguém novo consegue ligar.\nPlugins ligados: ${linked}`,
+    codeNew: 'Código novo', codeOn: 'Ligar código', codeOff: 'Desligar código',
+    linkAccount: 'Ligar minha conta', accountLinked: 'Conta ligada',
+    accountText: (code) => `Seu código: **${code}**\n\nNo jogo: abra o /fct e digite em "Ligar conta do Discord". Vale por 15 minutos e uma vez só.\nSó serve para eventos e DM.`,
 
     eventsEmpty: 'Nenhum evento marcado.',
     newEvent: 'Novo evento', dmToggle: 'Meu lembrete por DM', dmOn: 'Lembrete por DM: ligado', dmOff: 'Lembrete por DM: desligado',

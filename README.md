@@ -39,6 +39,7 @@ The plugin **only reads what the game already shows**. It doesn't automate anyth
 - One command, `/fcc`: a menu posted in the channel that anyone can click, with buttons for the panel, subs, loot (today, 7 or 30 days), supplies and profit (last 4 weeks and the best routes). Opening a new one replaces the previous menu in that channel. Server managers also get Manage, which opens just for them: repost the panel, group alerts, turn the weekly summary on or off, download the plugin log and pick the menu language (English or Portuguese).
 - With the bot set up, the panel and alerts are posted by the FC Companion bot in channels picked from `/fcc` (Manage, then "Panel here" / "Alerts here"). The panel gets buttons underneath: today's loot, supplies and events.
 - FC events from `/fcc` (Events, then New event): Group content (Tank, Healer, DPS, for 4, 8 or 24 players, with a reserve that moves up on its own), Gathering and Other (Going or Maybe). Weekly repeat, reminders 1 h and/or 15 min before in the alerts channel, and by DM for members who turn DM reminders on.
+- Linking without keys: a server manager gets a short FC code in `/fcc` (Manage, FC code). Members paste it in the plugin and confirm the FC in game. Alt characters from other FCs never show up in the server.
 - A weekly summary every Monday at 9:00 (Brasília): last week's gil, the best sub, supplies used and how long subs sat ready.
 - The panel footer warns when Dalamud hasn't been updated yet for a new game patch.
 
