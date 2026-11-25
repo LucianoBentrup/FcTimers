@@ -94,7 +94,8 @@ public static class L
     public static string LinkAccepted => T("Seu pedido para entrar na FC foi aceito.", "Your request to join the FC was accepted.");
     public static string LinkRemoved => T("Este plugin não está mais ligado à FC.", "This plugin is no longer linked to the FC.");
     public static string NewRequests(int count) => count == 1 ? T("1 pedido para entrar na FC.", "1 request to join the FC.") : T($"{count} pedidos para entrar na FC.", $"{count} requests to join the FC.");
-    public static string TabManage => T("Gerenciar", "Manage");
+    public static string TabFc => "FC";
+    public static string NoFcYet => T("Ainda em nenhuma FC.", "Not in an FC yet.");
     public static string Requests => T("Pedidos", "Requests");
     public static string Members => T("Membros", "Members");
     public static string NoRequests => T("Nenhum pedido.", "No requests.");

@@ -118,10 +118,9 @@ public class MainWindow : ThemedWindow
             }
         }
 
-        if (plugin.Link.Manager)
         {
-            var count = plugin.Link.PendingRequests;
-            using var tab = ImRaii.TabItem($"{L.TabManage}{(count > 0 ? $" ({count})" : string.Empty)}###manage");
+            var count = plugin.Link.Manager ? plugin.Link.PendingRequests : 0;
+            using var tab = ImRaii.TabItem($"{L.TabFc}{(count > 0 ? $" ({count})" : string.Empty)}###manage");
             if (tab)
             {
                 UiKit.ActiveTabLine();
@@ -479,7 +478,7 @@ public class MainWindow : ThemedWindow
                 UiKit.Cell($"{item.Count}");
                 UiKit.Cell($"{item.Value:N0}", item.Market ? UiKit.Soon : null);
                 if (item.Market)
-                    UiKit.Tooltip(L.MarketPrice);
+                    UiKit.Tooltip(plugin.MarketWorld.Length > 0 ? $"{L.MarketPrice}\n({plugin.MarketWorld})" : L.MarketPrice);
             }
         }
     }
@@ -592,9 +591,22 @@ public class MainWindow : ThemedWindow
         }
     }
 
+    // Aba FC: todo mundo ligado vê membros e pedidos; botões só para dono e admins.
     private void DrawManage()
     {
         var link = plugin.Link;
+        if (!link.Linked)
+        {
+            ImGui.TextColored(UiKit.Muted, L.NoFcYet);
+            return;
+        }
+
+        if (link.Pending)
+        {
+            ImGui.TextColored(UiKit.Soon, L.LinkRequested);
+            return;
+        }
+
         if (!manageLoaded)
         {
             manageLoaded = true;
@@ -618,7 +630,7 @@ public class MainWindow : ThemedWindow
         if (requests.Count == 0)
             ImGui.TextColored(UiKit.Muted, L.NoRequests);
 
-        using (var table = requests.Count == 0 ? null : UiKit.Table("##requests", L.ColName, L.ColWorld, string.Empty))
+        using (var table = requests.Count == 0 ? null : link.Manager ? UiKit.Table("##requests", L.ColName, L.ColWorld, string.Empty) : UiKit.Table("##requests", L.ColName, L.ColWorld))
         {
             if (table != null)
             {
@@ -628,6 +640,12 @@ public class MainWindow : ThemedWindow
                     ImGui.TableNextRow();
                     UiKit.Cell(member.Name ?? "?");
                     UiKit.Cell(member.World ?? "-", UiKit.Muted);
+                    if (!link.Manager)
+                    {
+                        ImGui.PopID();
+                        continue;
+                    }
+
                     ImGui.TableNextColumn();
                     using (ImRaii.Disabled(link.Busy))
                     {
@@ -644,7 +662,7 @@ public class MainWindow : ThemedWindow
         }
 
         UiKit.Heading(FontAwesomeIcon.Users, L.Members);
-        using var members = UiKit.Table("##members", L.ColName, L.ColWorld, L.ColRole, string.Empty);
+        using var members = link.Manager ? UiKit.Table("##members", L.ColName, L.ColWorld, L.ColRole, string.Empty) : UiKit.Table("##members", L.ColName, L.ColWorld, L.ColRole);
         if (members == null)
             return;
 
@@ -656,6 +674,12 @@ public class MainWindow : ThemedWindow
             UiKit.Cell(member.World ?? "-", UiKit.Muted);
             UiKit.Cell(member.Role switch { "owner" => L.RoleOwner, "admin" => L.RoleAdmin, _ => L.RoleMember },
                 member.Role == "owner" ? Theme.Current.Brass : member.Role == "admin" ? Theme.Current.Accent : null);
+            if (!link.Manager)
+            {
+                ImGui.PopID();
+                continue;
+            }
+
             ImGui.TableNextColumn();
 
             // O dono mexe em todos; um admin só em membro comum. Ninguém mexe no dono nem em si mesmo.

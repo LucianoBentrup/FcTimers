@@ -495,6 +495,8 @@ try {
   assert.equal((await linkPost('manage', { action: 'accept', member: asked.id }, request.token)).status, 403);
   assert.equal((await linkPost('manage', { action: 'accept', member: asked.id }, confirmed.token)).status, 200);
   assert.equal((await stateOf(request.token)).status, 200);
+  assert.equal((await linkPost('members', {}, request.token)).status, 200, 'membro comum vê a lista');
+  assert.equal((await linkPost('manage', { action: 'kick', member: asked.id }, request.token)).status, 403, 'membro comum não mexe');
   assert.equal((await linkPost('manage', { action: 'promote', member: asked.id }, confirmed.token)).status, 200);
   assert.equal((await (await linkPost('me', {}, request.token)).json()).role, 'admin');
   const self = list.find((m) => m.you);

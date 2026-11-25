@@ -184,11 +184,11 @@ export class Registry extends DurableObject {
     return { status: caller.status, role: caller.role, fcName: record.gameFcName ?? null, pending };
   }
 
-  // Lista para a aba de gerenciamento: só dono e admins veem.
+  // Lista da aba FC: qualquer membro aceito vê; só dono e admins mexem (manage).
   async members(token) {
     const caller = await this.caller(token);
     if (!caller) return { error: 'unauthorized' };
-    if (!MANAGERS.includes(caller.role) || caller.status !== 'member') return { error: 'forbidden' };
+    if (caller.status !== 'member') return { error: 'forbidden' };
     const self = await memberId(caller.owner);
     const list = (await this.memberList(caller.fc)).map((m) => ({
       id: m.id, name: m.name, world: m.world, role: m.role, status: m.status,
