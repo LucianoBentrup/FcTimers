@@ -27,6 +27,8 @@ public class MainWindow : ThemedWindow
     {
         this.plugin = plugin;
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(520, 360) };
+        if (Support.Ready)
+            TitleBarButtons.Add(Support.TitleButton());
     }
 
     public override void OnOpen() => plugin.Sync.FetchSoon();
@@ -94,7 +96,15 @@ public class MainWindow : ThemedWindow
         UiKit.Icon(FontAwesomeIcon.Circle, color);
         ImGui.TextColored(UiKit.Muted, text);
 
-        ImGui.SameLine(ImGui.GetContentRegionMax().X - (ImGui.GetFrameHeight() + 4));
+        // Ko-fi à esquerda da engrenagem. Sem link, só aparece (desligado) na versão de dev.
+        var cog = ImGui.GetFrameHeight() + 4;
+        if (Support.Ready || plugin.IsDevBuild)
+        {
+            ImGui.SameLine(ImGui.GetContentRegionMax().X - cog - Support.KofiButtonWidth() - ImGui.GetStyle().ItemSpacing.X);
+            Support.KofiButton(plugin.IsDevBuild);
+        }
+
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - cog);
         if (ImGuiComponents.IconButton(FontAwesomeIcon.Cog))
             plugin.OpenSettings();
         UiKit.Tooltip(L.TabSettings);

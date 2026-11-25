@@ -93,9 +93,9 @@ public sealed class ChangelogWindow : ThemedWindow
             IsOpen = false;
 
         // Apoio no canto direito do rodapé, longe do Close.
-        if (Support.KofiUrl.Length > 0 || isDev)
+        if (Support.Ready || isDev)
         {
-            ImGui.SameLine(ImGui.GetContentRegionMax().X - ImGui.CalcTextSize(L.SupportKofi).X - (ImGui.GetStyle().FramePadding.X * 2) - ImGui.GetFrameHeight());
+            ImGui.SameLine(ImGui.GetContentRegionMax().X - Support.KofiButtonWidth());
             Support.KofiButton(isDev);
         }
     }

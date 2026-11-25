@@ -41,6 +41,9 @@ The plugin **only reads what the game already shows**. It doesn't automate anyth
 - Tabbed window (`/fcc`): Overview, Submersibles (and airships), Loot (with weekly profit and route ranking), Buffs and Gardening, plus a settings window, with tables and colors (green ready, yellow soon, red urgent).
 - Notifications (toast, chat or sound) and a summary in the server info bar. Text in Portuguese and English.
 
+## Support
+FC Companion is free and every feature stays free. If it helps your FC, you can support it on **Ko-fi** (link coming soon). It helps pay for the Discord service as more FCs join. The plugin also has a Ko-fi button in its window, in Settings and in What's new.
+
 ## Install
 1. In game, type `/xlsettings` and open the **Experimental** tab.
 2. Under **Custom Plugin Repositories**, add the link below, click **+** and save:
