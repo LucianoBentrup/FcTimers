@@ -63,11 +63,11 @@ public static partial class SubCards
         }
 
         // Volta: o tempo na cor do estado e o horário à direita.
-        var state = sub.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(sub.ReturnTime - now);
+        var state = UiKit.ReturnState(sub.ReturnTime, now);
         UiKit.Text(state, sub.ReturnTime == 0 ? theme.Muted : UiKit.TimeColor(sub.ReturnTime, now));
         if (sub.ReturnTime > 0)
         {
-            var at = L.AtTime(DateTimeOffset.FromUnixTimeSeconds(sub.ReturnTime).ToLocalTime().ToString("HH:mm"));
+            var at = L.AtTime(UiKit.LocalTime(sub.ReturnTime, "HH:mm"));
             ImGui.SameLine(ImGui.GetContentRegionMax().X - ImGui.CalcTextSize(at).X);
             ImGui.TextColored(theme.Muted, at);
             UiKit.TimeTooltip(sub.ReturnTime);

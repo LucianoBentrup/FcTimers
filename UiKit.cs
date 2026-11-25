@@ -20,6 +20,13 @@ public static class UiKit
 
     public static Vector4? TimeColor(long until, long now) => until <= now ? Good : until - now < 3600 ? Soon : null;
 
+    // Volta de sub ou airship: "parado" sem viagem, senão o tempo que falta, e a cor do estado.
+    public static string ReturnState(long returnTime, long now) => returnTime == 0 ? L.Idle : Plugin.FormatRemaining(returnTime - now);
+
+    public static Vector4? ReturnColor(long returnTime, long now) => returnTime == 0 ? null : TimeColor(returnTime, now);
+
+    public static string LocalTime(long unix, string format) => DateTimeOffset.FromUnixTimeSeconds(unix).ToLocalTime().ToString(format);
+
     // Ícone do Font Awesome que vem com o Dalamud, na mesma linha do que vier depois.
     public static void Icon(FontAwesomeIcon icon, Vector4? color = null)
     {
@@ -80,7 +87,7 @@ public static class UiKit
     public static void TimeTooltip(long unix)
     {
         if (unix > 0 && ImGui.IsItemHovered())
-            ImGui.SetTooltip(L.AtTime(DateTimeOffset.FromUnixTimeSeconds(unix).ToLocalTime().ToString("HH:mm · dd/MM")));
+            ImGui.SetTooltip(L.AtTime(LocalTime(unix, "HH:mm · dd/MM")));
     }
 
     public static void Tooltip(string text)

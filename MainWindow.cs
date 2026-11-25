@@ -54,19 +54,37 @@ public class MainWindow : ThemedWindow
         if (!tabs)
             return;
 
-        // O id depois de ### mantém a aba aberta ao trocar o idioma.
-        Tab($"{L.TabOverview}###overview", () => DrawOverview(plugin.View, now));
-        Tab($"{L.TabSubs}###subs", () => DrawSubs(plugin.View, now));
-        Tab($"{L.TabLoot}###loot", () => DrawLoot(plugin.View));
-        Tab($"{L.TabBuffs}###buffs", () => DrawBuffs(plugin.View, now));
-        Tab($"{L.TabGarden}###garden", () => DrawGarden(plugin.Config, plugin.View, now));
-    }
+        // O id depois de ### mantém a aba aberta ao trocar o idioma. Só a aba aberta é desenhada.
+        var view = plugin.View;
+        using (var tab = ImRaii.TabItem($"{L.TabOverview}###overview"))
+        {
+            if (tab)
+                DrawOverview(view, now);
+        }
 
-    private static void Tab(string label, Action draw)
-    {
-        using var tab = ImRaii.TabItem(label);
-        if (tab)
-            draw();
+        using (var tab = ImRaii.TabItem($"{L.TabSubs}###subs"))
+        {
+            if (tab)
+                DrawSubs(view, now);
+        }
+
+        using (var tab = ImRaii.TabItem($"{L.TabLoot}###loot"))
+        {
+            if (tab)
+                DrawLoot(view);
+        }
+
+        using (var tab = ImRaii.TabItem($"{L.TabBuffs}###buffs"))
+        {
+            if (tab)
+                DrawBuffs(view, now);
+        }
+
+        using (var tab = ImRaii.TabItem($"{L.TabGarden}###garden"))
+        {
+            if (tab)
+                DrawGarden(plugin.Config, view, now);
+        }
     }
 
     // Status da sincronia e engrenagem das configurações, sempre à vista no topo.
@@ -182,8 +200,8 @@ public class MainWindow : ThemedWindow
 
         foreach (var sub in view.Subs.OrderBy(s => s.ReturnTime))
         {
-            var state = sub.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(sub.ReturnTime - now);
-            UiKit.Text($"{sub.Name}: {state}", sub.ReturnTime == 0 ? null : UiKit.TimeColor(sub.ReturnTime, now));
+            var state = UiKit.ReturnState(sub.ReturnTime, now);
+            UiKit.Text($"{sub.Name}: {state}", UiKit.ReturnColor(sub.ReturnTime, now));
             UiKit.TimeTooltip(sub.ReturnTime);
         }
 
@@ -200,8 +218,8 @@ public class MainWindow : ThemedWindow
         ImGui.TextColored(UiKit.Muted, L.Airships);
         foreach (var ship in view.Airships.OrderBy(s => s.ReturnTime))
         {
-            var state = ship.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(ship.ReturnTime - now);
-            UiKit.Text($"{ship.Name}: {state}", ship.ReturnTime == 0 ? null : UiKit.TimeColor(ship.ReturnTime, now));
+            var state = UiKit.ReturnState(ship.ReturnTime, now);
+            UiKit.Text($"{ship.Name}: {state}", UiKit.ReturnColor(ship.ReturnTime, now));
             UiKit.TimeTooltip(ship.ReturnTime);
         }
     }
@@ -301,7 +319,7 @@ public class MainWindow : ThemedWindow
 
     // Data em que o estoque acaba pelo gasto dos últimos dias, calculada pelo serviço.
     private static string EndsAround(long? until, long now)
-        => until is > 0 && until > now ? $" · {L.EndsAround(DateTimeOffset.FromUnixTimeSeconds(until.Value).ToLocalTime().ToString("dd/MM"))}" : string.Empty;
+        => until is > 0 && until > now ? $" · {L.EndsAround(UiKit.LocalTime(until.Value, "dd/MM"))}" : string.Empty;
 
     private static void OverviewBuffs(FcView view, long now)
     {
@@ -347,7 +365,7 @@ public class MainWindow : ThemedWindow
                 {
                     ImGui.TableNextRow();
                     UiKit.Cell(ship.Name);
-                    UiKit.Cell(ship.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(ship.ReturnTime - now), ship.ReturnTime == 0 ? null : UiKit.TimeColor(ship.ReturnTime, now));
+                    UiKit.Cell(UiKit.ReturnState(ship.ReturnTime, now), UiKit.ReturnColor(ship.ReturnTime, now));
                     UiKit.TimeTooltip(ship.ReturnTime);
                     ImGui.TableNextColumn();
                     if (ship.Details is { Rank: > 0 } details)

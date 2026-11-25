@@ -133,7 +133,7 @@ public static class TimelineView
         foreach (var marker in under)
         {
             ImGui.TextColored(MarkerColor(marker, now), Label(marker));
-            var when = DateTimeOffset.FromUnixTimeSeconds(marker.Time).ToLocalTime().ToString("HH:mm · dd/MM");
+            var when = UiKit.LocalTime(marker.Time, "HH:mm · dd/MM");
             ImGui.TextColored(theme.Muted, marker.Ready ? L.AtTime(when) : $"{L.InTime(Plugin.FormatRemaining(marker.Time - now))} · {L.AtTime(when)}");
         }
     }
