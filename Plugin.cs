@@ -13,7 +13,7 @@ using Lumina.Excel.Sheets;
 
 namespace FcTimers;
 
-public sealed partial class Plugin
+public sealed partial class Plugin : IDalamudPlugin
 {
     private const string Command = "/fcc";
     // Nomes antigos: ainda funcionam, mas somem da ajuda. Saem numa versão depois da 0.10.1.
