@@ -16,6 +16,8 @@ const calls = [];
 let failNext = 0;
 let nextId = 100;
 const messages = new Map();
+// Id da resposta de cada interação (o menu postado no canal), pelo token dela.
+const originals = new Map();
 const discord = createServer((req, res) => {
   let data = '';
   req.on('data', (chunk) => { data += chunk; });
@@ -26,10 +28,22 @@ const discord = createServer((req, res) => {
       res.writeHead(500).end();
       return;
     }
+    if (req.url.includes('/messages/@original')) {
+      const token = req.url.split('/messages/@original')[0].split('/').at(-1);
+      if (!originals.has(token)) originals.set(token, String(nextId++));
+      calls.push({ method: req.method, original: true, url: req.url, body: data ? JSON.parse(data) : null });
+      res.writeHead(req.method === 'DELETE' ? 204 : 200, { 'Content-Type': 'application/json' }).end(req.method === 'DELETE' ? undefined : JSON.stringify({ id: originals.get(token) }));
+      return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/v10/guilds/')) {
+      calls.push({ method: 'GET', url: req.url });
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ id: req.url.split('/').at(-1), name: 'Servidor Teste' }));
+      return;
+    }
     const id = req.url.match(/messages\/(\d+)/)?.[1];
     if (req.method === 'DELETE') {
       messages.delete(id);
-      calls.push({ method: 'DELETE', messageId: id });
+      calls.push({ method: 'DELETE', messageId: id, url: req.url });
       res.writeHead(204).end();
       return;
     }
@@ -39,8 +53,9 @@ const discord = createServer((req, res) => {
       return;
     }
     const messageId = id ?? String(nextId++);
-    messages.set(messageId, JSON.parse(data));
-    calls.push({ method: req.method, messageId });
+    const body = JSON.parse(data);
+    messages.set(messageId, body);
+    calls.push({ method: req.method, messageId, url: req.url, auth: req.headers.authorization, body });
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ id: messageId }));
   });
 });
@@ -75,7 +90,8 @@ const persist = mkdtempSync(join(tmpdir(), 'fc-timers-'));
 const discordKeys = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
 const discordPublic = Buffer.from(await crypto.subtle.exportKey('raw', discordKeys.publicKey)).toString('hex');
 writeFileSync('.dev.vars', `DISCORD_WEBHOOK=http://127.0.0.1:${DISCORD_PORT}/api/webhooks/1/abc\nFC_KEY=${KEY}\nROLE_ID=999\n`
-  + `DISCORD_PUBLIC_KEY=${discordPublic}\nDISCORD_GUILD_ID=42\nDISCORD_APP_ID=7\n`);
+  + `DISCORD_PUBLIC_KEY=${discordPublic}\nDISCORD_GUILD_ID=42\nDISCORD_APP_ID=7\n`
+  + `DISCORD_API=http://127.0.0.1:${DISCORD_PORT}/api/v10\nDISCORD_BOT_TOKEN=bot-de-teste\n`);
 
 async function interaction(payload, sign = true) {
   const body = JSON.stringify(payload);
@@ -91,7 +107,7 @@ async function interaction(payload, sign = true) {
 }
 await new Promise((resolve) => { discord.listen(DISCORD_PORT, '127.0.0.1', resolve); });
 
-const worker = spawn(`npx wrangler dev --port ${SERVICE_PORT} --persist-to "${persist}" --log-level error`, { shell: true, stdio: 'ignore' });
+const worker = spawn(`npx wrangler dev --port ${SERVICE_PORT} --persist-to "${persist}" --log-level error`, { shell: true, stdio: 'ignore', detached: process.platform !== 'win32' });
 
 let exitCode = 1;
 try {
@@ -233,35 +249,282 @@ try {
   assert.equal(logs[0].text, 'segundo');
   ok('o log de diagnóstico fica guardado no serviço');
 
-  // Comandos do Discord: assinatura, PING, permissão e respostas.
+  // Comandos do Discord: assinatura, PING, o /fcc e os botões do menu.
   assert.equal((await interaction({ type: 1 }, false)).status, 401);
   assert.deepEqual(await (await interaction({ type: 1 })).json(), { type: 1 });
+  const member = (permissions) => ({ permissions, user: { id: '555' } });
   const command = (name, permissions = '0', options) => ({
-    type: 2, guild_id: '42', token: 't', member: { permissions }, data: { name, ...(options ? { options } : {}) },
+    type: 2, guild_id: '42', token: 't', member: member(permissions), data: { name, ...(options ? { options } : {}) },
   });
-  const subsReply = await (await interaction(command('subs'))).json();
-  assert.equal(subsReply.type, 4);
-  assert.equal(subsReply.data.flags, undefined);
-  assert.match(subsReply.data.content, /Ciela/);
-  const blocked = await (await interaction(command('painel'))).json();
+  const click = (customId, permissions = '0') => ({
+    type: 3, guild_id: '42', token: 't', member: member(permissions), data: { custom_id: customId, component_type: 2 },
+  });
+  const customIds = (data) => data.components.flatMap((r) => r.components).map((b) => b.custom_id);
+
+  // O /fcc abre no canal, igual pra todo mundo: Ajustes aparece sempre e a permissão é conferida no clique.
+  const menu = await (await interaction(command('fcc'))).json();
+  assert.equal(menu.type, 4);
+  assert.equal(menu.data.flags, undefined);
+  assert.match(menu.data.embeds[0].fields[0].value, /Ciela/);
+  assert.match(menu.data.embeds[0].footer.text, /Todo mundo aqui/);
+  assert.ok(customIds(menu.data).includes('fc:subs'));
+  assert.ok(customIds(menu.data).includes('fc:manage'));
+  assert.ok(!customIds(menu.data).some((id) => id.startsWith('fc:share')));
+  const managerMenu = await (await interaction(command('fcc', '32'))).json();
+  assert.deepEqual(customIds(managerMenu.data), customIds(menu.data));
+
+  // Cliques no menu do canal: as abas mudam a mesma mensagem pra todos; o que é de uma pessoa abre só pra ela.
+  const onChannel = (data) => ({ ...data, message: { id: '1', flags: 0 } });
+  const publicLoot = await (await interaction(onChannel(click('fc:loot:week')))).json();
+  assert.equal(publicLoot.type, 7);
+  assert.equal(publicLoot.data.flags, undefined);
+  assert.match(publicLoot.data.embeds[0].description, /7 dias/);
+  const publicManage = await (await interaction(onChannel(click('fc:manage', '32')))).json();
+  assert.equal(publicManage.type, 4);
+  assert.equal(publicManage.data.flags, 64);
+  assert.ok(customIds(publicManage.data).includes('fc:do:repost'));
+  assert.match((await (await interaction(onChannel(click('fc:manage')))).json()).data.content, /Só quem gerencia/);
+  const publicDm = await (await interaction(onChannel(click('fc:pref:dm')))).json();
+  assert.equal(publicDm.type, 4);
+  assert.equal(publicDm.data.flags, 64);
+  assert.match(publicDm.data.content, /lembrete por DM/);
+  await interaction(onChannel(click('fc:pref:dm')));
+  const publicEvents = await (await interaction(onChannel(click('fc:events')))).json();
+  assert.equal(publicEvents.type, 7);
+  assert.ok(customIds(publicEvents.data).includes('fc:evnew'));
+
+  // Um /fcc novo no mesmo canal apaga o anterior, pelo bot.
+  const inChannelCmd = (token) => ({ ...command('fcc'), token, channel_id: '700' });
+  await interaction(inChannelCmd('menu1'));
+  await waitFor(() => calls.some((c) => c.original && c.method === 'GET' && c.url.includes('/menu1/')), 'id do primeiro menu');
+  await interaction(inChannelCmd('menu2'));
+  await waitFor(() => calls.some((c) => c.method === 'DELETE' && c.url === `/api/v10/channels/700/messages/${originals.get('menu1')}`), 'menu anterior apagado');
+  await sleep(300);
+  assert.ok(!calls.some((c) => c.method === 'DELETE' && c.url === `/api/v10/channels/700/messages/${originals.get('menu2')}`), 'o menu novo fica');
+
+  const subsView = await (await interaction(click('fc:subs'))).json();
+  assert.equal(subsView.type, 7);
+  assert.match(subsView.data.embeds[0].description, /Ciela/);
+  const lootView = await (await interaction(click('fc:loot:week'))).json();
+  assert.match(lootView.data.embeds[0].description, /7 dias/);
+  const shared = await (await interaction(click('fc:share:subs'))).json();
+  assert.equal(shared.type, 4);
+  assert.equal(shared.data.flags, undefined);
+  assert.match(shared.data.content, /<@555>/);
+
+  const blocked = await (await interaction(click('fc:do:repost'))).json();
   assert.match(blocked.data.content, /Só quem gerencia o servidor/);
-  const otherGuild = await (await interaction({ ...command('subs'), guild_id: '1' })).json();
-  assert.match(otherGuild.data.content, /não está configurado/);
-  const logReply = await interaction(command('log', '32'));
+  assert.match((await (await interaction(click('fc:manage'))).json()).data.content, /server managers/);
+  const otherGuild = await (await interaction({ ...command('fcc'), guild_id: '1' })).json();
+  assert.match(otherGuild.data.content, /não está ligado/);
+  const unknown = await (await interaction(click('fc:nada'))).json();
+  assert.equal(unknown.data.flags, 64);
+
+  const reposted = await (await interaction(click('fc:do:repost', '32'))).json();
+  assert.equal(reposted.type, 7);
+  assert.match(reposted.data.content, /Painel reenviado/);
+  const weeklyOff = await (await interaction(click('fc:do:weekly-off', '32'))).json();
+  assert.match(weeklyOff.data.content, /desligado/);
+  assert.ok(customIds(weeklyOff.data).includes('fc:do:weekly-on'));
+  const english = await (await interaction(click('fc:do:lang-en', '32'))).json();
+  assert.match(english.data.content, /English/);
+  assert.equal(english.data.embeds[0].footer.text, 'Only you can see this menu.');
+  await interaction(click('fc:do:lang-pt', '32'));
+  const logReply = await interaction(click('fc:do:log', '32'));
   assert.match(logReply.headers.get('content-type'), /multipart\/form-data/);
   assert.match(await logReply.text(), /segundo/);
-  const panelReply = await (await interaction(command('painel', '32'))).json();
-  assert.match(panelReply.data.content, /Painel reenviado/);
-  ok('os comandos do Discord respondem com assinatura e permissão');
+
+  // Agrupar avisos demora: responde já e edita o menu depois, com o resultado.
+  const deferred = await (await interaction(click('fc:do:regroup', '32'))).json();
+  assert.deepEqual(deferred, { type: 6 });
+  await waitFor(() => calls.some((c) => c.original && /agrupados/.test(c.body?.content ?? '')), 'menu editado depois de agrupar');
+  const edited = calls.find((c) => c.original && c.method === 'PATCH').body;
+  assert.equal(edited.flags, undefined);
+  assert.ok(edited.components.length > 0);
+
+  // Comando antigo ainda na lista do Discord: abre a seção certa do /fcc.
+  const legacy = await (await interaction(command('estoque'))).json();
+  assert.equal(legacy.data.flags, undefined);
+  assert.match(legacy.data.content, /\/fcc/);
+  assert.ok(legacy.data.components);
+  ok('o /fcc abre o menu e os botões respondem com assinatura e permissão');
+
+  // O bot: o painel muda do webhook para um canal, com botões embaixo.
+  const inChannel = (data, channel) => ({ ...data, channel_id: channel });
+  const movedAt = calls.length;
+  const moved = await (await interaction(inChannel(click('fc:do:panel-here', '32'), '500'))).json();
+  assert.match(moved.data.content, /<#500>/);
+  await waitFor(() => calls.slice(movedAt).some((c) => c.method === 'POST' && c.url === '/api/v10/channels/500/messages'), 'painel postado pelo bot');
+  const botPanel = calls.slice(movedAt).find((c) => c.url === '/api/v10/channels/500/messages');
+  assert.equal(botPanel.auth, 'Bot bot-de-teste');
+  assert.deepEqual(botPanel.body.components[0].components.map((b) => b.custom_id), ['fc:open:loot:day', 'fc:open:supplies', 'fc:open:events']);
+  assert.ok(calls.slice(movedAt).some((c) => c.method === 'DELETE' && c.url.startsWith('/api/webhooks/')), 'o painel do webhook é apagado');
+  const fromPanel = await (await interaction(click('fc:open:supplies'))).json();
+  assert.equal(fromPanel.type, 4);
+  assert.equal(fromPanel.data.flags, undefined);
+  ok('o painel sai pelo bot, com botões que abrem o /fcc');
+
+  // Eventos: canal, tipo, formulário, revisão e post.
+  const noChannel = await (await interaction(click('fc:evnew', '32'))).json();
+  assert.match(noChannel.data.content, /Eventos aqui/);
+  await interaction(inChannel(click('fc:do:events-here', '32'), '600'));
+  const blockedEvent = await (await interaction(click('fc:evnew'))).json();
+  assert.match(blockedEvent.data.content, /Só quem gerencia/);
+  assert.equal(blockedEvent.data.flags, 64);
+  const picker = await (await interaction(click('fc:evnew', '32'))).json();
+  assert.ok(customIds(picker.data).includes('fc:evnew:group'));
+  const modal = await (await interaction(click('fc:evnew:group', '32'))).json();
+  assert.equal(modal.type, 9);
+  assert.equal(modal.data.custom_id, 'fc:evm:group');
+  const submit = (fields) => ({
+    type: 5, guild_id: '42', token: 't', member: member('32'),
+    data: { custom_id: 'fc:evm:group', components: Object.entries(fields).map(([id, value]) => ({ type: 1, components: [{ type: 4, custom_id: id, value }] })) },
+  });
+  const badDate = await (await interaction(submit({ title: 'Savage', when: 'logo' }))).json();
+  assert.match(badDate.data.content, /Não entendi a data/);
+  const review = await (await interaction(submit({ title: 'Savage de terça', when: 'amanhã 21:00', field: 'M1S', desc: '' }))).json();
+  assert.equal(review.type, 7);
+  assert.match(review.data.embeds[0].title, /Savage de terça/);
+  await interaction(click('fc:evd:size:4', '32'));
+  await interaction(click('fc:evd:repeat', '32'));
+  const posting = calls.length;
+  const posted = await (await interaction(click('fc:evd:post', '32'))).json();
+  assert.match(posted.data.content, /postado em <#600>/);
+  const eventCall = calls.slice(posting).find((c) => c.method === 'POST' && c.url === '/api/v10/channels/600/messages');
+  assert.ok(eventCall, 'o evento é postado no canal dos eventos');
+  const signupIds = eventCall.body.components[0].components.map((b) => b.custom_id);
+  assert.equal(signupIds.length, 5);
+  const eventId = signupIds[0].split(':')[2];
+  ok('evento criado pelo /fcc: tipo, formulário, revisão e post pelo bot');
+
+  // Inscrição: vaga, reserva, subir da reserva com DM para quem ligou.
+  const person = (id, customId) => ({ type: 3, guild_id: '42', token: 't', member: { permissions: '0', user: { id } }, data: { custom_id: customId, component_type: 2 } });
+  const tank1 = await (await interaction(person('1001', `fc:ev:${eventId}:tank`))).json();
+  assert.equal(tank1.type, 7);
+  assert.match(tank1.data.embeds[0].fields[0].name, /Tank 1\/1/);
+  await interaction(person('1002', 'fc:pref:dm'));
+  const following = calls.length;
+  const tank2 = await (await interaction(person('1002', `fc:ev:${eventId}:tank`))).json();
+  assert.match(tank2.data.embeds[0].fields.find((f) => f.name.includes('Reserva')).value, /<@1002>/);
+  await waitFor(() => calls.slice(following).some((c) => c.url === '/api/v10/webhooks/7/t' && /reserva/.test(c.body.content)), 'aviso da reserva só para quem clicou');
+  const dming = calls.length;
+  const leave = await (await interaction(person('1001', `fc:ev:${eventId}:tank`))).json();
+  assert.match(leave.data.embeds[0].fields[0].value, /<@1002>/);
+  await waitFor(() => calls.slice(dming).some((c) => c.url === '/api/v10/users/@me/channels' && c.body.recipient_id === '1002'), 'DM para quem subiu da reserva');
+  await waitFor(() => calls.slice(dming).some((c) => /saiu da reserva/.test(c.body?.content ?? '')), 'texto da DM');
+  const myEvents = await (await interaction(person('1002', 'fc:events'))).json();
+  assert.match(myEvents.data.embeds[0].description, /Savage de terça.*Tank/);
+  ok('inscrição com reserva, subida automática e DM só para quem ligou');
+
+  // Cancelar: só quem criou ou quem gerencia. Avisa no canal quem estava inscrito.
+  const notMine = await (await interaction(person('1001', `fc:evx:${eventId}:cancel`))).json();
+  assert.match(notMine.data.content, /Só quem criou/);
+  const cancelling = calls.length;
+  const cancelled = await (await interaction(click(`fc:evx:${eventId}:cancel`, '32'))).json();
+  assert.deepEqual(cancelled.data.components, []);
+  assert.match(cancelled.data.embeds[0].title, /cancelado/);
+  await waitFor(() => calls.slice(cancelling).some((c) => c.url === '/api/v10/channels/500/messages' && /foi cancelado/.test(c.body?.content ?? '')), 'aviso do cancelamento');
+  const late = await (await interaction(person('1003', `fc:ev:${eventId}:dps`))).json();
+  assert.match(late.data.content, /já fechou/);
+  const afterCancel = await (await fetch(`${service}/state`, { headers: auth })).json();
+  assert.deepEqual(afterCancel.events, []);
+  ok('cancelar o evento avisa e fecha as inscrições');
+
+  // Ligação por código: quem gerencia gera o código, o plugin confere, confirma e passa a usar o token.
+  const linkPost = (route, body, token) => fetch(`${service}/link/${route}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
+  });
+  const FC_ID = '9223372036854775001';
+  const codeOf = (reply) => reply.data.embeds[0].description.match(/FCC-[0-9A-Z]{6}/)[0];
+  const codeReply = await (await interaction(click('fc:do:code', '32'))).json();
+  const code = codeOf(codeReply);
+  assert.equal(codeReply.data.flags, 64);
+  assert.match(codeReply.data.embeds[0].description, /Plugins ligados: 0/);
+  // Abrir de novo mostra o mesmo código.
+  assert.equal(codeOf(await (await interaction(click('fc:do:code', '32'))).json()), code);
+  assert.match((await (await interaction(click('fc:do:code'))).json()).data.content, /Só quem gerencia/);
+
+  assert.equal((await linkPost('check', { code: 'FCC-ZZZZZZ', fcId: FC_ID, owner: 'dono-0001' })).status, 404);
+  assert.equal((await linkPost('check', { code, fcId: 123, owner: 'dono-0001' })).status, 400);
+  const checked = await (await linkPost('check', { code: code.toLowerCase().replace('-', ' '), fcId: FC_ID, owner: 'dono-0001' })).json();
+  assert.equal(checked.serverName, 'Servidor Teste');
+  assert.equal(checked.firstLink, true);
+  const confirmed = await (await linkPost('confirm', {
+    code, fcId: FC_ID, fcName: 'Maré Alta', owner: 'dono-0001',
+    characters: [{ name: 'Lumi Noctis', world: 'Behemoth', fcId: FC_ID, jobs: { healer: 'WHM' } }, { name: 'Alt Secreto', fcId: '77' }],
+  })).json();
+  assert.match(confirmed.token, /^fco_/);
+  assert.equal(confirmed.fcName, 'Maré Alta');
+  // Personagem de outra FC não liga com o código desta.
+  const otherFc = await linkPost('check', { code, fcId: '77', owner: 'dono-0002' });
+  assert.equal(otherFc.status, 409);
+  assert.equal((await otherFc.json()).fcName, 'Maré Alta');
+  ok('código da FC: gerar, conferir no plugin e confirmar');
+
+  // O token substitui a chave: envio da FC certa entra, de alt é ignorado sem erro.
+  const sendAs = (token, body) => fetch(`${service}/update`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const sub = { slot: 2, name: 'Tubarao', returnTime: Math.floor(Date.now() / 1000) + 7200, age: 0 };
+  assert.equal((await sendAs(confirmed.token, { fcId: FC_ID, subs: [sub] })).status, 200);
+  const alt = await sendAs(confirmed.token, { fcId: '77', subs: [{ ...sub, name: 'DoAlt' }] });
+  assert.equal(alt.status, 202);
+  assert.equal((await alt.json()).stored, false);
+  const viaToken = await (await fetch(`${service}/state`, { headers: { Authorization: `Bearer ${confirmed.token}` } })).json();
+  assert.equal(viaToken.subs[2].name, 'Tubarao');
+  assert.ok(!JSON.stringify(viaToken).includes('DoAlt'));
+  assert.ok(!JSON.stringify(viaToken).includes('Alt Secreto'));
+  assert.equal((await fetch(`${service}/logs`, { headers: { Authorization: `Bearer ${confirmed.token}` } })).status, 404);
+  assert.equal((await fetch(`${service}/state`, { headers: { Authorization: 'Bearer fco_inventado' } })).status, 401);
+  assert.equal((await fetch(`${service}/state`, { headers: auth })).status, 200, 'a chave antiga ainda vale');
+  ok('o token do dono substitui a chave, e envio de alt fica de fora');
+
+  // Ligar a conta do Discord: código só para quem pediu, digitado no jogo.
+  const askAccount = await (await interaction(person('1002', 'fc:linkme'))).json();
+  const accountCode = askAccount.data.embeds[0].description.match(/\d{6}/)[0];
+  assert.equal((await linkPost('account', { code: '000000' }, confirmed.token)).status, 404);
+  assert.equal((await linkPost('account', { code: accountCode })).status, 401);
+  const linkedAccount = await (await linkPost('account', { code: accountCode }, confirmed.token)).json();
+  assert.equal(linkedAccount.discordUser, '1002');
+  assert.equal((await linkPost('account', { code: accountCode }, confirmed.token)).status, 404, 'o código vale uma vez');
+  ok('ligar a conta do Discord com código digitado no jogo');
+
+  // Código novo: o antigo para de valer, quem já ligou continua. Desligado, ninguém liga.
+  const renewed = codeOf(await (await interaction(click('fc:do:code-new', '32'))).json());
+  assert.notEqual(renewed, code);
+  assert.equal((await linkPost('check', { code, fcId: FC_ID, owner: 'dono-0003' })).status, 404);
+  assert.equal((await linkPost('check', { code: renewed, fcId: FC_ID, owner: 'dono-0003' })).status, 200);
+  assert.equal((await sendAs(confirmed.token, { fcId: FC_ID, subs: [sub] })).status, 200);
+  const off = await (await interaction(click('fc:do:code-off', '32'))).json();
+  assert.doesNotMatch(off.data.embeds[0].description, /FCC-/);
+  assert.match((await (await interaction(click('fc:do:code', '32'))).json()).data.embeds[0].description, /Sem código/);
+  assert.equal((await linkPost('check', { code: renewed, fcId: FC_ID, owner: 'dono-0003' })).status, 404);
+  // Sair: o token para de valer.
+  assert.deepEqual(await (await linkPost('leave', {}, confirmed.token)).json(), { ok: true });
+  assert.equal((await fetch(`${service}/state`, { headers: { Authorization: `Bearer ${confirmed.token}` } })).status, 401);
+  ok('código novo, código desligado e sair da FC');
+
+  // Servidor novo: quem gerencia cria a FC; ela é outra, sem os dados da primeira.
+  const elsewhere = (data) => ({ ...data, guild_id: '77' });
+  assert.match((await (await interaction(elsewhere(command('fcc')))).json()).data.content, /not linked/);
+  const setup = await (await interaction(elsewhere(command('fcc', '32')))).json();
+  assert.equal(setup.data.components[0].components[0].custom_id, 'fc:setup');
+  const created = await (await interaction(elsewhere(click('fc:setup', '32')))).json();
+  const newCode = codeOf(created);
+  const second = await (await linkPost('confirm', { code: newCode, fcId: '555000', fcName: 'Ferro Velho', owner: 'dono-0009' })).json();
+  const secondState = await (await fetch(`${service}/state`, { headers: { Authorization: `Bearer ${second.token}` } })).json();
+  assert.deepEqual(secondState.subs, {});
+  const newMenu = await (await interaction(elsewhere(command('fcc')))).json();
+  assert.equal(newMenu.type, 4);
+  ok('servidor novo cria a própria FC pelo /fcc');
 
   console.log(`TODOS PASSARAM (${passed})`);
   exitCode = 0;
 } catch (error) {
-  console.error(`FALHA: ${error.message}`);
+  console.error(`FALHA: ${error.message}`, error.stack?.split("\n").find((l) => l.includes("integration.mjs:")));
 } finally {
   discord.close();
   try {
-    execSync(`taskkill /PID ${worker.pid} /T /F`, { stdio: 'ignore' });
+    if (process.platform === 'win32') execSync(`taskkill /PID ${worker.pid} /T /F`, { stdio: 'ignore' });
+    else process.kill(-worker.pid, 'SIGTERM');
   } catch {
     // O processo já terminou.
   }

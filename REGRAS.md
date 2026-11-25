@@ -27,10 +27,10 @@
 - Reler ou reenviar a mesma viagem nunca soma de novo.
 - A viagem pertence ao dia em que o submarino voltou, no fuso de Brasília, no painel e na janela do plugin.
 - À meia-noite o painel passa a mostrar o novo dia. O serviço guarda as viagens por 120 dias, para o lucro por semana e por mês, e apaga as mais antigas uma vez por dia.
-- A viagem de um sub guarda a rota e os tanques que o sub tinha quando o loot chegou. É isso que permite comparar as rotas no `/lucro`.
+- A viagem de um sub guarda a rota e os tanques que o sub tinha quando o loot chegou. É isso que permite comparar as rotas na seção Lucro do `/fcc`.
 
 ## Lucro
-- O `/lucro` e a seção Lucro da aba Loot mostram as últimas 4 semanas (blocos de 7 dias terminando hoje) e as rotas dos subs ordenadas por gil por tanque.
+- A seção Lucro do `/fcc` e a seção Lucro da aba Loot mostram as últimas 4 semanas (blocos de 7 dias terminando hoje) e as rotas dos subs ordenadas por gil por tanque.
 - Viagens de antes da 0.10 não têm rota, então entram nas semanas mas não no ranking das rotas.
 
 ## Resumo semanal
@@ -89,7 +89,7 @@
 - O painel mostra o estoque só depois da primeira contagem, com um ⚠️ no que estiver baixo.
 - Com os detalhes dos subs, o estoque mostra quantas rodadas os tanques aguentam (tanques ÷ soma dos tanques de cada rota) e quantos reparos completos os kits pagam.
 - Com menos de 2 rodadas de tanques (ou 120 tanques, enquanto as rotas não são conhecidas) ou 20 kits, sai um aviso marcando @Subs, uma vez só. Ele volta a avisar depois que o estoque for reposto e cair de novo.
-- Previsão: o serviço guarda as contagens dos últimos 14 dias e soma só as quedas dos últimos 7 (comprar ou repor não conta como gasto). Com pelo menos 3 dias de contagens, o painel, o `/estoque` e o plugin mostram "acaba ~dd/mm" para tanques e kits.
+- Previsão: o serviço guarda as contagens dos últimos 14 dias e soma só as quedas dos últimos 7 (comprar ou repor não conta como gasto). Com pelo menos 3 dias de contagens, o painel, a seção Estoque do `/fcc` e o plugin mostram "acaba ~dd/mm" para tanques e kits.
 - Com a previsão, o aviso de estoque baixo sai quando faltam 5 dias ou menos para acabar, no lugar dos limites fixos.
 
 ## Market
@@ -131,3 +131,47 @@
 - No status de um submarino, vale a leitura feita por último, usando o horário do servidor em que ela chegou.
 - A edição da mensagem é sempre gerada a partir do estado salvo, nunca de um envio isolado.
 - Se o Discord falhar ou limitar as edições, o estado continua salvo e a próxima edição corrige o painel.
+
+## Discord: o /fcc
+- O app registra um comando só, `/fcc`, com o mesmo nome em qualquer idioma. Ele abre o menu no canal, à vista de todos. Qualquer pessoa clica nas abas e a mesma mensagem muda para todo mundo.
+- O menu do canal é igual para todos: não mostra a situação de ninguém nos eventos e sempre mostra Novo evento e Ajustes (a permissão é conferida no clique).
+- O que é de uma pessoa só abre numa mensagem que só ela vê: Ajustes, criar evento, ligar ou desligar o lembrete por DM e o log. Dentro dessa mensagem, os botões continuam só para ela.
+- Um menu novo no mesmo canal apaga o anterior, para o canal não encher de menus. Com o bot, sempre; sem o bot, só se o anterior tiver menos de 15 minutos.
+- Seções: Painel, Subs, Loot (hoje, 7 ou 30 dias), Estoque e Lucro. "Postar no canal" só aparece no menu privado (o do canal já está no canal).
+- Ajustes, só para quem tem "Gerenciar servidor": reenviar o painel, agrupar avisos, ligar ou desligar o resumo semanal, baixar o log do plugin e o idioma do menu. A permissão é conferida a cada clique, não só ao abrir o menu.
+- O idioma do menu é da FC (padrão português para a FC atual). Os textos das seções ainda vêm em português até a 0.14.
+- Os comandos antigos (`/subs`, `/loot`, `/estoque`, `/lucro`, `/painel`, `/avisos`, `/resumo`, `/log`) somem ao registrar o `/fcc`. Enquanto algum ainda aparecer no Discord, ele abre a seção equivalente do `/fcc`.
+- Servidor que não é o da FC recebe "ainda não está ligado a uma FC". Na 0.13 essa ligação vem do registro de FCs.
+
+## Discord: o bot
+- O painel, os avisos e o resumo semanal saem pelo bot quando há `DISCORD_BOT_TOKEN` e o canal foi escolhido no `/fcc` (Ajustes: Painel aqui, Avisos aqui). Sem isso, continuam pelo webhook.
+- Avisos sem canal próprio vão para o canal do painel. Cada aviso guarda por onde saiu, e é apagado pelo mesmo caminho.
+- Ao trocar o painel de canal (ou do webhook para o bot), o painel antigo é apagado e sai um novo.
+- O painel do bot tem 3 botões embaixo: Loot de hoje, Estoque e Eventos. Cada um abre o `/fcc` já na seção, no canal.
+- O bot não lê mensagens nem usa gateway: tudo chega por HTTP e sai pela API.
+
+## Eventos
+- Três tipos. **Conteúdo em grupo**: Tank, Healer, DPS, Reserva e Não vou, com 4 (1/1/2), 8 (2/2/4) ou 24 (3/6/15) jogadores. **Encontro** (campo Local) e **Outro** (campo O quê): Vou, Talvez e Não vou, sem limite.
+- Quem cria: quem gerencia o servidor e, se escolhido nos Ajustes, um cargo. Todo mundo se inscreve.
+- Criar: Eventos, Novo evento, o tipo, um formulário (título, data e hora, campo do tipo, descrição) e uma revisão com tamanho, repetição, onde lembrar e quando. O post vai para o canal escolhido em Eventos aqui.
+- A data é lida no fuso da FC: "ter 21:00", "amanhã 20:30", "02/12 21:00", "2026-12-02 21:00", "9pm". Data que já passou ou que não existe é recusada. No post, a hora aparece no fuso de cada membro.
+- Clicar num botão inscreve; clicar de novo no mesmo tira. Trocar de botão troca a inscrição.
+- Função cheia: a pessoa entra na reserva daquela função. "Reserva" entra na reserva de qualquer função. Quando alguém sai de uma função, sobe o primeiro da reserva que pediu essa função ou qualquer uma. Vaga que já estava livre não puxa ninguém.
+- Lembretes: 1 h antes, 15 min antes ou os dois (no máximo 2 por evento). No canal dos avisos, marcando só quem se inscreveu (Talvez também; reserva e Não vou, não). Por DM, só para quem ligou "Lembrete por DM" na seção Eventos. O lembrete é marcado antes de sair, para nunca sair repetido.
+- Quem sobe da reserva recebe DM, se ligou a DM.
+- Cancelar: quem criou ou quem gerencia. Os inscritos e a reserva são avisados como num lembrete.
+- O evento fecha 2 horas depois do início: o post perde os botões. Se repete toda semana, o da semana seguinte é postado na hora, com a lista limpa. Fechado, fica guardado 14 dias.
+- No máximo 25 eventos abertos.
+- O plugin recebe em `/state` os eventos abertos (título, tipo, hora, inscritos e vagas), sem quem se inscreveu. A ligação entre a conta do Discord e o personagem ainda não existe; tudo que depende dela fica em `service/src/link.js`.
+
+## Ligação por código
+- Quem gerencia o servidor abre o `/fcc`, Ajustes, **Código da FC**. Servidor sem FC: o `/fcc` mostra só pra quem gerencia o botão **Criar código da FC**, e o servidor ganha uma FC nova, separada das outras.
+- O código tem o formato `FCC-XXXXXX` (6 letras e números, sem 0, O, 1, I, L e U). Maiúscula, minúscula, espaço e traço não importam.
+- **Código novo** troca o código: o antigo para de valer na hora, e quem já ligou continua ligado. **Desligar código** impede ligações novas.
+- No plugin, o membro cola o código. O serviço responde "FC X no servidor Y" e só liga depois que ele confirma no jogo.
+- A primeira ligação grava qual FC do jogo é esta (o ID da FC). Depois disso, só personagem da mesma FC liga com o código.
+- A ligação é com o dono (a instalação do plugin), não com cada personagem. Ela devolve um token, que substitui a chave da FC.
+- Com o token, o envio de um personagem de outra FC (alt) é aceito e descartado: nada dele entra nesta FC. Só os personagens desta FC ficam guardados.
+- 10 códigos errados por hora, por dono e por IP. Depois disso, o serviço recusa até a hora passar.
+- Ligar a conta do Discord é opcional e só serve pros eventos e pra DM. No `/fcc`, em Eventos, **Ligar minha conta** mostra um código de 6 dígitos só pra quem pediu, e o dono digita no jogo. O código vale 15 minutos e uma vez só. Uma conta do Discord liga a um dono só.
+- **Compatibilidade:** a chave da FC (`FC_KEY`) e o webhook continuam valendo nesta versão, só pra FC antiga. Saem na versão seguinte.

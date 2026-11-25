@@ -1,4 +1,4 @@
-// Comandos do Discord recebidos por HTTP (Interactions Endpoint). Sem bot conectado: o Discord manda cada
+// Comandos e botões do Discord recebidos por HTTP (Interactions Endpoint). Sem bot conectado: o Discord manda cada
 // comando para POST /interactions, assinado com a chave do app. Ver ../../PLANO-0.9.md.
 
 export const PING = 1;
@@ -55,41 +55,4 @@ export function optionValue(interaction, name) {
   return find(interaction.data?.options);
 }
 
-// Comandos registrados no servidor pelo tools/registrar-comandos.ps1.
-export const COMMANDS = [
-  { name: 'painel', description: 'Apaga o painel e manda outro no fim do canal', default_member_permissions: '32' },
-  {
-    name: 'avisos',
-    description: 'Avisos do FC Companion',
-    default_member_permissions: '32',
-    options: [{ type: 1, name: 'limpar', description: 'Troca avisos repetidos por avisos agrupados, sem notificar' }],
-  },
-  {
-    name: 'loot',
-    description: 'Loot dos submarinos',
-    options: [{
-      type: 3,
-      name: 'periodo',
-      description: 'Hoje, os últimos 7 dias ou os últimos 30 dias',
-      choices: [{ name: 'hoje', value: 'dia' }, { name: 'semana', value: 'semana' }, { name: 'mês', value: 'mes' }],
-    }],
-  },
-  { name: 'lucro', description: 'Lucro das últimas 4 semanas e quanto cada rota rende' },
-  {
-    name: 'resumo',
-    description: 'Resumo semanal no canal (toda segunda às 9h)',
-    default_member_permissions: '32',
-    options: [
-      { type: 1, name: 'ligar', description: 'Liga o resumo semanal' },
-      { type: 1, name: 'desligar', description: 'Desliga o resumo semanal' },
-    ],
-  },
-  { name: 'estoque', description: 'Tanques, kits e quantas rodadas e reparos eles pagam' },
-  { name: 'subs', description: 'Volta, rank e desgaste de cada submarino' },
-  {
-    name: 'log',
-    description: 'Último log do plugin, como arquivo',
-    default_member_permissions: '32',
-    options: [{ type: 3, name: 'personagem', description: 'Nome do personagem (padrão: o log mais recente)' }],
-  },
-];
+// O único comando registrado é o /fcc (ver menu.js). Os botões do menu chegam aqui como MESSAGE_COMPONENT.

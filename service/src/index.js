@@ -1,12 +1,23 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, MARKET_CACHE, markSent, mergeVoyage, needsPrice, newState,
-  applyDalamud, dalamudDue, lootSummary, nextEvent, parseUniversalis, subsSummary, suppliesSummary, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
-  profitReport, profitSummary, VOYAGE_KEEP_DAYS, weeklyDue, weeklySummary,
+  applyDalamud, dalamudDue, nextEvent, parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
+  profitReport, VOYAGE_KEEP_DAYS, weeklyDue, weeklySummary,
 } from './logic.js';
 import {
-  canManage, COMMAND, commandPath, DEFERRED_REPLY, EPHEMERAL, optionValue, PING, privateReply, publicReply, REPLY, verifyDiscord,
+  canManage, COMMAND, EPHEMERAL, optionValue, PING, privateReply, REPLY, verifyDiscord,
 } from './discord.js';
+import { eventsForPlugin, modalFields } from './events.js';
+import { InteractMethods } from './interact.js';
+import {
+  DEFERRED_UPDATE_MESSAGE, fcFor, LEGACY, MESSAGE_COMPONENT, MODAL_SUBMIT, panelComponents, parseCustomId, setupMessage, text, userOf,
+} from './menu.js';
+import { langOf } from './texts.js';
+import { DISCORD_API, transportFor, transportOf } from './transport.js';
+import { charactersOf } from './link.js';
+import { LEGACY_FC } from './registry.js';
+
+export { Registry } from './registry.js';
 
 const DEBOUNCE_MS = 2000;
 const RETRY_MS = 60000;
@@ -32,9 +43,8 @@ function isAuthorized(request, env) {
   return env.FC_KEY && expected.byteLength === received.byteLength && crypto.subtle.timingSafeEqual(expected, received);
 }
 
-const MANAGER_ONLY = ['painel', 'avisos limpar', 'log', 'resumo ligar', 'resumo desligar'];
-
-// Comandos do Discord. A assinatura do app substitui a chave da FC nesta rota.
+// Comandos, botões e formulários do Discord. A assinatura do app substitui a chave da FC nesta rota.
+// Aqui só se confere quem é quem e o que foi clicado. O objeto da FC decide e monta a resposta.
 async function handleInteraction(request, env, ctx) {
   const body = await request.text();
   const signed = await verifyDiscord(
@@ -44,75 +54,221 @@ async function handleInteraction(request, env, ctx) {
 
   const interaction = JSON.parse(body);
   if (interaction.type === PING) return json({ type: PING });
-  if (interaction.type !== COMMAND) return json(privateReply('Comando desconhecido.'));
-  if (env.DISCORD_GUILD_ID && interaction.guild_id !== env.DISCORD_GUILD_ID) {
-    return json(privateReply('Este servidor não está configurado no FC Companion.'));
+
+  const both = (key) => `${text('en', key)}\n${text('pt', key)}`;
+  const manager = canManage(interaction);
+  let asked;
+  if (interaction.type === COMMAND) {
+    const name = interaction.data?.name;
+    const legacy = LEGACY[name];
+    if (name === 'fcc') asked = { kind: 'command', view: 'panel' };
+    else if (legacy) asked = { kind: 'command', view: legacy.view, arg: legacy.args?.[optionValue(interaction, 'periodo')], moved: true };
+  } else if (interaction.type === MESSAGE_COMPONENT) {
+    asked = parseCustomId(interaction.data?.custom_id);
+    if (asked?.kind === 'evmodal') asked = null;
+    if (asked?.kind === 'eventrole') asked.values = interaction.data?.values ?? [];
+  } else if (interaction.type === MODAL_SUBMIT) {
+    asked = parseCustomId(interaction.data?.custom_id);
+    if (asked?.kind !== 'evmodal') asked = null;
+    else asked.fields = modalFields(interaction.data);
+  }
+  if (!asked) return json(privateReply(text('en', 'unknown')));
+
+  // Qual FC atende este servidor: o registro primeiro, depois a FC antiga do DISCORD_GUILD_ID.
+  const registry = registryOf(env);
+  let fc = interaction.guild_id ? (await ask(registry, '/guild', { guildId: interaction.guild_id }))?.fc : null;
+  fc ??= fcFor(interaction, env);
+  const codeAction = asked.kind === 'setup' || (asked.kind === 'action' && ['code', 'code-new', 'code-off'].includes(asked.name));
+  if (!fc) {
+    // Servidor novo: quem gerencia vê o botão de criar a FC; os outros, que ainda não está ligado.
+    if (!manager || !interaction.guild_id) return json(privateReply(both('notLinked')));
+    if (asked.kind !== 'setup') return json({ type: REPLY, data: setupMessage() });
+  }
+  if (codeAction && manager && interaction.guild_id) {
+    const entry = await ask(registry, '/create', {
+      guildId: interaction.guild_id, guildName: await guildName(env, interaction.guild_id), legacy: fc === LEGACY_FC,
+    });
+    fc = entry.fc;
+    if (asked.kind === 'setup') asked = { kind: 'action', name: 'code' };
+  }
+  // A permissão é conferida a cada clique: o menu pode ter sido aberto antes de a pessoa perder o cargo.
+  if ((asked.kind === 'action' || asked.kind === 'eventrole' || asked.kind === 'setup' || asked.manager) && !manager) return json(privateReply(both('managersOnly')));
+
+  const payload = {
+    ...asked,
+    fc,
+    user: userOf(interaction),
+    manager,
+    roles: interaction.member?.roles ?? [],
+    guildId: interaction.guild_id,
+    channelId: interaction.channel_id ?? interaction.channel?.id ?? null,
+    // O clique veio do menu no canal (e não de uma mensagem que só a pessoa vê).
+    pub: interaction.type !== COMMAND && Boolean(interaction.message) && !((interaction.message.flags ?? 0) & EPHEMERAL),
+  };
+  const stub = env.FC_STATE.get(env.FC_STATE.idFromName(fc));
+  const interact = async () => (await stub.fetch('https://fc/interact', { method: 'POST', body: JSON.stringify(payload) })).json();
+  const hook = `${env.DISCORD_API ?? DISCORD_API}/webhooks/${env.DISCORD_APP_ID}/${interaction.token}`;
+
+  if (asked.kind === 'action' && asked.name === 'regroup') {
+    // Apagar e reenviar avisos passa dos 3 segundos que o Discord espera: responde já e edita o menu depois.
+    ctx.waitUntil((async () => {
+      const { response } = await interact();
+      const { flags, ...data } = response.data;
+      await fetch(`${hook}/messages/@original`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    })());
+    return json({ type: DEFERRED_UPDATE_MESSAGE });
   }
 
-  const path = commandPath(interaction);
-  if (MANAGER_ONLY.includes(path) && !canManage(interaction)) return json(privateReply('Só quem gerencia o servidor pode usar este comando.'));
+  const out = await interact();
+  // Um menu novo no canal toma o lugar do anterior do mesmo canal, pra não encher o canal de menus.
+  const opened = (asked.kind === 'command' || asked.kind === 'open') && out.response?.type === REPLY && !(out.response.data?.flags & EPHEMERAL);
+  if (opened && payload.channelId) ctx.waitUntil(replaceMenu(env, stub, hook, payload.channelId, interaction.token, Date.now()));
+  // Uma segunda mensagem, só para quem clicou ("você está na reserva").
+  if (out.followup) {
+    ctx.waitUntil(fetch(hook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(out.followup) }));
+  }
+  if (!out.file) return json(out.response);
 
-  const stub = env.FC_STATE.get(env.FC_STATE.idFromName('fc'));
-  const internal = (route, payload) => stub.fetch(`https://fc/${route}`, { method: 'POST', body: payload ? JSON.stringify(payload) : undefined });
+  const form = new FormData();
+  form.append('payload_json', JSON.stringify({
+    ...out.response,
+    data: { ...out.response.data, attachments: [{ id: 0, filename: out.file.name }] },
+  }));
+  form.append('files[0]', new Blob([out.file.text], { type: 'text/plain' }), out.file.name);
+  return new Response(form);
+}
 
-  switch (path) {
-    case 'painel':
-      await internal('repost');
-      return json(publicReply('Painel reenviado no fim do canal.'));
-    case 'avisos limpar': {
-      // Apagar e reenviar avisos passa dos 3 segundos que o Discord espera: responde já e termina depois.
-      const followUp = `https://discord.com/api/v10/webhooks/${env.DISCORD_APP_ID}/${interaction.token}/messages/@original`;
-      ctx.waitUntil((async () => {
-        let content;
-        try {
-          const result = await (await internal('regroup')).json();
-          content = `Pronto: ${result.removed} avisos apagados, ${result.sent} agrupados enviados.`;
-        } catch (error) {
-          console.error('Falha no /avisos limpar', error);
-          content = 'Não consegui limpar os avisos agora. Tente de novo em alguns minutos.';
-        }
-        await fetch(followUp, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
-      })());
-      return json({ type: DEFERRED_REPLY });
+const MENU_TOKEN_LIFE = 14 * 60;
+const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+// Depois de responder ao /fcc: descobre o id do menu novo, guarda como o menu do canal e apaga o anterior.
+// Sem o bot, o anterior só pode ser apagado pelo token dele, que vale 15 minutos. Depois disso, fica no canal.
+// `openedAt` (ms) decide qual é o mais novo quando dois /fcc chegam juntos.
+async function replaceMenu(env, stub, hook, channel, token, openedAt) {
+  const api = env.DISCORD_API ?? DISCORD_API;
+  let id = null;
+  for (let tries = 0; tries < 3 && !id; tries += 1) {
+    if (tries > 0) await wait(1000);
+    try {
+      const response = await fetch(`${hook}/messages/@original`);
+      if (response.ok) id = (await response.json()).id ?? null;
+    } catch {
+      // Tenta de novo.
     }
-    case 'loot':
-    case 'lucro':
-    case 'estoque':
-    case 'subs':
-    case 'resumo ligar':
-    case 'resumo desligar':
-    case 'log': {
-      const answer = await (await internal('discord', {
-        path, periodo: optionValue(interaction, 'periodo'), personagem: optionValue(interaction, 'personagem'),
-      })).json();
-      // O log fica só para quem pediu; o resto aparece para todos.
-      if (!answer.file) return json(path === 'log' ? privateReply(answer.content) : publicReply(answer.content));
+  }
+  if (!id) return;
+  const now = nowSeconds();
+  const previous = await (await stub.fetch('https://fc/menu', { method: 'POST', body: JSON.stringify({ channel, id, token, at: now, openedAt }) })).json();
+  if (!previous?.id || previous.id === id) return;
+  let removed;
+  if (env.DISCORD_BOT_TOKEN) {
+    removed = await fetch(`${api}/channels/${channel}/messages/${previous.id}`, { method: 'DELETE', headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
+  } else if (previous.token && now - previous.at < MENU_TOKEN_LIFE) {
+    removed = await fetch(`${api}/webhooks/${env.DISCORD_APP_ID}/${previous.token}/messages/@original`, { method: 'DELETE' });
+  }
+  if (removed && !removed.ok && removed.status !== 404) console.error(`Discord respondeu ${removed.status} ao apagar o menu anterior`);
+}
 
-      const form = new FormData();
-      form.append('payload_json', JSON.stringify({
-        type: REPLY,
-        data: { content: answer.content, flags: EPHEMERAL, attachments: [{ id: 0, filename: answer.file.name }] },
-      }));
-      form.append('files[0]', new Blob([answer.file.text], { type: 'text/plain' }), answer.file.name);
-      return new Response(form);
-    }
-    default:
-      return json(privateReply('Comando desconhecido.'));
+const registryOf = (env) => env.REGISTRY.get(env.REGISTRY.idFromName('registry'));
+const ask = async (stub, route, body) => (await stub.fetch(`https://r${route}`, { method: 'POST', body: JSON.stringify(body ?? {}) })).json();
+const bearer = (request) => (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+
+// Quem está chamando do plugin. O token do dono (fco_...) vem da ligação por código. A chave antiga da FC
+// (FC_KEY) ainda vale por uma versão, só para a FC antiga.
+async function pluginCaller(request, env) {
+  const token = bearer(request);
+  if (token.startsWith('fco_')) {
+    const entry = await ask(registryOf(env), '/token', { token });
+    return entry ? { fc: entry.fc, owner: entry.owner, gameFcId: entry.gameFcId } : null;
+  }
+  return isAuthorized(request, env) ? { fc: LEGACY_FC, legacy: true } : null;
+}
+
+// Rotas da ligação, chamadas pelo plugin. Ver plano/CONTRATO-LIGACAO.md.
+async function handleLink(request, env, pathname) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid json' }, 400);
+  }
+  const registry = registryOf(env);
+  const ip = request.headers.get('CF-Connecting-IP') ?? null;
+  const fcStub = (fc) => env.FC_STATE.get(env.FC_STATE.idFromName(fc));
+  const status = { invalid: 400, 'unknown-code': 404, 'other-fc': 409, 'too-many': 429 };
+
+  if (pathname === '/link/check') {
+    const result = await ask(registry, '/check', { code: body.code, gameFcId: body.fcId, owner: body.owner, ip });
+    if (result.error) return json({ error: result.error, fcName: result.fcName ?? null, serverName: result.serverName ?? null }, status[result.error]);
+    return json({ code: result.code, fcName: result.fcName, serverName: result.serverName, firstLink: result.sameFc === null });
+  }
+  if (pathname === '/link/confirm') {
+    const result = await ask(registry, '/confirm', {
+      code: body.code, gameFcId: body.fcId, gameFcName: cleanFcName(body.fcName), owner: body.owner, ip,
+    });
+    if (result.error) return json({ error: result.error, fcName: result.fcName ?? null, serverName: result.serverName ?? null }, status[result.error]);
+    await ask(fcStub(result.fc), '/link/owner', { owner: body.owner, characters: charactersOf(body.characters, body.fcId) });
+    return json({ token: result.token, fcName: result.fcName, serverName: result.serverName, relinked: result.relinked });
+  }
+
+  const caller = await pluginCaller(request, env);
+  if (!caller?.owner) return json({ error: 'unauthorized' }, 401);
+  if (pathname === '/link/account') {
+    const result = await ask(fcStub(caller.fc), '/link/account', { owner: caller.owner, code: body.code });
+    return json(result, result.ok ? 200 : 404);
+  }
+  if (pathname === '/link/leave') {
+    const result = await ask(registry, '/leave', { token: bearer(request) });
+    if (result.ok) await ask(fcStub(result.fc), '/link/remove', { owner: result.owner });
+    return json({ ok: result.ok });
+  }
+  return json({ error: 'not found' }, 404);
+}
+
+// Nome do servidor, para o plugin mostrar "FC X no servidor Y". Só com o bot; sem ele, fica sem nome.
+async function guildName(env, guildId) {
+  if (!env.DISCORD_BOT_TOKEN) return null;
+  try {
+    const response = await fetch(`${env.DISCORD_API ?? DISCORD_API}/guilds/${guildId}`, { headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
+    return response.ok ? ((await response.json()).name ?? null) : null;
+  } catch {
+    return null;
   }
 }
+
+const cleanFcName = (value) => (typeof value === 'string' ? value.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40) || null : null);
 
 export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     if (request.method === 'POST' && pathname === '/interactions') return handleInteraction(request, env, ctx);
-    if (!isAuthorized(request, env)) return json({ error: 'unauthorized' }, 401);
+    if (request.method === 'POST' && pathname.startsWith('/link/')) return handleLink(request, env, pathname);
 
-    const allowed = (request.method === 'POST' && ['/update', '/repost', '/log', '/regroup'].includes(pathname))
-      || (request.method === 'GET' && ['/history', '/state', '/logs'].includes(pathname));
-    if (!allowed) return json({ error: 'not found' }, 404);
+    const caller = await pluginCaller(request, env);
+    if (!caller) return json({ error: 'unauthorized' }, 401);
 
-    // Todo pedido passa pelo mesmo objeto, que é o único ponto de gravação.
-    return env.FC_STATE.get(env.FC_STATE.idFromName('fc')).fetch(request);
+    // Com o token do dono: só o que o plugin usa. Reenviar o painel, agrupar e baixar logs ficam com a chave antiga.
+    const forOwner = (request.method === 'POST' && ['/update', '/log'].includes(pathname))
+      || (request.method === 'GET' && ['/history', '/state'].includes(pathname));
+    const forKey = (request.method === 'POST' && ['/repost', '/regroup'].includes(pathname))
+      || (request.method === 'GET' && pathname === '/logs');
+    if (!(forOwner || (caller.legacy && forKey))) return json({ error: 'not found' }, 404);
+
+    const stub = env.FC_STATE.get(env.FC_STATE.idFromName(caller.fc));
+    // Envio de um personagem de outra FC (alt): fica de fora desta FC, sem erro para o plugin.
+    if (request.method === 'POST' && caller.gameFcId) {
+      const text = await request.text();
+      let fcId = null;
+      try {
+        fcId = JSON.parse(text)?.fcId ?? null;
+      } catch {
+        // O objeto da FC responde ao JSON inválido.
+      }
+      if (fcId != null && String(fcId) !== caller.gameFcId) return json({ ok: true, stored: false, reason: 'other-fc' }, 202);
+      return stub.fetch(new Request(request.url, { method: 'POST', headers: request.headers, body: text }));
+    }
+    // Todo pedido da FC passa pelo mesmo objeto, que é o único ponto de gravação.
+    return stub.fetch(request);
   },
 };
 
@@ -120,10 +276,14 @@ export class FcState extends DurableObject {
   async fetch(request) {
     switch (`${request.method} ${new URL(request.url).pathname}`) {
       case 'POST /update': return this.handleUpdate(request);
-      case 'POST /repost': return this.handleRepost();
-      case 'POST /regroup': return this.handleRegroup();
+      case 'POST /repost': return json(await this.repostPanel());
+      case 'POST /regroup': return json(await this.regroupAlerts());
       case 'POST /log': return this.handleLog(request);
-      case 'POST /discord': return this.handleDiscord(request);
+      case 'POST /interact': return this.handleInteract(request);
+      case 'POST /menu': return this.handleMenu(request);
+      case 'POST /link/owner': return this.handleLinkOwner(request);
+      case 'POST /link/account': return this.handleLinkAccount(request);
+      case 'POST /link/remove': return this.handleLinkRemove(request);
       case 'GET /state': return this.handleState();
       case 'GET /logs': return this.handleLogs();
       default: return this.handleHistory(request);
@@ -152,40 +312,6 @@ export class FcState extends DurableObject {
     return json({ ok: true });
   }
 
-  // Respostas dos comandos do Discord que só leem o estado.
-  async handleDiscord(request) {
-    const { path, periodo, personagem } = await request.json();
-    const now = nowSeconds();
-    const state = (await this.ctx.storage.get('state')) ?? newState();
-    if (path === 'estoque') return json({ content: suppliesSummary(state, now) });
-    if (path === 'subs') return json({ content: subsSummary(state, now) });
-    if (path === 'lucro') return json({ content: profitSummary(await this.profit(now)) });
-    if (path === 'resumo ligar' || path === 'resumo desligar') {
-      const off = path === 'resumo desligar';
-      const latest = (await this.ctx.storage.get('state')) ?? newState();
-      latest.weekly = { ...(latest.weekly ?? {}), off };
-      await this.ctx.storage.put('state', latest);
-      await this.ctx.storage.setAlarm(Date.now());
-      return json({ content: off ? 'Resumo semanal desligado.' : 'Resumo semanal ligado: sai toda segunda às 9h.' });
-    }
-    if (path === 'loot') {
-      const count = { semana: 7, mes: 30 }[periodo] ?? 1;
-      const voyages = await this.voyagesSince(now, count);
-      const [, month, day] = dayOf(now).split('-');
-      const titles = { 7: 'Loot dos últimos 7 dias', 30: 'Loot dos últimos 30 dias' };
-      return json({ content: lootSummary(voyages, titles[count] ?? `Loot de hoje (${day}/${month})`) });
-    }
-
-    const logs = [...(await this.ctx.storage.list({ prefix: 'log:' })).values()].sort((a, b) => b.uploadedAt - a.uploadedAt);
-    const wanted = typeof personagem === 'string' ? personagem.trim().toLowerCase() : '';
-    const log = wanted ? logs.find((l) => l.character.toLowerCase().includes(wanted)) : logs[0];
-    if (!log) return json({ content: wanted ? `Nenhum log de "${personagem}".` : 'Nenhum log enviado ainda.' });
-    return json({
-      content: `Log de **${log.character}**, enviado <t:${log.uploadedAt}:R>.`,
-      file: { name: `log-${log.character.replace(/[^\w-]+/g, '_')}.txt`, text: log.text },
-    });
-  }
-
   async handleLogs() {
     const logs = [...(await this.ctx.storage.list({ prefix: 'log:' })).values()].sort((a, b) => b.uploadedAt - a.uploadedAt);
     return json({ logs });
@@ -196,7 +322,7 @@ export class FcState extends DurableObject {
     const now = nowSeconds();
     const state = (await this.ctx.storage.get('state')) ?? newState();
     const voyages = await this.voyagesSince(now, 7);
-    return json(publicState(state, voyages, now, await this.profit(now)));
+    return json({ ...publicState(state, voyages, now, await this.profit(now)), events: eventsForPlugin(await this.events()) });
   }
 
   // Viagens dos últimos dias, do mais antigo para hoje.
@@ -253,12 +379,12 @@ export class FcState extends DurableObject {
   }
 
   // Apaga a mensagem do painel e manda outra, que fica no fim do canal.
-  async handleRepost() {
+  async repostPanel() {
     const state = (await this.ctx.storage.get('state')) ?? newState();
     if (state.messageId) {
-      const response = await fetch(`${this.webhook()}/messages/${state.messageId}`, { method: 'DELETE' });
+      const response = await transportFor(state.panelVia, this.env)?.remove(state.messageId);
       // 404: alguém já apagou a mensagem.
-      if (!response.ok && response.status !== 404) return json({ error: `discord ${response.status}` }, 502);
+      if (response && !response.ok && response.status !== 404) return { error: `discord ${response.status}` };
     }
 
     const latest = (await this.ctx.storage.get('state')) ?? newState();
@@ -266,37 +392,45 @@ export class FcState extends DurableObject {
     delete latest.lastPanel;
     await this.ctx.storage.put('state', latest);
     await this.ctx.storage.setAlarm(Date.now());
-    return json({ ok: true });
+    return { ok: true };
+  }
+
+  // O bot passa a postar o painel neste canal. O painel antigo (do webhook ou de outro canal) é apagado.
+  async movePanel(channelId) {
+    await this.repostPanel();
+    const latest = (await this.ctx.storage.get('state')) ?? newState();
+    latest.settings = { ...(latest.settings ?? {}), panelChannel: channelId };
+    await this.ctx.storage.put('state', latest);
+    await this.ctx.storage.setAlarm(Date.now());
   }
 
   // Apaga todos os avisos ainda no canal e manda de novo, agrupados, só os de sub das últimas 8 horas.
   // Os avisos refeitos mostram o @Subs sem notificar de novo.
-  async handleRegroup() {
+  async regroupAlerts() {
     const storage = this.ctx.storage;
     const now = nowSeconds();
     const state = (await storage.get('state')) ?? newState();
     // Avisos antigos, sem o tipo gravado, também são trocados.
     const removed = [];
     for (const alert of (state.alerts ?? []).filter((a) => !a.kind || ['subReady', 'subForgotten', 'repairNeeded'].includes(a.kind))) {
-      const response = await fetch(`${this.webhook()}/messages/${alert.id}`, { method: 'DELETE' });
-      if (response.ok || response.status === 404) removed.push(alert.id);
+      const response = await transportFor(alert.via, this.env)?.remove(alert.id);
+      if (!response || response.ok || response.status === 404) removed.push(alert.id);
       await new Promise((resolve) => { setTimeout(resolve, 300); });
     }
 
     const sent = [];
-    for (const alert of recentSubAlerts(state, now)) {
+    const transport = transportOf('alerts', state.settings, this.env);
+    for (const alert of transport ? recentSubAlerts(state, now) : []) {
       const payload = { ...alertPayload(alert, this.env.ROLE_ID), allowed_mentions: { parse: [], roles: [] } };
-      const response = await fetch(`${this.webhook()}?wait=true`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-      });
-      if (response.ok) sent.push({ id: (await response.json()).id, deleteAt: alertDeleteAt(now), kind: alert.kind });
+      const response = await transport.create(payload);
+      if (response.ok) sent.push({ id: response.id, deleteAt: alertDeleteAt(now), kind: alert.kind, via: transport.via });
       await new Promise((resolve) => { setTimeout(resolve, 600); });
     }
 
     const latest = (await storage.get('state')) ?? newState();
     latest.alerts = [...(latest.alerts ?? []).filter((a) => !removed.includes(a.id)), ...sent];
     await storage.put('state', latest);
-    return json({ ok: true, removed: removed.length, sent: sent.length });
+    return { ok: true, removed: removed.length, sent: sent.length };
   }
 
   async handleHistory(request) {
@@ -320,6 +454,7 @@ export class FcState extends DurableObject {
       await this.deleteOldAlerts(now);
       const weeklyRetryAt = await this.sendWeekly(now);
       await this.pruneVoyages(now);
+      this.eventsAt = await this.runEvents(now);
       retryAt = retryAt ?? alertRetryAt ?? weeklyRetryAt;
     } catch (error) {
       console.error('Falha ao publicar o painel', error);
@@ -327,40 +462,30 @@ export class FcState extends DurableObject {
     }
 
     const state = (await this.ctx.storage.get('state')) ?? newState();
-    const next = retryAt ?? nextEvent(state, nowSeconds()) * 1000;
+    const next = retryAt ?? Math.min(nextEvent(state, nowSeconds()), this.eventsAt ?? Infinity) * 1000;
 
     // Uma atualização recebida durante a publicação pode já ter agendado algo mais cedo.
     const alarm = await this.ctx.storage.getAlarm();
     if (alarm === null || alarm > next) await this.ctx.storage.setAlarm(next);
   }
 
-  webhook() {
-    return this.env.DISCORD_WEBHOOK.trim().split('?')[0];
-  }
-
   // Um aviso por tipo, juntando o que ficou pronto junto. Devolve quando tentar de novo, ou null.
   async sendAlerts(now) {
     const state = (await this.ctx.storage.get('state')) ?? newState();
+    const transport = transportOf('alerts', state.settings, this.env);
+    if (!transport) return null;
     for (const alert of pendingAlerts(state, now)) {
-      const response = await fetch(`${this.webhook()}?wait=true`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(alertPayload(alert, this.env.ROLE_ID)),
-      });
-      if (response.status === 429) {
-        const seconds = Number(response.headers.get('Retry-After')) || 5;
-        return Date.now() + ((seconds + 1) * 1000);
-      }
+      const response = await transport.create(alertPayload(alert, this.env.ROLE_ID));
+      if (response.retryAt) return response.retryAt;
       if (!response.ok) {
         console.error(`Discord respondeu ${response.status} ao avisar`);
         return Date.now() + RETRY_MS;
       }
-      const { id } = await response.json();
 
       // O estado pode ter mudado durante o envio. Marca só o que entrou neste aviso.
       const latest = (await this.ctx.storage.get('state')) ?? newState();
       markSent(latest, alert);
-      latest.alerts = [...(latest.alerts ?? []), { id, deleteAt: alertDeleteAt(now), kind: alert.kind }];
+      latest.alerts = [...(latest.alerts ?? []), { id: response.id, deleteAt: alertDeleteAt(now), kind: alert.kind, via: transport.via }];
       await this.ctx.storage.put('state', latest);
     }
     return null;
@@ -377,8 +502,10 @@ export class FcState extends DurableObject {
       await this.ctx.storage.put('state', latest);
       return null;
     }
+    const transport = transportOf('panel', state.settings, this.env);
+    if (!transport) return null;
     const payload = weeklySummary(state, await this.voyagesSince(now, 16), now);
-    const response = await fetch(this.webhook(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const response = await transport.create(payload);
     if (!response.ok) {
       console.error(`Discord respondeu ${response.status} ao resumo semanal`);
       return Date.now() + RETRY_MS;
@@ -409,9 +536,9 @@ export class FcState extends DurableObject {
 
     const removed = [];
     for (const alert of due) {
-      const response = await fetch(`${this.webhook()}/messages/${alert.id}`, { method: 'DELETE' });
-      // 404: alguém já apagou a mensagem.
-      if (response.ok || response.status === 404) removed.push(alert.id);
+      const response = await transportFor(alert.via, this.env)?.remove(alert.id);
+      // 404: alguém já apagou a mensagem. Sem transporte (webhook ou bot tirado), não há como apagar.
+      if (!response || response.ok || response.status === 404) removed.push(alert.id);
     }
 
     const latest = (await this.ctx.storage.get('state')) ?? newState();
@@ -513,40 +640,44 @@ export class FcState extends DurableObject {
   }
 
   // Devolve quando tentar de novo, ou null se o painel ficou certo.
+  // Pelo bot, o painel ganha os botões embaixo. Se o painel trocou de caminho (webhook para bot, ou de canal),
+  // o antigo é apagado e sai um novo.
   async publish(now) {
     const state = (await this.ctx.storage.get('state')) ?? newState();
-    const panel = JSON.stringify(renderPanel(state, await this.voyagesOn(dayOf(now)), now));
-    if (state.messageId && state.lastPanel === panel) return null;
+    const transport = transportOf('panel', state.settings, this.env);
+    if (!transport) return null;
+    const panelBody = renderPanel(state, await this.voyagesOn(dayOf(now)), now);
+    if (transport.via !== 'webhook') panelBody.components = panelComponents(langOf(state));
+    const panel = JSON.stringify(panelBody);
+    const sameVia = (state.panelVia ?? 'webhook') === transport.via;
+    if (state.messageId && sameVia && state.lastPanel === panel) return null;
 
-    const webhook = this.webhook();
-    const headers = { 'Content-Type': 'application/json' };
-    let messageId = state.messageId;
+    let messageId = sameVia ? state.messageId : null;
+    if (state.messageId && !sameVia) await transportFor(state.panelVia, this.env)?.remove(state.messageId);
     let response = null;
 
     if (messageId) {
-      response = await fetch(`${webhook}/messages/${messageId}`, { method: 'PATCH', headers, body: panel });
+      response = await transport.edit(messageId, panelBody);
       // A mensagem foi apagada: cria outra.
       if (response.status === 404) messageId = null;
     }
-    if (!messageId) {
-      response = await fetch(`${webhook}?wait=true`, { method: 'POST', headers, body: panel });
-    }
+    if (!messageId) response = await transport.create(panelBody);
 
-    if (response.status === 429) {
-      const seconds = Number(response.headers.get('Retry-After')) || 5;
-      return Date.now() + ((seconds + 1) * 1000);
-    }
+    if (response.retryAt) return response.retryAt;
     if (!response.ok) {
       console.error(`Discord respondeu ${response.status}`);
       return Date.now() + RETRY_MS;
     }
-    if (!messageId) messageId = (await response.json()).id;
+    if (!messageId) messageId = response.id;
 
     // O estado pode ter mudado durante o envio, então só estes campos são gravados.
     const latest = (await this.ctx.storage.get('state')) ?? newState();
     latest.messageId = messageId;
     latest.lastPanel = panel;
+    latest.panelVia = transport.via;
     await this.ctx.storage.put('state', latest);
     return null;
   }
 }
+
+Object.assign(FcState.prototype, InteractMethods);

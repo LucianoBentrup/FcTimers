@@ -1,6 +1,7 @@
 # Registra os comandos do FC Companion no servidor do Discord da FC.
 # O Client Secret do app é pedido aqui e não fica salvo em lugar nenhum.
-# Rodar de novo atualiza os comandos. A lista vem de tools/comandos.json (gerada a partir de service/src/discord.js).
+# Rodar de novo atualiza os comandos. A lista vem de tools/comandos.json (gerada por `npm run commands` em service/).
+# Hoje é só o /fcc: registrar troca a lista inteira, então os comandos antigos em português somem.
 $ErrorActionPreference = 'Stop'
 
 $appId = '1574112157577117718'

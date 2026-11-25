@@ -888,7 +888,7 @@ export function recentDays(now, count = HISTORY_DAYS) {
   return [...days].reverse();
 }
 
-// Respostas dos comandos do Discord. Reaproveitam as mesmas linhas do painel.
+// Seções do /fcc no Discord. Reaproveitam as mesmas linhas do painel.
 export function subsSummary(state, now) {
   const subs = bySlot(state.subs);
   if (subs.length === 0) return 'Nenhum dado dos submarinos ainda.';
@@ -970,7 +970,7 @@ const change = (current, previous) => {
   return ` (${diff >= 0 ? '▲' : '▼'} ${Math.abs(diff)}% sobre a anterior)`;
 };
 
-// Resposta do /lucro.
+// Seção Lucro do /fcc.
 export function profitSummary(profit) {
   const weeks = profit.weeks.filter((w) => w.voyages > 0);
   if (weeks.length === 0) return 'Nenhuma viagem nos últimos 28 dias.';
