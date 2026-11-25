@@ -113,8 +113,10 @@ public sealed class ChangelogWindow : ThemedWindow
         foreach (var release in fresh)
         {
             Header(release);
-            Highlights(release);
-            Lists(release, false);
+            // Versão comum: lista curta por tipo. Versão grande: os destaques em cards e o resto em lista.
+            if (release.Big)
+                Highlights(release);
+            Lists(release, !release.Big);
             ImGui.Spacing();
             ImGui.Spacing();
         }

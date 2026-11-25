@@ -10,7 +10,7 @@ public class ChangelogDocTests
     private const string Sample = """
         # Changelog
 
-        ## [Unreleased]
+        ## [Unreleased] <!-- big -->
 
         ### Added
         - Coming soon.
@@ -39,6 +39,7 @@ public class ChangelogDocTests
         var releases = ChangelogDoc.Parse(Sample);
 
         Assert.Equal(["Unreleased", "0.10.0", "0.9.0"], releases.Select(r => r.Version));
+        Assert.Equal([true, false, false], releases.Select(r => r.Big));
         var latest = releases[1];
         Assert.Equal("2026-11-23", latest.Date);
         Assert.Equal([ChangeType.Added, ChangeType.Fixed], latest.Sections.Select(s => s.Type));

@@ -4,10 +4,11 @@ All notable changes to FC Companion are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-This file is also what the plugin shows in its "What's new" window. An entry that
-starts with a bold title (`**Title:** text`) is shown there as a highlight card.
+This file is also what the plugin shows in its "What's new" window, as a short list by
+type of change. A big update gets `<!-- big -->` after its version, and then each entry
+that starts with a bold title (`**Title:** text`) is shown as a highlight card.
 
-## [Unreleased]
+## [Unreleased] <!-- big -->
 
 ### Added
 - **Timeline:** the Overview opens with the next 24 hours, 3 days or 7 days on one bar: submarines, airships, watering, buffs and the house deadline. Markers that land close together are grouped with a count. Hover a marker to see the exact time.

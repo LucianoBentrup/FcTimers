@@ -20,7 +20,8 @@ public sealed record ChangeEntry(string Title, string Text);
 public sealed record ChangeSection(ChangeType Type, List<ChangeEntry> Entries);
 
 // Version "Unreleased" é o que ainda não saiu. Date pode faltar nas versões antigas.
-public sealed record Release(string Version, string Date, List<ChangeSection> Sections)
+// Big: versão grande, marcada com <!-- big --> no título. Só ela mostra os destaques em cards.
+public sealed record Release(string Version, string Date, List<ChangeSection> Sections, bool Big = false)
 {
     public bool IsUnreleased => Version.Equals("Unreleased", StringComparison.OrdinalIgnoreCase);
 
@@ -30,6 +31,8 @@ public sealed record Release(string Version, string Date, List<ChangeSection> Se
 // Lê o CHANGELOG.md (formato Keep a Changelog), que é a única fonte das novidades: o arquivo vai dentro do plugin.
 public static partial class ChangelogDoc
 {
+    public const string BigMark = "<!-- big -->";
+
     public static List<Release> Parse(string markdown)
     {
         var releases = new List<Release>();
@@ -41,7 +44,7 @@ public static partial class ChangelogDoc
             var line = raw.TrimEnd('\r');
             if (VersionLine().Match(line) is { Success: true } version)
             {
-                release = new Release(version.Groups["v"].Value, version.Groups["d"].Value, []);
+                release = new Release(version.Groups["v"].Value, version.Groups["d"].Value, [], line.Contains(BigMark, StringComparison.OrdinalIgnoreCase));
                 releases.Add(release);
                 section = null;
             }
