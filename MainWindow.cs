@@ -489,18 +489,22 @@ public class MainWindow : ThemedWindow
             return;
 
         UiKit.Heading(FontAwesomeIcon.ChartLine, L.Profit);
-        using (var weeks = UiKit.Table("##weeks", L.ColWeek, L.ColGil, L.ColVoyages))
+        // Semanas da mais antiga para a mais nova; a variação é contra a linha de cima.
+        using (var weeks = UiKit.Table("##weeks", L.ColWeek, L.ColGil, L.ColChange, L.ColVoyages, L.ColPerVoyage))
         {
             if (weeks != null)
             {
-                var best = profit.Weeks.Max(w => w.Gil);
+                RemoteWeek? previous = null;
                 foreach (var week in profit.Weeks)
                 {
                     ImGui.TableNextRow();
                     UiKit.Cell($"{Day(week.From)} – {Day(week.To)}");
-                    ImGui.TableNextColumn();
-                    UiKit.Bar(best > 0 ? week.Gil / (float)best : 0, $"{week.Gil:N0}", UiKit.Good);
+                    UiKit.Cell($"{week.Gil:N0}");
+                    var (change, color) = Change(previous?.Gil, week.Gil);
+                    UiKit.Cell(change, color);
                     UiKit.Cell($"{week.Voyages}");
+                    UiKit.Cell(week.Voyages > 0 ? $"{week.Gil / week.Voyages:N0}" : "-", UiKit.Muted);
+                    previous = week;
                 }
             }
         }
@@ -522,6 +526,21 @@ public class MainWindow : ThemedWindow
         }
 
         ImGui.Spacing();
+    }
+
+    // +12% em verde, -5% em vermelho (a fonte do Dalamud não garante ▲▼). Sem semana anterior ou sem gil nela, um traço.
+    private static (string Text, Vector4? Color) Change(long? before, long now)
+    {
+        if (before is not > 0)
+            return ("-", UiKit.Muted);
+
+        var percent = (now - before.Value) * 100.0 / before.Value;
+        return percent switch
+        {
+            >= 0.5 => ($"+{percent:0}%", UiKit.Good),
+            <= -0.5 => ($"-{-percent:0}%", UiKit.Bad),
+            _ => ("0%", UiKit.Muted),
+        };
     }
 
     // "2026-11-23" vira "23/11".

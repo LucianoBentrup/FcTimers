@@ -117,6 +117,7 @@ public static class L
     public static string StOffline => T("Sem conexão com o serviço", "Can't reach the service");
     public static string StOff => T("Desligado", "Off");
     public static string StConnected => T("Conectado", "Connected");
+    public static string ColChange => T("vs. anterior", "vs. previous");
     public static string WhatsNew => T("Novidades", "What's new");
     public static string Airships => T("Airships", "Airships");
     public static string ColAirship => T("Airship", "Airship");
