@@ -20,7 +20,6 @@ public static class L
     public static string Idle => T("parado", "idle");
     public static string Ready => T("pronto", "ready");
     public static string Wear(string percent) => T($"peças {percent}", $"parts {percent}");
-    public static string NeedsRepair => T("precisa de reparo", "needs repair");
     public static string SetupLine(string build, string route, int tanks) => T($"{build} · {route} · {tanks} tanques por viagem", $"{build} · {route} · {tanks} tanks per voyage");
     public static string Supplies => T("Estoque", "Supplies");
     public static string LootToday => T("Loot de hoje", "Today's loot");
@@ -48,7 +47,6 @@ public static class L
     public static string SendLogInactive => T("Só um personagem ativo envia o log. Ative este personagem nas configurações.", "Only an enabled character sends the log. Enable this character in the settings.");
     public static string ReplayWelcome => T("Testar boas-vindas", "Test welcome");
     public static string DevOnly => T("Só aparece na versão de dev.", "Only shown in the dev build.");
-    public static string ColSub => T("Sub", "Sub");
     public static string Airships => T("Airships", "Airships");
     public static string ColAirship => T("Airship", "Airship");
     public static string AlertAirships => T("Airship voltou", "Airship is back");
@@ -75,7 +73,6 @@ public static class L
     public static string ProfitHint => T("Últimas 4 semanas, somando o que todos os membros enviaram ao serviço.", "Last 4 weeks, adding up what every member sent to the service.");
     public static string ColRank => T("Rank", "Rank");
     public static string ColReturn => T("Volta em", "Back in");
-    public static string ColParts => T("Peças", "Parts");
     public static string ColItem => T("Item", "Item");
     public static string ColCount => T("Qtd.", "Qty");
     public static string ColGil => T("Gil", "Gil");
@@ -100,7 +97,6 @@ public static class L
     public static string Voyages(int count) => count == 1 ? T("1 viagem", "1 voyage") : T($"{count} viagens", $"{count} voyages");
     public static string DayTotal(string total, string voyages) => T($"{total} gil em {voyages}", $"{total} gil in {voyages}");
     public static string IncludesMarket(string value) => T($"inclui {value} gil de market", $"includes {value} gil from the market board");
-    public static string MarketTag => T("market", "market");
     public static string Market => T("Preços do market", "Market prices");
     public static string MarketAuto(string world) => T($"Automático ({world})", $"Automatic ({world})");
     public static string MarketHint => T("Itens que valem mais no market contam pelo preço do market (média das vendas recentes no Universalis).", "Items worth more on the market board count at the market price (average of recent sales on Universalis).");

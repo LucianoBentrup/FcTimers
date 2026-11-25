@@ -19,6 +19,9 @@ public class MainWindow : ThemedWindow
     private readonly Plugin plugin;
     private (string Key, bool Indoor)? newField;
     private string newFieldName = string.Empty;
+    private LootSummary loot = new();
+    private FcView? lootView;
+    private DateTime lootDay;
 
     public MainWindow(Plugin plugin) : base("FC Companion###FC Timers")
     {
@@ -27,6 +30,20 @@ public class MainWindow : ThemedWindow
     }
 
     public override void OnOpen() => plugin.Sync.FetchSoon();
+
+    // O resumo do loot só muda com uma visão nova ou com a virada do dia.
+    private LootSummary Loot(FcView view)
+    {
+        var today = GameTime.Today;
+        if (!ReferenceEquals(view, lootView) || today != lootDay)
+        {
+            loot = LootSummary.Build(view.Voyages, today, GameTime.PanelZone);
+            lootView = view;
+            lootDay = today;
+        }
+
+        return loot;
+    }
 
     public override void Draw()
     {
@@ -78,10 +95,11 @@ public class MainWindow : ThemedWindow
             ImGui.Spacing();
         }
 
-        using (var timeline = ImRaii.Child("##timeline", new Vector2(-1, TimelineHeight(view, now)), true))
+        var markers = Timeline.Build(view, now, Plugin.HouseLimitSeconds);
+        using (var timeline = ImRaii.Child("##timeline", new Vector2(-1, TimelineView.Height(markers)), true))
         {
             if (timeline)
-                TimelineView.Draw(view, now);
+                TimelineView.Draw(markers, now);
         }
 
         using var grid = ImRaii.Table("##cards", 2, ImGuiTableFlags.SizingStretchSame);
@@ -92,8 +110,8 @@ public class MainWindow : ThemedWindow
         var subsLines = Math.Max(1, view.Subs.Count) + (WorstCondition(view) < RepairShow ? 1 : 0)
             + (view.Airships.Count > 0 ? view.Airships.Count + 1 : 0);
         // O melhor item do dia ocupa duas linhas, por causa do ícone maior.
-        var lootLines = 3 + view.Voyages.Select(v => v.Voyage).Where(v => LootLedger.DayOf(v, GameTime.PanelZone) == GameTime.Today)
-            .Select(v => v.SubName).Distinct().Count();
+        var today = Loot(view).Today;
+        var lootLines = 3 + (today?.BySub.Count ?? 0);
         var gardenLines = Math.Clamp(view.Plots.Count(p => p.NextWaterAt != 0), 1, 4);
         var buffLines = Math.Max(Math.Max(1, view.Wheels.Count) + 1, 4);
 
@@ -102,7 +120,7 @@ public class MainWindow : ThemedWindow
         ImGui.TableNextColumn();
         UiKit.Card("##c-subs", FontAwesomeIcon.Ship, L.TabSubs, top, () => OverviewSubs(view, now));
         ImGui.TableNextColumn();
-        UiKit.Card("##c-loot", FontAwesomeIcon.Coins, L.LootToday, top, () => OverviewLoot(view));
+        UiKit.Card("##c-loot", FontAwesomeIcon.Coins, L.LootToday, top, () => OverviewLoot(today));
         ImGui.TableNextColumn();
         UiKit.Card("##c-garden", FontAwesomeIcon.Seedling, L.TabGarden, middle, () => OverviewGarden(view, now));
         ImGui.TableNextColumn();
@@ -111,16 +129,6 @@ public class MainWindow : ThemedWindow
         UiKit.Card("##c-buffs", FontAwesomeIcon.Dharmachakra, L.TabBuffs, UiKit.CardHeight(buffLines), () => OverviewBuffs(view, now));
         ImGui.TableNextColumn();
         UiKit.Card("##c-house", FontAwesomeIcon.Home, L.House, UiKit.CardHeight(buffLines), () => OverviewHouse(view, now));
-    }
-
-    // Cabeçalho, o rótulo do "agora", uma faixa por assunto e a linha das horas.
-    private static float TimelineHeight(FcView view, long now)
-    {
-        var lanes = Timeline.Lanes(Timeline.Build(view, now, Plugin.HouseLimitSeconds)).Count;
-        var style = ImGui.GetStyle();
-        var line = ImGui.GetTextLineHeight();
-        var body = lanes == 0 ? line : line + (lanes * 24 * Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale) + line + 4;
-        return (style.WindowPadding.Y * 2) + line + style.ItemSpacing.Y + body + 4;
     }
 
     // Primeira vez: três passos com o que falta, e um botão para cada um.
@@ -231,31 +239,27 @@ public class MainWindow : ThemedWindow
         UiKit.Tooltip(plugin.Config.FcHouse.Length == 0 ? L.HouseMarkHint : L.HouseMarkReplace);
     }
 
-    private static void OverviewLoot(FcView view)
+    private static void OverviewLoot(LootDay? today)
     {
-        var today = GameTime.Today;
-        var voyages = view.Voyages.Select(v => v.Voyage).Where(v => LootLedger.DayOf(v, GameTime.PanelZone) == today).ToList();
-        if (voyages.Count == 0)
+        if (today == null)
         {
             UiKit.Empty(FontAwesomeIcon.InfoCircle, L.NoVoyages);
             return;
         }
 
-        ImGui.TextColored(UiKit.Good, $"{voyages.Sum(v => v.Items.Sum(i => i.Best)):N0} gil");
-        foreach (var bySub in voyages.GroupBy(v => v.SubName))
-            ImGui.TextUnformatted($"{bySub.Key}: {bySub.Sum(v => v.Items.Sum(i => i.Best)):N0}");
+        ImGui.TextColored(UiKit.Good, $"{today.Total:N0} gil");
+        foreach (var (sub, gil) in today.BySub)
+            ImGui.TextUnformatted($"{sub}: {gil:N0}");
 
         // O item que mais rendeu hoje, somando as viagens, com o ícone do jogo.
-        var best = voyages.SelectMany(v => v.Items).GroupBy(i => i.Name)
-            .Select(g => (Item: g.First(), Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Best)))
-            .OrderByDescending(i => i.Value).First();
+        var best = today.Items[0];
         ImGui.Spacing();
         var size = (ImGui.GetTextLineHeight() * 2) + ImGui.GetStyle().ItemSpacing.Y;
-        GameIcons.Item(best.Item.ItemId, size);
+        GameIcons.Item(best.ItemId, size);
         ImGui.SameLine();
         using (ImRaii.Group())
         {
-            ImGui.TextColored(Theme.Current.Brass, $"{best.Item.Name} ×{best.Count}");
+            ImGui.TextColored(Theme.Current.Brass, $"{best.Name} ×{best.Count}");
             ImGui.TextColored(UiKit.Muted, $"{L.BestItem} · {best.Value:N0} gil");
         }
     }
@@ -359,7 +363,7 @@ public class MainWindow : ThemedWindow
         OverviewSupplies(view, now);
     }
 
-    private static void DrawLoot(FcView view)
+    private void DrawLoot(FcView view)
     {
         DrawProfit(view);
         ImGui.TextColored(UiKit.Muted, L.LootTitle);
@@ -367,32 +371,19 @@ public class MainWindow : ThemedWindow
             UiKit.Empty(FontAwesomeIcon.InfoCircle, L.NoVoyages);
 
         var today = GameTime.Today;
-        var days = view.Voyages.Select(v => v.Voyage)
-            .GroupBy(v => LootLedger.DayOf(v, GameTime.PanelZone))
-            .OrderByDescending(d => d.Key)
-            .Take(7);
-
-        foreach (var day in days)
+        foreach (var day in Loot(view).Days)
         {
-            var all = day.SelectMany(v => v.Items).ToList();
-            var total = all.Sum(i => i.Best);
-            var market = all.Where(i => i.IsMarket).Sum(i => i.Best);
-            var extra = market > 0 ? $" ({L.IncludesMarket($"{market:N0}")})" : string.Empty;
-            var label = $"{day.Key:dd/MM}: {L.DayTotal($"{(market > 0 ? "~" : string.Empty)}{total:N0}", L.Voyages(day.Count()))}{extra}###{day.Key:yyyyMMdd}";
-            var flags = day.Key == today ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
+            var extra = day.Market > 0 ? $" ({L.IncludesMarket($"{day.Market:N0}")})" : string.Empty;
+            var label = $"{day.Day:dd/MM}: {L.DayTotal($"{(day.Market > 0 ? "~" : string.Empty)}{day.Total:N0}", L.Voyages(day.Voyages))}{extra}###{day.Day:yyyyMMdd}";
+            var flags = day.Day == today ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
             if (!ImGui.CollapsingHeader(label, flags))
                 continue;
 
-            using var table = UiKit.Table($"##loot{day.Key:yyyyMMdd}", L.ColItem, L.ColCount, L.ColGil);
+            using var table = UiKit.Table($"##loot{day.Day:yyyyMMdd}", L.ColItem, L.ColCount, L.ColGil);
             if (table == null)
                 continue;
 
-            var items = all
-                .GroupBy(i => i.Name)
-                .Select(g => (Name: g.Key, ItemId: g.First().ItemId, Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Best), Market: g.Any(i => i.IsMarket)))
-                .OrderByDescending(i => i.Value);
-
-            foreach (var item in items)
+            foreach (var item in day.Items)
             {
                 ImGui.TableNextRow();
                 ImGui.TableNextColumn();

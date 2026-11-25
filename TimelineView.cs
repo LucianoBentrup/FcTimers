@@ -12,10 +12,20 @@ namespace FcTimers;
 public static class TimelineView
 {
     private const float HitRadius = 8f;
+    private const float LaneHeight = 24f;
 
-    public static void Draw(FcView view, long now)
+    // Cabeçalho, o rótulo do "agora", uma faixa por assunto e a linha das horas.
+    public static float Height(List<TimelineMarker> markers)
     {
-        var markers = Timeline.Build(view, now, Plugin.HouseLimitSeconds);
+        var lanes = Timeline.Lanes(markers).Count;
+        var style = ImGui.GetStyle();
+        var line = ImGui.GetTextLineHeight();
+        var body = lanes == 0 ? line : line + (lanes * LaneHeight * ImGuiHelpers.GlobalScale) + line + 4;
+        return (style.WindowPadding.Y * 2) + line + style.ItemSpacing.Y + body + 4;
+    }
+
+    public static void Draw(List<TimelineMarker> markers, long now)
+    {
         var lanes = Timeline.Lanes(markers);
         var theme = Theme.Current;
 
@@ -40,7 +50,7 @@ public static class TimelineView
         }
 
         var scale = ImGuiHelpers.GlobalScale;
-        var laneHeight = 24 * scale;
+        var laneHeight = LaneHeight * scale;
         var axisHeight = ImGui.GetTextLineHeight() + (4 * scale);
         var nowLabel = ImGui.GetTextLineHeight();
         var labelWidth = lanes.Max(l => ImGui.CalcTextSize(LaneName(l)).X) + (12 * scale);
