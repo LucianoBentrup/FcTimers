@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using FFXIVClientStructs.FFXIV.Client.Game;
 
 namespace FcTimers;
