@@ -313,45 +313,9 @@ public class MainWindow : ThemedWindow
     private static void DrawSubs(FcView view, long now)
     {
         if (view.Subs.Count == 0)
-        {
             UiKit.Empty(FontAwesomeIcon.InfoCircle, L.NoSubs);
-        }
         else
-        {
-            // Build e rota numa linha discreta. Se os subs forem diferentes, cada um mostra a sua na dica.
-            var setups = view.Subs.Select(s => s.Details).Where(d => d != null && d.Build.Length > 0)
-                .Select(d => L.SetupLine(d!.Build, d.Route, d.TanksPerVoyage)).Distinct().ToList();
-            if (setups.Count == 1)
-                ImGui.TextColored(UiKit.Muted, setups[0]);
-
-            using var table = UiKit.Table("##subs", L.ColSub, L.ColReturn, L.ColRank, L.ColParts);
-            if (table != null)
-            {
-                foreach (var sub in view.Subs.OrderBy(s => s.ReturnTime))
-                {
-                    var details = sub.Details;
-                    ImGui.TableNextRow();
-                    UiKit.Cell(sub.Name);
-                    if (setups.Count > 1 && details != null)
-                        UiKit.Tooltip(L.SetupLine(details.Build, details.Route, details.TanksPerVoyage));
-
-                    UiKit.Cell(sub.ReturnTime == 0 ? L.Idle : Plugin.FormatRemaining(sub.ReturnTime - now), sub.ReturnTime == 0 ? null : UiKit.TimeColor(sub.ReturnTime, now));
-                    UiKit.TimeTooltip(sub.ReturnTime);
-
-                    ImGui.TableNextColumn();
-                    if (details != null)
-                        UiKit.Bar(details.ExpPercent / 100f, $"R{details.Rank} · {details.ExpPercent}%", UiKit.Muted);
-                    else
-                        ImGui.TextUnformatted("-");
-
-                    ImGui.TableNextColumn();
-                    if (details?.Condition is { } condition)
-                        UiKit.Bar((float)(condition / 100), $"{Math.Floor(condition)}%", condition < RepairLow ? UiKit.Bad : condition < RepairShow ? UiKit.Soon : UiKit.Good);
-                    else
-                        ImGui.TextUnformatted("-");
-                }
-            }
-        }
+            SubCards.Draw(view.Subs, now, RepairShow, RepairLow);
 
         if (view.Airships.Count > 0)
         {
