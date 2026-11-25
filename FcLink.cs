@@ -56,7 +56,19 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
     public bool Busy { get; private set; }
 
     // Mensagem do último passo, para a tela mostrar ("Código não encontrado", "Ligado!"...).
-    public string Status { get; private set; } = string.Empty;
+    public string Status
+    {
+        get => DateTime.UtcNow - statusAt < StatusShown ? status : string.Empty;
+        private set
+        {
+            status = value;
+            statusAt = DateTime.UtcNow;
+        }
+    }
+
+    private static readonly TimeSpan StatusShown = TimeSpan.FromSeconds(10);
+    private string status = string.Empty;
+    private DateTime statusAt;
 
     // Resultado do /link/check, esperando o "sim" na tela.
     public Check? Checked => pending;
@@ -197,8 +209,14 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
     // TESTE: cria um pedido falso para a aba Gerenciar. O serviço só aceita com TEST_TOOLS ligado.
     public void TestRequest() => Run(async () =>
     {
-        var (status, _) = await Post<AccountReply>("/link/test-request", new { }, config.ServiceKey);
-        Status = status == HttpStatusCode.OK ? "Pedido de teste criado." : L.LinkFailed((int)status);
+        if (!Linked)
+        {
+            Status = L.TestNeedsLink;
+            return;
+        }
+
+        var (code, _) = await Post<AccountReply>("/link/test-request", new { }, config.ServiceKey);
+        Status = code == HttpStatusCode.OK ? L.TestRequestMade : code == HttpStatusCode.NotFound ? L.TestNeedsManager : L.LinkFailed((int)code);
         nextMe = DateTime.MinValue;
     });
 

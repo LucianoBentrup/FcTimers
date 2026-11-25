@@ -118,6 +118,9 @@ public static class L
     public static string StOff => T("Desligado", "Off");
     public static string StConnected => T("Conectado", "Connected");
     public static string ColChange => T("vs. anterior", "vs. previous");
+    public static string TestNeedsLink => T("Ligue o plugin à FC pelo código primeiro.", "Link the plugin to the FC with the code first.");
+    public static string TestNeedsManager => T("Só o dono ou um admin da FC.", "FC owner or admin only.");
+    public static string TestRequestMade => T("Pedido de teste criado.", "Test request created.");
     public static string WhatsNew => T("Novidades", "What's new");
     public static string Airships => T("Airships", "Airships");
     public static string ColAirship => T("Airship", "Airship");
@@ -132,7 +135,7 @@ public static class L
     public static string HouseVisited(string ago) => T($"Última visita há {ago}", $"Last visit {ago} ago");
     public static string HouseBy(string name) => T($"por {name}", $"by {name}");
     public static string HouseDemolish(string time) => T($"Vai ser derrubada em {time} sem visita", $"Will be demolished in {time} without a visit");
-    public static string HouseWarning(int days) => T($"Ninguém entra na casa da FC há {days} dias. Ela é derrubada aos 45!", $"Nobody has been in the FC house for {days} days. It gets demolished at 45!");
+    public static string HouseWarning(int days) => T($"Casa da FC sem visita há {days} dias.", $"FC house not visited in {days} days.");
     public static string EndsAround(string date) => T($"acabam por volta de {date}", $"run out around {date}");
     public static string Profit => T("Lucro (submarinos e airships)", "Profit (submarines and airships)");
     public static string ColWeek => T("Semana", "Week");

@@ -110,7 +110,7 @@ public class MainWindow : ThemedWindow
         // TESTE: tirar depois da fase de testes.
         if (TestTools.Enabled && plugin.IsDevBuild)
         {
-            using var tab = ImRaii.TabItem("Teste###test");
+            using var tab = ImRaii.TabItem($"{(L.English ? "Test" : "Teste")}###test");
             if (tab)
             {
                 UiKit.ActiveTabLine();
