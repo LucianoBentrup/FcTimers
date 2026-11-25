@@ -107,6 +107,7 @@ public sealed partial class Plugin : IDalamudPlugin
         Migrate();
         L.English = LanguageCode == "en";
         GameIcons.Init(Textures, DataManager);
+        Fonts.Init(PluginInterface.UiBuilder);
 
         Diagnostics = new DiagnosticLog(
             System.IO.Path.Combine(PluginInterface.GetPluginConfigDirectory(), "diagnostico.txt"),
@@ -184,6 +185,7 @@ public sealed partial class Plugin : IDalamudPlugin
         CommandManager.RemoveHandler(Command);
         dtrEntry.Remove();
         windowSystem.RemoveAllWindows();
+        Fonts.Dispose();
 
         // Fechando o jogo logo depois de uma coleta: o log que ainda não foi enviado vai agora, esperando no máximo 3 segundos.
         if (autoLogAt != DateTime.MaxValue && Diagnostics.Written != uploadedLines && CanSendLog)

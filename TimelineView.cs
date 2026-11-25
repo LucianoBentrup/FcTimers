@@ -23,7 +23,7 @@ public static class TimelineView
         var style = ImGui.GetStyle();
         var line = ImGui.GetTextLineHeight();
         var body = lanes == 0 ? line : line + (lanes * LaneHeight * ImGuiHelpers.GlobalScale) + line + 4;
-        return (style.WindowPadding.Y * 2) + line + style.ItemSpacing.Y + body + 4;
+        return (style.WindowPadding.Y * 2) + line + style.ItemSpacing.Y + body + 12;
     }
 
     // days: 1, 3 ou 7. setDays troca o período e grava na config.
@@ -34,7 +34,8 @@ public static class TimelineView
         var window = days * Timeline.DaySeconds;
         var end = now + window;
 
-        ImGui.TextUnformatted(L.NextPeriod(days));
+        using (Fonts.Heading())
+            ImGui.TextUnformatted(L.NextPeriod(days));
         var ready = markers.Count(m => m.Ready);
         if (ready > 0)
         {

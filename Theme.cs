@@ -75,10 +75,30 @@ public sealed record Theme
     public static Vector4 Fade(Vector4 color, float alpha) => color with { W = color.W * alpha };
 
     // Aplica o tema só na janela que está sendo desenhada. O estilo global do Dalamud não muda.
-    public IDisposable Push()
+    public IDisposable Push() => new Pushed(Colors(), Style());
+
+    private static IDisposable Style()
     {
-        return ImRaii.PushColor(ImGuiCol.WindowBg, Panel)
-            .Push(ImGuiCol.ChildBg, Card)
+        var scale = Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale;
+        return ImRaii.PushStyle(ImGuiStyleVar.WindowRounding, 6 * scale)
+            .Push(ImGuiStyleVar.ChildRounding, 5 * scale)
+            .Push(ImGuiStyleVar.FrameRounding, 4 * scale)
+            .Push(ImGuiStyleVar.PopupRounding, 5 * scale)
+            .Push(ImGuiStyleVar.TabRounding, 4 * scale)
+            .Push(ImGuiStyleVar.GrabRounding, 4 * scale)
+            .Push(ImGuiStyleVar.ScrollbarRounding, 6 * scale)
+            .Push(ImGuiStyleVar.WindowPadding, new Vector2(14, 12) * scale)
+            .Push(ImGuiStyleVar.FramePadding, new Vector2(10, 5) * scale)
+            .Push(ImGuiStyleVar.ItemSpacing, new Vector2(8, 7) * scale)
+            .Push(ImGuiStyleVar.CellPadding, new Vector2(8, 5) * scale)
+            .Push(ImGuiStyleVar.ChildBorderSize, 1f)
+            .Push(ImGuiStyleVar.WindowBorderSize, 1f);
+    }
+
+    private IDisposable Colors()
+    {
+        return ImRaii.PushColor(ImGuiCol.WindowBg, Card)
+            .Push(ImGuiCol.ChildBg, Panel)
             .Push(ImGuiCol.PopupBg, Panel)
             .Push(ImGuiCol.Border, Line)
             .Push(ImGuiCol.Text, Ink)
@@ -97,9 +117,9 @@ public sealed record Theme
             .Push(ImGuiCol.HeaderActive, AccentHover)
             .Push(ImGuiCol.Tab, Panel)
             .Push(ImGuiCol.TabHovered, ButtonHover)
-            .Push(ImGuiCol.TabActive, AccentDeep)
+            .Push(ImGuiCol.TabActive, Card)
             .Push(ImGuiCol.TabUnfocused, Panel)
-            .Push(ImGuiCol.TabUnfocusedActive, AccentDeep)
+            .Push(ImGuiCol.TabUnfocusedActive, Card)
             .Push(ImGuiCol.Separator, Line)
             .Push(ImGuiCol.TableHeaderBg, Raised)
             .Push(ImGuiCol.TableBorderLight, Line)
@@ -110,6 +130,15 @@ public sealed record Theme
             .Push(ImGuiCol.SliderGrabActive, Accent)
             .Push(ImGuiCol.ScrollbarGrab, Raised)
             .Push(ImGuiCol.PlotHistogram, Accent);
+    }
+
+    private sealed class Pushed(IDisposable colors, IDisposable style) : IDisposable
+    {
+        public void Dispose()
+        {
+            style.Dispose();
+            colors.Dispose();
+        }
     }
 }
 

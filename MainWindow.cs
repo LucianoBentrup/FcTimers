@@ -61,31 +61,46 @@ public class MainWindow : ThemedWindow
         using (var tab = ImRaii.TabItem($"{L.TabOverview}###overview"))
         {
             if (tab)
+            {
+                UiKit.ActiveTabLine();
                 DrawOverview(view, now);
+            }
         }
 
         using (var tab = ImRaii.TabItem($"{L.TabSubs}###subs"))
         {
             if (tab)
+            {
+                UiKit.ActiveTabLine();
                 DrawSubs(view, now);
+            }
         }
 
         using (var tab = ImRaii.TabItem($"{L.TabLoot}###loot"))
         {
             if (tab)
+            {
+                UiKit.ActiveTabLine();
                 DrawLoot(view);
+            }
         }
 
         using (var tab = ImRaii.TabItem($"{L.TabBuffs}###buffs"))
         {
             if (tab)
+            {
+                UiKit.ActiveTabLine();
                 DrawBuffs(view, now);
+            }
         }
 
         using (var tab = ImRaii.TabItem($"{L.TabGarden}###garden"))
         {
             if (tab)
+            {
+                UiKit.ActiveTabLine();
                 DrawGarden(plugin.Config, view, now);
+            }
         }
     }
 
@@ -152,13 +167,13 @@ public class MainWindow : ThemedWindow
         ImGui.TableNextColumn();
         UiKit.Card("##c-subs", FontAwesomeIcon.Ship, L.TabSubs, top, () => OverviewSubs(view, now));
         ImGui.TableNextColumn();
-        UiKit.Card("##c-loot", FontAwesomeIcon.Coins, L.LootToday, top, () => OverviewLoot(today));
+        UiKit.Card("##c-loot", FontAwesomeIcon.Coins, L.LootToday, top, () => OverviewLoot(today), Theme.Current.Brass);
         ImGui.TableNextColumn();
-        UiKit.Card("##c-garden", FontAwesomeIcon.Seedling, L.TabGarden, middle, () => OverviewGarden(view, now));
+        UiKit.Card("##c-garden", FontAwesomeIcon.Seedling, L.TabGarden, middle, () => OverviewGarden(view, now), Theme.Current.Leaf);
         ImGui.TableNextColumn();
-        UiKit.Card("##c-stock", FontAwesomeIcon.GasPump, L.Supplies, middle, () => OverviewSupplies(view, now));
+        UiKit.Card("##c-stock", FontAwesomeIcon.GasPump, L.Supplies, middle, () => OverviewSupplies(view, now), Theme.Current.Sky);
         ImGui.TableNextColumn();
-        UiKit.Card("##c-buffs", FontAwesomeIcon.Dharmachakra, L.TabBuffs, UiKit.CardHeight(buffLines), () => OverviewBuffs(view, now));
+        UiKit.Card("##c-buffs", FontAwesomeIcon.Dharmachakra, L.TabBuffs, UiKit.CardHeight(buffLines), () => OverviewBuffs(view, now), Theme.Current.Brass);
         ImGui.TableNextColumn();
         UiKit.Card("##c-house", FontAwesomeIcon.Home, L.House, UiKit.CardHeight(buffLines), () => OverviewHouse(view, now));
     }

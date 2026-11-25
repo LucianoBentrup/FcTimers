@@ -42,7 +42,7 @@ public static partial class SubCards
         var gap = 5 * scale;
         var partSize = Math.Min(40 * scale, (inner - (3 * gap)) / 4);
         var line = ImGui.GetTextLineHeightWithSpacing();
-        var height = (style.WindowPadding.Y * 2) + (4 * line) + partSize + (8 * scale) + style.ItemSpacing.Y;
+        var height = (style.WindowPadding.Y * 2) + (4 * line) + partSize + (22 * scale) + style.ItemSpacing.Y;
 
         var ready = sub.ReturnTime > 0 && sub.ReturnTime <= now;
         using var border = ImRaii.PushColor(ImGuiCol.Border, Theme.Good, ready);
@@ -53,7 +53,8 @@ public static partial class SubCards
         var details = sub.Details;
 
         // Nome e rank.
-        ImGui.TextUnformatted(sub.Name);
+        using (Fonts.Heading())
+            ImGui.TextUnformatted(sub.Name);
         if (details is { Rank: > 0 })
         {
             var rank = $"R{details.Rank}";
@@ -64,7 +65,8 @@ public static partial class SubCards
 
         // Volta: o tempo na cor do estado e o horário à direita.
         var state = UiKit.ReturnState(sub.ReturnTime, now);
-        UiKit.Text(state, sub.ReturnTime == 0 ? theme.Muted : UiKit.TimeColor(sub.ReturnTime, now));
+        using (Fonts.Big())
+            UiKit.Text(state, sub.ReturnTime == 0 ? theme.Muted : UiKit.TimeColor(sub.ReturnTime, now));
         if (sub.ReturnTime > 0)
         {
             var at = L.AtTime(UiKit.LocalTime(sub.ReturnTime, "HH:mm"));

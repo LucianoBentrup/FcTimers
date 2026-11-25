@@ -44,11 +44,24 @@ public static class UiKit
         ImGui.SameLine();
     }
 
-    public static void Heading(FontAwesomeIcon icon, string text)
+    // Título de seção: ícone na cor do assunto, texto maior e uma linha fina embaixo.
+    public static void Heading(FontAwesomeIcon icon, string text, Vector4? color = null)
     {
-        Icon(icon, Muted);
-        ImGui.TextUnformatted(text);
-        ImGui.Separator();
+        ImGui.Spacing();
+        Icon(icon, color ?? Accent);
+        using (Fonts.Heading())
+            ImGui.TextUnformatted(text);
+        var min = ImGui.GetCursorScreenPos();
+        ImGui.GetWindowDrawList().AddLine(min, min with { X = min.X + ImGui.GetContentRegionAvail().X }, ImGui.GetColorU32(Theme.Current.Line));
+        ImGui.Dummy(new Vector2(1, 3));
+    }
+
+    // Linha da cor da marca em cima da aba aberta, como no protótipo.
+    public static void ActiveTabLine()
+    {
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        ImGui.GetWindowDrawList().AddRectFilled(min, new Vector2(max.X, min.Y + 2), ImGui.GetColorU32(Accent));
     }
 
     // Texto cinza com ícone, para quando ainda não há dados: diz o que fazer.
@@ -100,18 +113,20 @@ public static class UiKit
     }
 
     // Altura de um cartão para caber o título e tantas linhas de conteúdo, mais uma folga.
+    // O título do card usa a fonte maior, então ganha uns pixels a mais que uma linha comum.
     public static float CardHeight(int lines)
-        => (ImGui.GetStyle().WindowPadding.Y * 2) + ((lines + 1) * ImGui.GetTextLineHeightWithSpacing()) + ImGui.GetStyle().ItemSpacing.Y + 6;
+        => (ImGui.GetStyle().WindowPadding.Y * 2) + ((lines + 1) * ImGui.GetTextLineHeightWithSpacing()) + ImGui.GetStyle().ItemSpacing.Y + 12;
 
     // Cartão com borda e título, como os da Visão geral.
-    public static void Card(string id, FontAwesomeIcon icon, string title, float height, Action content)
+    public static void Card(string id, FontAwesomeIcon icon, string title, float height, Action content, Vector4? color = null)
     {
         using var child = ImRaii.Child(id, new Vector2(-1, height), true);
         if (!child)
             return;
 
-        Icon(icon, Muted);
-        ImGui.TextColored(Muted, title);
+        Icon(icon, color ?? Accent);
+        using (Fonts.Heading())
+            ImGui.TextUnformatted(title);
         ImGui.Spacing();
         content();
     }
