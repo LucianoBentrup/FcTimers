@@ -20,6 +20,7 @@
     <Compile Include="../../ChangelogDoc.cs" Link="Plugin/ChangelogDoc.cs" />
     <Compile Include="../../FcIdentity.cs" Link="Plugin/FcIdentity.cs" />
     <None Include="../../CHANGELOG.md" Link="CHANGELOG.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../CHANGELOG.pt.md" Link="CHANGELOG.pt.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

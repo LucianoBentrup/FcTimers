@@ -11,5 +11,6 @@
   <ItemGroup>
     <!-- Única fonte das novidades: a janela "What's new" lê este arquivo. -->
     <EmbeddedResource Include="CHANGELOG.md" LogicalName="FcTimers.CHANGELOG.md" />
+    <EmbeddedResource Include="CHANGELOG.pt.md" LogicalName="FcTimers.CHANGELOG.pt.md" />
   </ItemGroup>
 </Project>

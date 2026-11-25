@@ -11,16 +11,18 @@ using Dalamud.Interface.Windowing;
 
 namespace FcTimers;
 
-// As novidades vêm do CHANGELOG.md, que vai dentro do plugin. O texto fica em inglês, como no arquivo.
+// As novidades vêm do CHANGELOG.md (inglês) e do CHANGELOG.pt.md (português), que vão dentro do plugin.
+// A janela segue o idioma do plugin.
 public static class Changelog
 {
-    private static List<Release>? releases;
+    private static List<Release>? english;
+    private static List<Release>? portuguese;
 
-    public static List<Release> Releases => releases ??= Load();
+    public static List<Release> Releases => L.English ? english ??= Load("FcTimers.CHANGELOG.md") : portuguese ??= Load("FcTimers.CHANGELOG.pt.md");
 
-    private static List<Release> Load()
+    private static List<Release> Load(string name)
     {
-        using var stream = typeof(Changelog).Assembly.GetManifestResourceStream("FcTimers.CHANGELOG.md");
+        using var stream = typeof(Changelog).Assembly.GetManifestResourceStream(name);
         if (stream == null)
             return [];
 
@@ -54,12 +56,23 @@ public sealed class ChangelogWindow : ThemedWindow
         ("look", FontAwesomeIcon.Palette),
         ("sync", FontAwesomeIcon.Sync),
         ("english", FontAwesomeIcon.Language),
+        ("submarino", FontAwesomeIcon.Ship),
+        ("casa", FontAwesomeIcon.Home),
+        ("estoque", FontAwesomeIcon.GasPump),
+        ("lucro", FontAwesomeIcon.ChartLine),
+        ("ícone", FontAwesomeIcon.Gem),
+        ("campo", FontAwesomeIcon.Seedling),
+        ("rega", FontAwesomeIcon.Seedling),
+        ("linha do tempo", FontAwesomeIcon.Stream),
+        ("visual", FontAwesomeIcon.Palette),
+        ("novidades", FontAwesomeIcon.Star),
+        ("ko-fi", FontAwesomeIcon.Coffee),
     ];
 
     private readonly bool isDev;
-    private List<Release> fresh = [];
+    private string? lastSeen;
 
-    public ChangelogWindow(bool isDev) : base("FC Companion - What's new###FcTimersChangelog")
+    public ChangelogWindow(bool isDev) : base("FC Companion###FcTimersChangelog")
     {
         this.isDev = isDev;
         Size = new Vector2(640, 560);
@@ -68,17 +81,13 @@ public sealed class ChangelogWindow : ThemedWindow
     }
 
     // lastSeen: a versão que a pessoa tinha antes. Vazio mostra só a versão mais recente.
-    public void Show(string? lastSeen)
+    public void Show(string? seen)
     {
-        fresh = ChangelogDoc.NewSince(Changelog.Releases, lastSeen);
+        lastSeen = seen;
         IsOpen = true;
     }
 
-    public override void OnOpen()
-    {
-        if (fresh.Count == 0)
-            fresh = ChangelogDoc.NewSince(Changelog.Releases, null);
-    }
+    public override void OnClose() => lastSeen = null;
 
     public override void Draw()
     {
@@ -90,7 +99,7 @@ public sealed class ChangelogWindow : ThemedWindow
         }
 
         ImGui.Separator();
-        if (ImGui.Button("Close"))
+        if (ImGui.Button(L.Close))
             IsOpen = false;
 
         // Apoio no canto direito do rodapé, longe do Close.
@@ -106,9 +115,12 @@ public sealed class ChangelogWindow : ThemedWindow
         var theme = Theme.Current;
         if (Changelog.Releases.Count == 0)
         {
-            ImGui.TextColored(theme.Muted, "The list of changes could not be read.");
+            ImGui.TextColored(theme.Muted, L.ChangesUnreadable);
             return;
         }
+
+        // Calculado a cada frame porque a lista muda com o idioma. São poucas versões.
+        var fresh = ChangelogDoc.NewSince(Changelog.Releases, lastSeen);
 
         foreach (var release in fresh)
         {
@@ -125,7 +137,7 @@ public sealed class ChangelogWindow : ThemedWindow
         if (older.Count == 0)
             return;
 
-        ImGui.TextColored(theme.Muted, "Earlier versions");
+        ImGui.TextColored(theme.Muted, L.EarlierVersions);
         foreach (var release in older)
         {
             var date = Date(release.Date);
@@ -144,7 +156,7 @@ public sealed class ChangelogWindow : ThemedWindow
         using (ImRaii.PushFont(UiBuilder.IconFont))
             ImGui.TextColored(theme.Accent, FontAwesomeIcon.Star.ToIconString());
         ImGui.SameLine();
-        ImGui.TextUnformatted($"What's new in {release.Version}");
+        ImGui.TextUnformatted(release.IsUnreleased ? L.WhatsNewNext : L.WhatsNewIn(release.Version));
         var date = Date(release.Date);
         if (date.Length > 0)
         {
@@ -244,8 +256,14 @@ public sealed class ChangelogWindow : ThemedWindow
             {
                 ImGui.TextColored(TypeColor(section.Type), "·");
                 ImGui.SameLine();
-                var text = entry.Title.Length > 0 ? $"{entry.Title}: {entry.Text}" : entry.Text;
-                ImGui.TextWrapped(ChangelogDoc.Plain(text));
+                if (entry.Title.Length > 0)
+                {
+                    ImGui.TextColored(Theme.Current.Ink, entry.Title);
+                    ImGui.SameLine();
+                }
+
+                using (ImRaii.PushColor(ImGuiCol.Text, Theme.Current.Muted))
+                    ImGui.TextWrapped(ChangelogDoc.Plain(entry.Text));
             }
         }
     }
@@ -261,11 +279,11 @@ public sealed class ChangelogWindow : ThemedWindow
 
     private static string TypeName(ChangeType type) => type switch
     {
-        ChangeType.Added => "New",
-        ChangeType.Changed => "Changed",
-        ChangeType.Fixed => "Fixed",
-        ChangeType.Removed => "Removed",
-        _ => "Other",
+        ChangeType.Added => L.TypeAdded,
+        ChangeType.Changed => L.TypeChanged,
+        ChangeType.Fixed => L.TypeFixed,
+        ChangeType.Removed => L.TypeRemoved,
+        _ => L.TypeOther,
     };
 
     private static FontAwesomeIcon IconFor(string title)
@@ -274,6 +292,6 @@ public sealed class ChangelogWindow : ThemedWindow
     // "2026-11-23" vira "23 Nov 2026".
     private static string Date(string iso)
         => DateTime.TryParseExact(iso, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day)
-            ? day.ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)
+            ? day.ToString("d MMM yyyy", System.Globalization.CultureInfo.GetCultureInfo(L.English ? "en-US" : "pt-BR"))
             : string.Empty;
 }

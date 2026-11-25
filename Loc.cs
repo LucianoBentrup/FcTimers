@@ -49,6 +49,16 @@ public static class L
     public static string SupportKofi => T("Apoiar no Ko-fi", "Support on Ko-fi");
     public static string SupportHint => T("Abre o Ko-fi no navegador. O apoio ajuda a pagar o serviço do Discord, e tudo no plugin continua grátis.", "Opens Ko-fi in your browser. Support helps pay for the Discord service, and everything in the plugin stays free.");
     public static string SupportNotSet => T("O link do Ko-fi ainda não foi colocado (Support.KofiUrl).", "The Ko-fi link is not set yet (Support.KofiUrl).");
+    public static string WhatsNewIn(string version) => T($"Novidades da {version}", $"What's new in {version}");
+    public static string WhatsNewNext => T("Novidades da próxima versão", "What's new in the next version");
+    public static string EarlierVersions => T("Versões anteriores", "Earlier versions");
+    public static string ChangesUnreadable => T("Não deu para ler a lista de novidades.", "The list of changes could not be read.");
+    public static string Close => T("Fechar", "Close");
+    public static string TypeAdded => T("Novo", "New");
+    public static string TypeChanged => T("Mudou", "Changed");
+    public static string TypeFixed => T("Corrigido", "Fixed");
+    public static string TypeRemoved => T("Removido", "Removed");
+    public static string TypeOther => T("Outro", "Other");
     public static string WhatsNew => T("Novidades", "What's new");
     public static string DevOnly => T("Só aparece na versão de dev.", "Only shown in the dev build.");
     public static string Airships => T("Airships", "Airships");
