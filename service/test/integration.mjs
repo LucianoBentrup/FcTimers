@@ -424,7 +424,7 @@ try {
   assert.match(cancelled.data.embeds[0].title, /cancelado/);
   await waitFor(() => calls.slice(cancelling).some((c) => c.url === '/api/v10/channels/500/messages' && /foi cancelado/.test(c.body?.content ?? '')), 'aviso do cancelamento');
   const late = await (await interaction(person('1003', `fc:ev:${eventId}:dps`))).json();
-  assert.match(late.data.content, /já fechou/);
+  assert.match(late.data.content, /já fecharam/);
   const afterCancel = await (await fetch(`${service}/state`, { headers: auth })).json();
   assert.deepEqual(afterCancel.events, []);
   ok('cancelar o evento avisa e fecha as inscrições');
