@@ -37,6 +37,8 @@ public sealed class ChangelogWindow : ThemedWindow
 {
     private const float CardMinWidth = 260;
     private static readonly Vector2 CardPadding = new(12, 10);
+    private const float Gutter = 10;
+    private const float ContentIndent = 12;
 
     private static readonly (string Word, FontAwesomeIcon Icon)[] Icons =
     [
@@ -122,13 +124,21 @@ public sealed class ChangelogWindow : ThemedWindow
         // Calculado a cada frame porque a lista muda com o idioma. São poucas versões.
         var fresh = ChangelogDoc.NewSince(Changelog.Releases, lastSeen);
 
+        // O corpo não tem margem própria: tudo ganha a mesma margem, e o conteúdo de cada versão,
+        // atual ou antiga, o mesmo recuo embaixo do título dela.
+        var scale = ImGuiHelpers.GlobalScale;
+        using var gutter = ImRaii.PushIndent(Gutter * scale);
         foreach (var release in fresh)
         {
             Header(release);
-            // Versão comum: lista curta por tipo. Versão grande: os destaques em cards e o resto em lista.
-            if (release.Big)
-                Highlights(release);
-            Lists(release, !release.Big);
+            using (ImRaii.PushIndent(ContentIndent * scale))
+            {
+                // Versão comum: lista curta por tipo. Versão grande: os destaques em cards e o resto em lista.
+                if (release.Big)
+                    Highlights(release);
+                Lists(release, !release.Big);
+            }
+
             ImGui.Spacing();
             ImGui.Spacing();
         }
@@ -144,7 +154,7 @@ public sealed class ChangelogWindow : ThemedWindow
             if (!ImGui.CollapsingHeader($"{release.Version}{(date.Length > 0 ? $"   {date}" : string.Empty)}###v{release.Version}"))
                 continue;
 
-            using (ImRaii.PushIndent(8 * ImGuiHelpers.GlobalScale))
+            using (ImRaii.PushIndent(ContentIndent * scale))
                 Lists(release, true);
             ImGui.Spacing();
         }
