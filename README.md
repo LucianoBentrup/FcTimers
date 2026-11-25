@@ -1,6 +1,9 @@
 # FC Companion
 
 [![CI](https://github.com/LucianoBentrup/FcTimers/actions/workflows/ci.yml/badge.svg)](https://github.com/LucianoBentrup/FcTimers/actions/workflows/ci.yml)
+<!-- Ko-fi: troque SEU-KOFI pelo link e tire este comentário. O mesmo link vai em SUPPORT_URL (service/src/menu.js).
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/SEU-KOFI)
+-->
 
 A Dalamud plugin for FFXIV that keeps track of your Free Company: submersibles, loot, workshop supplies, gardening and buffs. A Cloudflare service merges what each member has read and keeps a shared Discord panel, with alerts and commands.
 
@@ -34,6 +37,8 @@ The plugin **only reads what the game already shows**. It doesn't automate anyth
 - A single panel, always edited in place, with everything above and today's loot.
 - Alerts that ping the FC role: 1-hour reminder, sub ready, sub forgotten, watering, plant about to die, repair, low supplies, expensive market item, new sector and Wheel Stand buff ready. Alerts that happen together go out as one message, and all of them are deleted after 8 hours.
 - One command, `/fcc`: a menu only you see, with buttons for the panel, subs, loot (today, 7 or 30 days), supplies and profit (last 4 weeks and the best routes), and a button to post any of them in the channel. Server managers also get Manage: repost the panel, group alerts, turn the weekly summary on or off, download the plugin log and pick the menu language (English or Portuguese).
+- With the bot set up, the panel and alerts are posted by the FC Companion bot in channels picked from `/fcc` (Manage, then "Panel here" / "Alerts here"). The panel gets buttons underneath: today's loot, supplies and events.
+- FC events from `/fcc` (Events, then New event): Group content (Tank, Healer, DPS, for 4, 8 or 24 players, with a reserve that moves up on its own), Gathering and Other (Going or Maybe). Weekly repeat, reminders 1 h and/or 15 min before in the alerts channel, and by DM for members who turn DM reminders on.
 - A weekly summary every Monday at 9:00 (Brasília): last week's gil, the best sub, supplies used and how long subs sat ready.
 - The panel footer warns when Dalamud hasn't been updated yet for a new game patch.
 

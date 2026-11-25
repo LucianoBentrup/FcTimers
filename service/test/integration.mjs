@@ -34,7 +34,7 @@ const discord = createServer((req, res) => {
     const id = req.url.match(/messages\/(\d+)/)?.[1];
     if (req.method === 'DELETE') {
       messages.delete(id);
-      calls.push({ method: 'DELETE', messageId: id });
+      calls.push({ method: 'DELETE', messageId: id, url: req.url });
       res.writeHead(204).end();
       return;
     }
@@ -44,8 +44,9 @@ const discord = createServer((req, res) => {
       return;
     }
     const messageId = id ?? String(nextId++);
-    messages.set(messageId, JSON.parse(data));
-    calls.push({ method: req.method, messageId });
+    const body = JSON.parse(data);
+    messages.set(messageId, body);
+    calls.push({ method: req.method, messageId, url: req.url, auth: req.headers.authorization, body });
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ id: messageId }));
   });
 });
@@ -81,7 +82,7 @@ const discordKeys = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
 const discordPublic = Buffer.from(await crypto.subtle.exportKey('raw', discordKeys.publicKey)).toString('hex');
 writeFileSync('.dev.vars', `DISCORD_WEBHOOK=http://127.0.0.1:${DISCORD_PORT}/api/webhooks/1/abc\nFC_KEY=${KEY}\nROLE_ID=999\n`
   + `DISCORD_PUBLIC_KEY=${discordPublic}\nDISCORD_GUILD_ID=42\nDISCORD_APP_ID=7\n`
-  + `DISCORD_API=http://127.0.0.1:${DISCORD_PORT}/api/v10\n`);
+  + `DISCORD_API=http://127.0.0.1:${DISCORD_PORT}/api/v10\nDISCORD_BOT_TOKEN=bot-de-teste\n`);
 
 async function interaction(payload, sign = true) {
   const body = JSON.stringify(payload);
@@ -306,6 +307,87 @@ try {
   assert.match(legacy.data.content, /\/fcc/);
   assert.ok(legacy.data.components);
   ok('o /fcc abre o menu e os botões respondem com assinatura e permissão');
+
+  // O bot: o painel muda do webhook para um canal, com botões embaixo.
+  const inChannel = (data, channel) => ({ ...data, channel_id: channel });
+  const movedAt = calls.length;
+  const moved = await (await interaction(inChannel(click('fc:do:panel-here', '32'), '500'))).json();
+  assert.match(moved.data.content, /<#500>/);
+  await waitFor(() => calls.slice(movedAt).some((c) => c.method === 'POST' && c.url === '/api/v10/channels/500/messages'), 'painel postado pelo bot');
+  const botPanel = calls.slice(movedAt).find((c) => c.url === '/api/v10/channels/500/messages');
+  assert.equal(botPanel.auth, 'Bot bot-de-teste');
+  assert.deepEqual(botPanel.body.components[0].components.map((b) => b.custom_id), ['fc:open:loot:day', 'fc:open:supplies', 'fc:open:events']);
+  assert.ok(calls.slice(movedAt).some((c) => c.method === 'DELETE' && c.url.startsWith('/api/webhooks/')), 'o painel do webhook é apagado');
+  const fromPanel = await (await interaction(click('fc:open:supplies'))).json();
+  assert.equal(fromPanel.type, 4);
+  assert.equal(fromPanel.data.flags, 64);
+  ok('o painel sai pelo bot, com botões que abrem o /fcc');
+
+  // Eventos: canal, tipo, formulário, revisão e post.
+  const noChannel = await (await interaction(click('fc:evnew', '32'))).json();
+  assert.match(noChannel.data.content, /Eventos aqui/);
+  await interaction(inChannel(click('fc:do:events-here', '32'), '600'));
+  const blockedEvent = await (await interaction(click('fc:evnew'))).json();
+  assert.match(blockedEvent.data.content, /Só quem gerencia/);
+  assert.equal(blockedEvent.data.flags, 64);
+  const picker = await (await interaction(click('fc:evnew', '32'))).json();
+  assert.ok(customIds(picker.data).includes('fc:evnew:group'));
+  const modal = await (await interaction(click('fc:evnew:group', '32'))).json();
+  assert.equal(modal.type, 9);
+  assert.equal(modal.data.custom_id, 'fc:evm:group');
+  const submit = (fields) => ({
+    type: 5, guild_id: '42', token: 't', member: member('32'),
+    data: { custom_id: 'fc:evm:group', components: Object.entries(fields).map(([id, value]) => ({ type: 1, components: [{ type: 4, custom_id: id, value }] })) },
+  });
+  const badDate = await (await interaction(submit({ title: 'Savage', when: 'logo' }))).json();
+  assert.match(badDate.data.content, /Não entendi a data/);
+  const review = await (await interaction(submit({ title: 'Savage de terça', when: 'amanhã 21:00', field: 'M1S', desc: '' }))).json();
+  assert.equal(review.type, 7);
+  assert.match(review.data.embeds[0].title, /Savage de terça/);
+  await interaction(click('fc:evd:size:4', '32'));
+  await interaction(click('fc:evd:repeat', '32'));
+  const posting = calls.length;
+  const posted = await (await interaction(click('fc:evd:post', '32'))).json();
+  assert.match(posted.data.content, /postado em <#600>/);
+  const eventCall = calls.slice(posting).find((c) => c.method === 'POST' && c.url === '/api/v10/channels/600/messages');
+  assert.ok(eventCall, 'o evento é postado no canal dos eventos');
+  const signupIds = eventCall.body.components[0].components.map((b) => b.custom_id);
+  assert.equal(signupIds.length, 5);
+  const eventId = signupIds[0].split(':')[2];
+  ok('evento criado pelo /fcc: tipo, formulário, revisão e post pelo bot');
+
+  // Inscrição: vaga, reserva, subir da reserva com DM para quem ligou.
+  const person = (id, customId) => ({ type: 3, guild_id: '42', token: 't', member: { permissions: '0', user: { id } }, data: { custom_id: customId, component_type: 2 } });
+  const tank1 = await (await interaction(person('1001', `fc:ev:${eventId}:tank`))).json();
+  assert.equal(tank1.type, 7);
+  assert.match(tank1.data.embeds[0].fields[0].name, /Tank 1\/1/);
+  await interaction(person('1002', 'fc:pref:dm'));
+  const following = calls.length;
+  const tank2 = await (await interaction(person('1002', `fc:ev:${eventId}:tank`))).json();
+  assert.match(tank2.data.embeds[0].fields.find((f) => f.name.includes('Reserva')).value, /<@1002>/);
+  await waitFor(() => calls.slice(following).some((c) => c.url === '/api/v10/webhooks/7/t' && /reserva/.test(c.body.content)), 'aviso da reserva só para quem clicou');
+  const dming = calls.length;
+  const leave = await (await interaction(person('1001', `fc:ev:${eventId}:tank`))).json();
+  assert.match(leave.data.embeds[0].fields[0].value, /<@1002>/);
+  await waitFor(() => calls.slice(dming).some((c) => c.url === '/api/v10/users/@me/channels' && c.body.recipient_id === '1002'), 'DM para quem subiu da reserva');
+  await waitFor(() => calls.slice(dming).some((c) => /saiu da reserva/.test(c.body?.content ?? '')), 'texto da DM');
+  const myEvents = await (await interaction(person('1002', 'fc:events'))).json();
+  assert.match(myEvents.data.embeds[0].description, /Savage de terça.*Tank/);
+  ok('inscrição com reserva, subida automática e DM só para quem ligou');
+
+  // Cancelar: só quem criou ou quem gerencia. Avisa no canal quem estava inscrito.
+  const notMine = await (await interaction(person('1001', `fc:evx:${eventId}:cancel`))).json();
+  assert.match(notMine.data.content, /Só quem criou/);
+  const cancelling = calls.length;
+  const cancelled = await (await interaction(click(`fc:evx:${eventId}:cancel`, '32'))).json();
+  assert.deepEqual(cancelled.data.components, []);
+  assert.match(cancelled.data.embeds[0].title, /cancelado/);
+  await waitFor(() => calls.slice(cancelling).some((c) => c.url === '/api/v10/channels/500/messages' && /foi cancelado/.test(c.body?.content ?? '')), 'aviso do cancelamento');
+  const late = await (await interaction(person('1003', `fc:ev:${eventId}:dps`))).json();
+  assert.match(late.data.content, /já fechou/);
+  const afterCancel = await (await fetch(`${service}/state`, { headers: auth })).json();
+  assert.deepEqual(afterCancel.events, []);
+  ok('cancelar o evento avisa e fecha as inscrições');
 
   console.log(`TODOS PASSARAM (${passed})`);
   exitCode = 0;

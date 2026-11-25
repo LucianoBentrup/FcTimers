@@ -9,6 +9,8 @@ DISCORD_APP_ID = "1574112157577117718"
 DISCORD_PUBLIC_KEY = "18071ee6dcc9a0926c51f499f4ace0ec214b4c9fbf3e6a582a0e598335db5d18"
 DISCORD_GUILD_ID = "1128490333819392112"
 
+# Segredos (wrangler secret put): FC_KEY, DISCORD_WEBHOOK e, para o bot, DISCORD_BOT_TOKEN.
+
 [[durable_objects.bindings]]
 name = "FC_STATE"
 class_name = "FcState"

@@ -1,9 +1,9 @@
 [
   {
     "name": "fcc",
-    "description": "FC Companion: panel, subs, loot, supplies and server settings",
+    "description": "FC Companion: panel, subs, loot, supplies, events and server settings",
     "description_localizations": {
-      "pt-BR": "FC Companion: painel, subs, loot, estoque e ajustes do servidor"
+      "pt-BR": "FC Companion: painel, subs, loot, estoque, eventos e ajustes do servidor"
     },
     "contexts": [
       0

@@ -135,3 +135,24 @@
 - O idioma do menu é da FC (padrão português para a FC atual). Os textos das seções ainda vêm em português até a 0.14.
 - Os comandos antigos (`/subs`, `/loot`, `/estoque`, `/lucro`, `/painel`, `/avisos`, `/resumo`, `/log`) somem ao registrar o `/fcc`. Enquanto algum ainda aparecer no Discord, ele abre a seção equivalente do `/fcc`.
 - Servidor que não é o da FC recebe "ainda não está ligado a uma FC". Na 0.13 essa ligação vem do registro de FCs.
+
+## Discord: o bot
+- O painel, os avisos e o resumo semanal saem pelo bot quando há `DISCORD_BOT_TOKEN` e o canal foi escolhido no `/fcc` (Ajustes: Painel aqui, Avisos aqui). Sem isso, continuam pelo webhook.
+- Avisos sem canal próprio vão para o canal do painel. Cada aviso guarda por onde saiu, e é apagado pelo mesmo caminho.
+- Ao trocar o painel de canal (ou do webhook para o bot), o painel antigo é apagado e sai um novo.
+- O painel do bot tem 3 botões embaixo: Loot de hoje, Estoque e Eventos. Cada um abre o `/fcc` já na seção, só para quem clicou.
+- O bot não lê mensagens nem usa gateway: tudo chega por HTTP e sai pela API.
+
+## Eventos
+- Três tipos. **Conteúdo em grupo**: Tank, Healer, DPS, Reserva e Não vou, com 4 (1/1/2), 8 (2/2/4) ou 24 (3/6/15) jogadores. **Encontro** (campo Local) e **Outro** (campo O quê): Vou, Talvez e Não vou, sem limite.
+- Quem cria: quem gerencia o servidor e, se escolhido nos Ajustes, um cargo. Todo mundo se inscreve.
+- Criar: Eventos, Novo evento, o tipo, um formulário (título, data e hora, campo do tipo, descrição) e uma revisão com tamanho, repetição, onde lembrar e quando. O post vai para o canal escolhido em Eventos aqui.
+- A data é lida no fuso da FC: "ter 21:00", "amanhã 20:30", "02/12 21:00", "2026-12-02 21:00", "9pm". Data que já passou ou que não existe é recusada. No post, a hora aparece no fuso de cada membro.
+- Clicar num botão inscreve; clicar de novo no mesmo tira. Trocar de botão troca a inscrição.
+- Função cheia: a pessoa entra na reserva daquela função. "Reserva" entra na reserva de qualquer função. Quando alguém sai de uma função, sobe o primeiro da reserva que pediu essa função ou qualquer uma. Vaga que já estava livre não puxa ninguém.
+- Lembretes: 1 h antes, 15 min antes ou os dois (no máximo 2 por evento). No canal dos avisos, marcando só quem se inscreveu (Talvez também; reserva e Não vou, não). Por DM, só para quem ligou "Lembrete por DM" na seção Eventos. O lembrete é marcado antes de sair, para nunca sair repetido.
+- Quem sobe da reserva recebe DM, se ligou a DM.
+- Cancelar: quem criou ou quem gerencia. Os inscritos e a reserva são avisados como num lembrete.
+- O evento fecha 2 horas depois do início: o post perde os botões. Se repete toda semana, o da semana seguinte é postado na hora, com a lista limpa. Fechado, fica guardado 14 dias.
+- No máximo 25 eventos abertos.
+- O plugin recebe em `/state` os eventos abertos (título, tipo, hora, inscritos e vagas), sem quem se inscreveu. A ligação entre a conta do Discord e o personagem ainda não existe; tudo que depende dela fica em `service/src/link.js`.
