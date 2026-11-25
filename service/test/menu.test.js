@@ -159,12 +159,18 @@ test('Ko-fi: botão de link só com a URL preenchida, sem custom_id', () => {
   assert.ok(!buttons(panelComponents('en', '')).some((b) => b.url));
 });
 
-test('o menu é só de quem chamou e nunca marca ninguém', () => {
+test('o menu do canal é de todos, o privado é só de quem abriu, e nenhum marca ninguém', () => {
   const message = menuMessage('pt', { embed: sectionEmbed('T', 'x'), view: 'subs', manager: false, notice: 'oi' });
   assert.equal(message.flags, EPHEMERAL);
   assert.deepEqual(message.allowed_mentions, { parse: [] });
   assert.equal(message.content, 'oi');
   assert.equal(message.embeds[0].footer.text, 'Só você vê este menu.');
+  const pub = menuMessage('pt', { embed: sectionEmbed('Subs', 'x'), view: 'subs', manager: false, pub: true });
+  assert.equal(pub.flags, undefined);
+  assert.match(pub.embeds[0].footer.text, /Todo mundo aqui/);
+  const pubIds = pub.components.flatMap((r) => r.components).map((b) => b.custom_id);
+  assert.ok(pubIds.includes('fc:manage'));
+  assert.ok(!pubIds.some((id) => id.startsWith('fc:share')));
 });
 
 test('postar no canal: sem botões, sem marcar, com quem postou', () => {

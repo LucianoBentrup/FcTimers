@@ -61,17 +61,33 @@ export const InteractMethods = {
     return json(await this.interact(p));
   },
 
+  // O menu do /fcc que está no canal agora. Grava o novo e devolve o que deve ser apagado: o anterior ou, se este
+  // chegou atrasado e já existe um aberto depois dele, este mesmo.
+  async handleMenu(request) {
+    const menu = await request.json();
+    const key = `menu:${menu.channel}`;
+    const current = { id: menu.id, token: menu.token, at: menu.at, openedAt: menu.openedAt ?? 0 };
+    const previous = (await this.ctx.storage.get(key)) ?? null;
+    if (previous && (previous.openedAt ?? 0) > current.openedAt) return json(current);
+    await this.ctx.storage.put(key, current);
+    return json(previous);
+  },
+
   async interact(p) {
     const now = nowSeconds();
     const state = await this.state();
     const lang = langOf(state);
     const t = (key) => text(lang, key);
-    const menu = async (type, view, arg, notice) => ({ response: { type, data: await this.menuData(view, arg, p, notice) } });
+    const menu = async (type, view, arg, notice, pub = p.pub) => ({ response: { type, data: await this.menuData(view, arg, { ...p, pub }, notice) } });
 
     switch (p.kind) {
-      case 'command': return menu(REPLY, p.view, p.arg, p.moved ? t('moved') : undefined);
-      case 'open': return menu(REPLY, p.view, p.arg);
-      case 'view': return menu(UPDATE_MESSAGE, p.view, p.arg);
+      // O /fcc e os botões do painel abrem o menu no canal.
+      case 'command': return menu(REPLY, p.view, p.arg, p.moved ? t('moved') : undefined, true);
+      case 'open': return menu(REPLY, p.view, p.arg, undefined, true);
+      case 'view':
+        // Ajustes, clicado no menu do canal, abre numa mensagem só de quem clicou.
+        if (p.pub && p.view === 'manage') return menu(REPLY, 'manage', null, undefined, false);
+        return menu(UPDATE_MESSAGE, p.view, p.arg);
       case 'share': {
         const embed = await this.sectionEmbed(p.view, p.arg, state, now, lang, p);
         return { response: { type: REPLY, data: sharedMessage(lang, embed, p.user) } };
@@ -87,6 +103,8 @@ export const InteractMethods = {
         const pref = (await this.ctx.storage.get(key)) ?? {};
         pref.dm = !pref.dm;
         await this.ctx.storage.put(key, pref);
+        // No menu do canal, a resposta vai só pra quem clicou e o menu fica como está.
+        if (p.pub) return note(pref.dm ? t('dmNowOn') : t('dmNowOff'));
         return menu(UPDATE_MESSAGE, 'events', null, pref.dm ? t('dmNowOn') : t('dmNowOff'));
       }
       case 'evnew': return this.newEvent(p, state, lang);
@@ -105,16 +123,17 @@ export const InteractMethods = {
   },
 
   // A mensagem do menu numa seção. Ajustes só para quem gerencia; quem não gerencia cai no painel.
+  // Com p.pub, o menu do canal: nada nele depende de quem clicou.
   async menuData(view, arg, p, notice) {
     const now = nowSeconds();
     const state = await this.state();
     const lang = langOf(state);
     const settings = state.settings ?? {};
-    const shown = view === 'manage' && !p.manager ? 'panel' : view;
-    const embed = await this.sectionEmbed(shown, arg, state, now, lang, p);
-    const pref = shown === 'events' ? (await this.ctx.storage.get(`pref:${p.user}`)) ?? {} : {};
+    const shown = view === 'manage' && (!p.manager || p.pub) ? 'panel' : view;
+    const embed = await this.sectionEmbed(shown, arg, state, now, lang, p.pub ? { ...p, user: null } : p);
+    const pref = shown === 'events' && !p.pub ? (await this.ctx.storage.get(`pref:${p.user}`)) ?? {} : {};
     return menuMessage(lang, {
-      embed, notice, view: shown, arg, manager: p.manager,
+      embed, notice, view: shown, arg, manager: p.manager, pub: Boolean(p.pub),
       weeklyOff: Boolean(state.weekly?.off), eventRole: settings.eventRole ?? null,
       canCreate: canCreate(p, settings), dmOn: Boolean(pref.dm),
     });
@@ -231,11 +250,14 @@ export const InteractMethods = {
     if (!canCreate(p, settings)) return note(t('cantCreate')(settings.eventRole));
     if (!this.env.DISCORD_BOT_TOKEN || !settings.eventsChannel) {
       const notice = this.env.DISCORD_BOT_TOKEN ? t('noEventsChannel') : t('noBot');
+      if (p.pub) return note(notice);
       return { response: { type: UPDATE_MESSAGE, data: await this.menuData('events', null, p, notice) } };
     }
     if (!p.type) {
+      // Do menu do canal, a criação abre numa mensagem só de quem clicou, e segue nela até postar.
       const picker = typePicker(lang);
-      return update(screenMessage({ embeds: [picker.embed], components: picker.components }));
+      const screen = screenMessage({ embeds: [picker.embed], components: picker.components });
+      return p.pub ? { response: { type: REPLY, data: screen } } : update(screen);
     }
     const now = nowSeconds();
     const draft = newDraft(p.type, p.user);

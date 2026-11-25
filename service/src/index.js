@@ -5,7 +5,7 @@ import {
   profitReport, VOYAGE_KEEP_DAYS, weeklyDue, weeklySummary,
 } from './logic.js';
 import {
-  canManage, COMMAND, optionValue, PING, privateReply, verifyDiscord,
+  canManage, COMMAND, EPHEMERAL, optionValue, PING, privateReply, REPLY, verifyDiscord,
 } from './discord.js';
 import { eventsForPlugin, modalFields } from './events.js';
 import { InteractMethods } from './interact.js';
@@ -82,6 +82,8 @@ async function handleInteraction(request, env, ctx) {
     roles: interaction.member?.roles ?? [],
     guildId: interaction.guild_id,
     channelId: interaction.channel_id ?? interaction.channel?.id ?? null,
+    // O clique veio do menu no canal (e não de uma mensagem que só a pessoa vê).
+    pub: interaction.type !== COMMAND && Boolean(interaction.message) && !((interaction.message.flags ?? 0) & EPHEMERAL),
   };
   const stub = env.FC_STATE.get(env.FC_STATE.idFromName(fc));
   const interact = async () => (await stub.fetch('https://fc/interact', { method: 'POST', body: JSON.stringify(payload) })).json();
@@ -98,6 +100,9 @@ async function handleInteraction(request, env, ctx) {
   }
 
   const out = await interact();
+  // Um menu novo no canal toma o lugar do anterior do mesmo canal, pra não encher o canal de menus.
+  const opened = (asked.kind === 'command' || asked.kind === 'open') && out.response?.type === REPLY && !(out.response.data?.flags & EPHEMERAL);
+  if (opened && payload.channelId) ctx.waitUntil(replaceMenu(env, stub, hook, payload.channelId, interaction.token, Date.now()));
   // Uma segunda mensagem, só para quem clicou ("você está na reserva").
   if (out.followup) {
     ctx.waitUntil(fetch(hook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(out.followup) }));
@@ -111,6 +116,37 @@ async function handleInteraction(request, env, ctx) {
   }));
   form.append('files[0]', new Blob([out.file.text], { type: 'text/plain' }), out.file.name);
   return new Response(form);
+}
+
+const MENU_TOKEN_LIFE = 14 * 60;
+const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+// Depois de responder ao /fcc: descobre o id do menu novo, guarda como o menu do canal e apaga o anterior.
+// Sem o bot, o anterior só pode ser apagado pelo token dele, que vale 15 minutos. Depois disso, fica no canal.
+// `openedAt` (ms) decide qual é o mais novo quando dois /fcc chegam juntos.
+async function replaceMenu(env, stub, hook, channel, token, openedAt) {
+  const api = env.DISCORD_API ?? DISCORD_API;
+  let id = null;
+  for (let tries = 0; tries < 3 && !id; tries += 1) {
+    if (tries > 0) await wait(1000);
+    try {
+      const response = await fetch(`${hook}/messages/@original`);
+      if (response.ok) id = (await response.json()).id ?? null;
+    } catch {
+      // Tenta de novo.
+    }
+  }
+  if (!id) return;
+  const now = nowSeconds();
+  const previous = await (await stub.fetch('https://fc/menu', { method: 'POST', body: JSON.stringify({ channel, id, token, at: now, openedAt }) })).json();
+  if (!previous?.id || previous.id === id) return;
+  let removed;
+  if (env.DISCORD_BOT_TOKEN) {
+    removed = await fetch(`${api}/channels/${channel}/messages/${previous.id}`, { method: 'DELETE', headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
+  } else if (previous.token && now - previous.at < MENU_TOKEN_LIFE) {
+    removed = await fetch(`${api}/webhooks/${env.DISCORD_APP_ID}/${previous.token}/messages/@original`, { method: 'DELETE' });
+  }
+  if (removed && !removed.ok && removed.status !== 404) console.error(`Discord respondeu ${removed.status} ao apagar o menu anterior`);
 }
 
 export default {
@@ -136,6 +172,7 @@ export class FcState extends DurableObject {
       case 'POST /regroup': return json(await this.regroupAlerts());
       case 'POST /log': return this.handleLog(request);
       case 'POST /interact': return this.handleInteract(request);
+      case 'POST /menu': return this.handleMenu(request);
       case 'GET /state': return this.handleState();
       case 'GET /logs': return this.handleLogs();
       default: return this.handleHistory(request);

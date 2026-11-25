@@ -129,8 +129,11 @@
 - Se o Discord falhar ou limitar as edições, o estado continua salvo e a próxima edição corrige o painel.
 
 ## Discord: o /fcc
-- O app registra um comando só, `/fcc`, com o mesmo nome em qualquer idioma. Ele abre um menu que só quem chamou vê, e cada botão troca o conteúdo da mesma mensagem.
-- Seções para todos: Painel, Subs, Loot (hoje, 7 ou 30 dias), Estoque e Lucro. "Postar no canal" manda a seção aberta para todo mundo ver, dizendo quem postou e sem marcar ninguém.
+- O app registra um comando só, `/fcc`, com o mesmo nome em qualquer idioma. Ele abre o menu no canal, à vista de todos. Qualquer pessoa clica nas abas e a mesma mensagem muda para todo mundo.
+- O menu do canal é igual para todos: não mostra a situação de ninguém nos eventos e sempre mostra Novo evento e Ajustes (a permissão é conferida no clique).
+- O que é de uma pessoa só abre numa mensagem que só ela vê: Ajustes, criar evento, ligar ou desligar o lembrete por DM e o log. Dentro dessa mensagem, os botões continuam só para ela.
+- Um menu novo no mesmo canal apaga o anterior, para o canal não encher de menus. Com o bot, sempre; sem o bot, só se o anterior tiver menos de 15 minutos.
+- Seções: Painel, Subs, Loot (hoje, 7 ou 30 dias), Estoque e Lucro. "Postar no canal" só aparece no menu privado (o do canal já está no canal).
 - Ajustes, só para quem tem "Gerenciar servidor": reenviar o painel, agrupar avisos, ligar ou desligar o resumo semanal, baixar o log do plugin e o idioma do menu. A permissão é conferida a cada clique, não só ao abrir o menu.
 - O idioma do menu é da FC (padrão português para a FC atual). Os textos das seções ainda vêm em português até a 0.14.
 - Os comandos antigos (`/subs`, `/loot`, `/estoque`, `/lucro`, `/painel`, `/avisos`, `/resumo`, `/log`) somem ao registrar o `/fcc`. Enquanto algum ainda aparecer no Discord, ele abre a seção equivalente do `/fcc`.
@@ -140,7 +143,7 @@
 - O painel, os avisos e o resumo semanal saem pelo bot quando há `DISCORD_BOT_TOKEN` e o canal foi escolhido no `/fcc` (Ajustes: Painel aqui, Avisos aqui). Sem isso, continuam pelo webhook.
 - Avisos sem canal próprio vão para o canal do painel. Cada aviso guarda por onde saiu, e é apagado pelo mesmo caminho.
 - Ao trocar o painel de canal (ou do webhook para o bot), o painel antigo é apagado e sai um novo.
-- O painel do bot tem 3 botões embaixo: Loot de hoje, Estoque e Eventos. Cada um abre o `/fcc` já na seção, só para quem clicou.
+- O painel do bot tem 3 botões embaixo: Loot de hoje, Estoque e Eventos. Cada um abre o `/fcc` já na seção, no canal.
 - O bot não lê mensagens nem usa gateway: tudo chega por HTTP e sai pela API.
 
 ## Eventos

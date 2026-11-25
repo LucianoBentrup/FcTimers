@@ -16,6 +16,8 @@ const calls = [];
 let failNext = 0;
 let nextId = 100;
 const messages = new Map();
+// Id da resposta de cada interação (o menu postado no canal), pelo token dela.
+const originals = new Map();
 const discord = createServer((req, res) => {
   let data = '';
   req.on('data', (chunk) => { data += chunk; });
@@ -27,8 +29,10 @@ const discord = createServer((req, res) => {
       return;
     }
     if (req.url.includes('/messages/@original')) {
-      calls.push({ method: req.method, original: true, body: JSON.parse(data) });
-      res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+      const token = req.url.split('/messages/@original')[0].split('/').at(-1);
+      if (!originals.has(token)) originals.set(token, String(nextId++));
+      calls.push({ method: req.method, original: true, url: req.url, body: data ? JSON.parse(data) : null });
+      res.writeHead(req.method === 'DELETE' ? 204 : 200, { 'Content-Type': 'application/json' }).end(req.method === 'DELETE' ? undefined : JSON.stringify({ id: originals.get(token) }));
       return;
     }
     const id = req.url.match(/messages\/(\d+)/)?.[1];
@@ -252,14 +256,46 @@ try {
   });
   const customIds = (data) => data.components.flatMap((r) => r.components).map((b) => b.custom_id);
 
+  // O /fcc abre no canal, igual pra todo mundo: Ajustes aparece sempre e a permissão é conferida no clique.
   const menu = await (await interaction(command('fcc'))).json();
   assert.equal(menu.type, 4);
-  assert.equal(menu.data.flags, 64);
+  assert.equal(menu.data.flags, undefined);
   assert.match(menu.data.embeds[0].fields[0].value, /Ciela/);
+  assert.match(menu.data.embeds[0].footer.text, /Todo mundo aqui/);
   assert.ok(customIds(menu.data).includes('fc:subs'));
-  assert.ok(!customIds(menu.data).includes('fc:manage'));
+  assert.ok(customIds(menu.data).includes('fc:manage'));
+  assert.ok(!customIds(menu.data).some((id) => id.startsWith('fc:share')));
   const managerMenu = await (await interaction(command('fcc', '32'))).json();
-  assert.ok(customIds(managerMenu.data).includes('fc:manage'));
+  assert.deepEqual(customIds(managerMenu.data), customIds(menu.data));
+
+  // Cliques no menu do canal: as abas mudam a mesma mensagem pra todos; o que é de uma pessoa abre só pra ela.
+  const onChannel = (data) => ({ ...data, message: { id: '1', flags: 0 } });
+  const publicLoot = await (await interaction(onChannel(click('fc:loot:week')))).json();
+  assert.equal(publicLoot.type, 7);
+  assert.equal(publicLoot.data.flags, undefined);
+  assert.match(publicLoot.data.embeds[0].description, /7 dias/);
+  const publicManage = await (await interaction(onChannel(click('fc:manage', '32')))).json();
+  assert.equal(publicManage.type, 4);
+  assert.equal(publicManage.data.flags, 64);
+  assert.ok(customIds(publicManage.data).includes('fc:do:repost'));
+  assert.match((await (await interaction(onChannel(click('fc:manage')))).json()).data.content, /Só quem gerencia/);
+  const publicDm = await (await interaction(onChannel(click('fc:pref:dm')))).json();
+  assert.equal(publicDm.type, 4);
+  assert.equal(publicDm.data.flags, 64);
+  assert.match(publicDm.data.content, /lembrete por DM/);
+  await interaction(onChannel(click('fc:pref:dm')));
+  const publicEvents = await (await interaction(onChannel(click('fc:events')))).json();
+  assert.equal(publicEvents.type, 7);
+  assert.ok(customIds(publicEvents.data).includes('fc:evnew'));
+
+  // Um /fcc novo no mesmo canal apaga o anterior, pelo bot.
+  const inChannelCmd = (token) => ({ ...command('fcc'), token, channel_id: '700' });
+  await interaction(inChannelCmd('menu1'));
+  await waitFor(() => calls.some((c) => c.original && c.method === 'GET' && c.url.includes('/menu1/')), 'id do primeiro menu');
+  await interaction(inChannelCmd('menu2'));
+  await waitFor(() => calls.some((c) => c.method === 'DELETE' && c.url === `/api/v10/channels/700/messages/${originals.get('menu1')}`), 'menu anterior apagado');
+  await sleep(300);
+  assert.ok(!calls.some((c) => c.method === 'DELETE' && c.url === `/api/v10/channels/700/messages/${originals.get('menu2')}`), 'o menu novo fica');
 
   const subsView = await (await interaction(click('fc:subs'))).json();
   assert.equal(subsView.type, 7);
@@ -296,14 +332,14 @@ try {
   // Agrupar avisos demora: responde já e edita o menu depois, com o resultado.
   const deferred = await (await interaction(click('fc:do:regroup', '32'))).json();
   assert.deepEqual(deferred, { type: 6 });
-  await waitFor(() => calls.some((c) => c.original && /agrupados/.test(c.body.content)), 'menu editado depois de agrupar');
-  const edited = calls.find((c) => c.original).body;
+  await waitFor(() => calls.some((c) => c.original && /agrupados/.test(c.body?.content ?? '')), 'menu editado depois de agrupar');
+  const edited = calls.find((c) => c.original && c.method === 'PATCH').body;
   assert.equal(edited.flags, undefined);
   assert.ok(edited.components.length > 0);
 
   // Comando antigo ainda na lista do Discord: abre a seção certa do /fcc.
   const legacy = await (await interaction(command('estoque'))).json();
-  assert.equal(legacy.data.flags, 64);
+  assert.equal(legacy.data.flags, undefined);
   assert.match(legacy.data.content, /\/fcc/);
   assert.ok(legacy.data.components);
   ok('o /fcc abre o menu e os botões respondem com assinatura e permissão');
@@ -320,7 +356,7 @@ try {
   assert.ok(calls.slice(movedAt).some((c) => c.method === 'DELETE' && c.url.startsWith('/api/webhooks/')), 'o painel do webhook é apagado');
   const fromPanel = await (await interaction(click('fc:open:supplies'))).json();
   assert.equal(fromPanel.type, 4);
-  assert.equal(fromPanel.data.flags, 64);
+  assert.equal(fromPanel.data.flags, undefined);
   ok('o painel sai pelo bot, com botões que abrem o /fcc');
 
   // Eventos: canal, tipo, formulário, revisão e post.
@@ -392,7 +428,7 @@ try {
   console.log(`TODOS PASSARAM (${passed})`);
   exitCode = 0;
 } catch (error) {
-  console.error(`FALHA: ${error.message}`);
+  console.error(`FALHA: ${error.message}`, error.stack?.split("\n").find((l) => l.includes("integration.mjs:")));
 } finally {
   discord.close();
   try {

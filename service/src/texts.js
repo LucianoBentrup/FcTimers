@@ -18,6 +18,7 @@ export const TEXT = {
     subsTitle: '🚢 Submarines', suppliesTitle: '⛽ Supplies', profitTitle: '💰 Profit', lootTitle: '💰 Loot', manageTitle: '⚙️ Server settings',
     eventsTitle: '📅 Events',
     footer: 'Only you can see this menu.',
+    footerPublic: 'Anyone here can use this menu. Settings and new events open just for you.',
     sharedBy: (user) => `Posted by <@${user}> with /fcc`,
     repost: 'Repost panel', regroup: 'Group alerts', weeklyOn: 'Weekly summary: on', weeklyOff: 'Weekly summary: off', log: 'Plugin log',
     language: 'Menu: English',
@@ -52,7 +53,7 @@ export const TEXT = {
     moved: 'This command moved into **/fcc**.',
 
     eventsEmpty: 'No events coming up.',
-    newEvent: 'New event', dmOn: 'DM reminders: on', dmOff: 'DM reminders: off',
+    newEvent: 'New event', dmToggle: 'My DM reminders', dmOn: 'DM reminders: on', dmOff: 'DM reminders: off',
     dmNowOn: "✅ You'll get reminders by DM for events you sign up for.", dmNowOff: '✅ No more event DMs.',
     notAnswered: 'not answered',
     noEventsChannel: 'Pick the events channel first: Manage, then Events here.',
@@ -99,6 +100,7 @@ export const TEXT = {
     subsTitle: '🚢 Submarinos', suppliesTitle: '⛽ Estoque', profitTitle: '💰 Lucro', lootTitle: '💰 Loot', manageTitle: '⚙️ Ajustes do servidor',
     eventsTitle: '📅 Eventos',
     footer: 'Só você vê este menu.',
+    footerPublic: 'Todo mundo aqui pode usar este menu. Ajustes e novo evento abrem só pra você.',
     sharedBy: (user) => `Postado por <@${user}> pelo /fcc`,
     repost: 'Reenviar painel', regroup: 'Agrupar avisos', weeklyOn: 'Resumo semanal: ligado', weeklyOff: 'Resumo semanal: desligado', log: 'Log do plugin',
     language: 'Menu: Português',
@@ -133,7 +135,7 @@ export const TEXT = {
     moved: 'Este comando agora fica dentro do **/fcc**.',
 
     eventsEmpty: 'Nenhum evento marcado.',
-    newEvent: 'Novo evento', dmOn: 'Lembrete por DM: ligado', dmOff: 'Lembrete por DM: desligado',
+    newEvent: 'Novo evento', dmToggle: 'Meu lembrete por DM', dmOn: 'Lembrete por DM: ligado', dmOff: 'Lembrete por DM: desligado',
     dmNowOn: '✅ Você vai receber lembrete por DM dos eventos em que se inscrever.', dmNowOff: '✅ Sem DM de evento.',
     notAnswered: 'sem resposta',
     noEventsChannel: 'Escolha antes o canal dos eventos: Ajustes, depois Eventos aqui.',

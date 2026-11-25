@@ -1,5 +1,6 @@
-// O /fcc: um comando só, em inglês, que abre um menu que só quem chamou vê. Cada botão troca o conteúdo da
-// mesma mensagem. Os comandos antigos em português (/subs, /loot...) viraram seções deste menu.
+// O /fcc: um comando só, em inglês, que abre um menu no canal, à vista de todos. Qualquer pessoa clica nas abas e
+// a mesma mensagem muda pra todo mundo. O que é de uma pessoa só (Ajustes, novo evento, lembrete por DM, o log)
+// abre numa mensagem que só ela vê. Os comandos antigos em português (/subs, /loot...) viraram seções deste menu.
 //
 // Os formatos de custom_id estão em parseCustomId, mais abaixo.
 
@@ -65,7 +66,7 @@ const ID = /^[a-z0-9]{1,16}$/;
 
 // Lê um custom_id. Devolve null para qualquer coisa que não seja do /fcc ou que não exista mais.
 //   fc:<seção>[:<arg>]          troca a seção do menu (ex.: fc:loot:week)
-//   fc:open:<seção>[:<arg>]     abre o menu já na seção, numa mensagem nova (botões do painel)
+//   fc:open:<seção>[:<arg>]     abre o menu já na seção, numa mensagem nova no canal (botões do painel)
 //   fc:share:<seção>[:<arg>]    posta a seção no canal
 //   fc:do:<ação>                ajuste de quem gerencia o servidor
 //   fc:set:eventrole            lista de cargos dos ajustes
@@ -115,8 +116,11 @@ export const sectionEmbed = (title, body) => ({ title, description: truncate(bod
 // Botões do menu. Linha 1: as 5 primeiras seções. Depois, as opções da seção aberta. Por último: Eventos,
 // Postar no canal e, para quem gerencia, Ajustes.
 // Em `events`: canCreate e dmOn. Em `manage`: weeklyOff e eventRole.
+// `pub`: o menu no canal. Ele é igual pra todo mundo, então não depende de quem clicou por último: Novo evento e
+// Ajustes aparecem sempre (a permissão é conferida no clique), o botão de DM não mostra o estado de ninguém e não
+// tem Postar no canal, porque o menu já está no canal.
 export function menuComponents(lang, {
-  view, arg, manager, weeklyOff, canCreate, dmOn, eventRole, supportUrl = SUPPORT_URL,
+  view, arg, manager, weeklyOff, canCreate, dmOn, eventRole, pub = false, supportUrl = SUPPORT_URL,
 }) {
   const t = (key) => text(lang, key);
   const tab = (s) => button(t(s.id), `fc:${s.id}`, s.id === view ? PRIMARY : SECONDARY, s.emoji);
@@ -128,8 +132,9 @@ export function menuComponents(lang, {
   }
   if (view === 'events') {
     const options = [];
-    if (canCreate) options.push(button(t('newEvent'), 'fc:evnew', SUCCESS, '➕'));
-    options.push(button(dmOn ? t('dmOn') : t('dmOff'), 'fc:pref:dm', dmOn ? PRIMARY : SECONDARY, '✉️'));
+    if (canCreate || pub) options.push(button(t('newEvent'), 'fc:evnew', SUCCESS, '➕'));
+    if (pub) options.push(button(t('dmToggle'), 'fc:pref:dm', SECONDARY, '✉️'));
+    else options.push(button(dmOn ? t('dmOn') : t('dmOff'), 'fc:pref:dm', dmOn ? PRIMARY : SECONDARY, '✉️'));
     rows.push(row(options));
   }
   if (view === 'manage') {
@@ -152,8 +157,9 @@ export function menuComponents(lang, {
   }
 
   const last = SECTIONS.slice(5).map(tab);
-  if (section?.share) last.push(button(t('share'), `fc:share:${view}${arg ? `:${arg}` : ''}`, SUCCESS, '📣'));
-  if (manager) last.push(button(t('manage'), 'fc:manage', view === 'manage' ? PRIMARY : DANGER, MANAGE.emoji));
+  if (section?.share && !pub) last.push(button(t('share'), `fc:share:${view}${arg ? `:${arg}` : ''}`, SUCCESS, '📣'));
+  if (pub) last.push(button(t('manage'), 'fc:manage', SECONDARY, MANAGE.emoji));
+  else if (manager) last.push(button(t('manage'), 'fc:manage', view === 'manage' ? PRIMARY : DANGER, MANAGE.emoji));
   // Botão de link: abre o navegador, não chega ao serviço.
   if (supportUrl) last.push(supportButton(lang, supportUrl));
   rows.push(row(last));
@@ -161,12 +167,13 @@ export function menuComponents(lang, {
 }
 
 // A mensagem inteira do menu. `notice` é uma linha no topo depois de uma ação ("Painel reenviado").
-export function menuMessage(lang, { embed, notice, ...options }) {
+// `pub`: no canal, à vista de todos. Sem ele, só quem abriu vê (Ajustes e as telas de evento).
+export function menuMessage(lang, { embed, notice, pub = false, ...options }) {
   return {
     content: notice ?? '',
-    embeds: [{ ...embed, footer: { text: text(lang, 'footer') } }],
-    components: menuComponents(lang, options),
-    flags: EPHEMERAL,
+    embeds: [{ ...embed, footer: { text: text(lang, pub ? 'footerPublic' : 'footer') } }],
+    components: menuComponents(lang, { ...options, pub }),
+    ...(pub ? {} : { flags: EPHEMERAL }),
     allowed_mentions: { parse: [] },
   };
 }
@@ -188,7 +195,7 @@ export function sharedMessage(lang, embed, userId) {
 // Botão de link pro Ko-fi: abre o navegador e não chega ao serviço.
 export const supportButton = (lang, url = SUPPORT_URL) => ({ type: BUTTON, style: LINK, label: text(lang, 'support'), url, emoji: { name: '☕' } });
 
-// Botões embaixo do painel postado pelo bot. Cada um abre o /fcc já na seção, só para quem clicou. O último é o Ko-fi.
+// Botões embaixo do painel postado pelo bot. Cada um abre o /fcc já na seção, no canal. O último é o Ko-fi.
 export function panelComponents(lang, supportUrl = SUPPORT_URL) {
   const t = (key) => text(lang, key);
   return [row([

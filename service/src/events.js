@@ -348,6 +348,7 @@ export function eventPost(event, lang, state = {}) {
 }
 
 // Linha do evento na seção Eventos do /fcc, com a situação de quem abriu.
+// Sem `user` (o menu no canal, igual pra todos), a linha não mostra a situação de ninguém.
 export function eventLine(event, lang, user) {
   const t = (key) => text(lang, key);
   const place = placeOf(event, user);
@@ -356,7 +357,7 @@ export function eventLine(event, lang, user) {
   if (place?.where === 'reserve') mine = `${t('reserve')} #${event.reserve.findIndex((r) => r.user === user) + 1}`;
   if (place?.where === 'cant') mine = t('role').cant;
   const link = event.messageId && event.guildId ? ` · https://discord.com/channels/${event.guildId}/${event.channelId}/${event.messageId}` : '';
-  return `**${event.title}** · <t:${event.start}:f> · ${mine}${link}`;
+  return `**${event.title}** · <t:${event.start}:f>${user ? ` · ${mine}` : ''}${link}`;
 }
 
 // ---------- telas do /fcc ----------
