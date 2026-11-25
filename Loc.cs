@@ -124,7 +124,7 @@ public static class L
     public static string Outside => T("fora", "outside");
     public static string Remove => T("Remover", "Remove");
     public static string WaterAll => T("Reguei todos agora", "Watered all now");
-    public static string WaterAllHint => T("ou /fct regar. Cada plot também é registrado sozinho ao regar.", "or /fct water. Each plot is also picked up on its own when watered.");
+    public static string WaterAllHint => T("ou /fcc regar. Cada plot também é registrado sozinho ao regar.", "or /fcc water. Each plot is also picked up on its own when watered.");
     public static string WaterIn(string time) => T($"regar em {time}", $"water in {time}");
     public static string WaterNow(string time) => T($"pronta para regar. Morre em {time}", $"ready to water. Dies in {time}");
     public static string WaterLate => T("passou do prazo de rega", "past the watering deadline");
@@ -163,6 +163,5 @@ public static class L
     public static string PlotReady(string name) => T($"{name} já pode ser regado!", $"{name} can be watered now!");
     public static string WateredAll => T("Rega registrada em todos os plots.", "Watering recorded on every plot.");
     public static string DtrReady(int count) => count == 1 ? T("1 pronto", "1 ready") : T($"{count} prontos", $"{count} ready");
-    public static string HelpMain => T("Abre a janela do FC Timers. Use \"/fct regar\" depois de regar a plantação.", "Opens the FC Timers window. Use \"/fct water\" after watering the garden.");
-    public static string HelpShort => T("Atalho do /fctimers. \"/fct regar\" registra a rega da plantação.", "Shortcut for /fctimers. \"/fct water\" records the garden watering.");
+    public static string HelpMain => T("Abre a janela do FC Companion. Use \"/fcc regar\" depois de regar a plantação.", "Opens the FC Companion window. Use \"/fcc water\" after watering the garden.");
 }

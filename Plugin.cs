@@ -24,8 +24,9 @@ namespace FcTimers;
 
 public sealed class Plugin : IDalamudPlugin
 {
-    private const string Command = "/fctimers";
-    private const string ShortCommand = "/fct";
+    private const string Command = "/fcc";
+    // Nomes antigos: ainda funcionam, mas somem da ajuda. Saem numa versão depois da 0.10.1.
+    private static readonly string[] OldCommands = ["/fct", "/fctimers"];
     private const int ActiveBuffStableSeconds = 5;
     private const int ActiveBuffSettleSeconds = 60;
     private const int MaxCompanySlots = 3;
@@ -155,10 +156,14 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage = L.HelpMain,
         });
-        CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand)
+        foreach (var old in OldCommands)
         {
-            HelpMessage = L.HelpShort,
-        });
+            CommandManager.AddHandler(old, new CommandInfo(OnCommand)
+            {
+                HelpMessage = L.HelpMain,
+                ShowInHelp = false,
+            });
+        }
 
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
@@ -181,7 +186,8 @@ public sealed class Plugin : IDalamudPlugin
         ChatGui.ChatMessageUnhandled -= OnChatMessage;
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
-        CommandManager.RemoveHandler(ShortCommand);
+        foreach (var old in OldCommands)
+            CommandManager.RemoveHandler(old);
         CommandManager.RemoveHandler(Command);
         dtrEntry.Remove();
         windowSystem.RemoveAllWindows();
@@ -265,7 +271,7 @@ public sealed class Plugin : IDalamudPlugin
         var argument = arguments.Trim().ToLowerInvariant();
         if (argument is "regar" or "water")
         {
-            WaterAll("comando /fct regar");
+            WaterAll($"comando {command} regar");
             ChatGui.Print(L.WateredAll, "FC Companion");
             return;
         }

@@ -62,14 +62,14 @@
 - Sem horário conhecido, o painel mostra `?` e o horário da leitura. O nível ausente fica só com o nome-base.
 
 ## Plantação
-- Na aba Plantação do `/fct`, a seção **Campos** cadastra um canteiro ou vaso: selecione o objeto no jogo e clique em **+** (fica cinza sem um alvo válido ou se o objeto já estiver na lista), dê o nome e salve. A seção só cadastra, renomeia e remove; o estado da rega fica em cima.
+- Na aba Plantação do `/fcc`, a seção **Campos** cadastra um canteiro ou vaso: selecione o objeto no jogo e clique em **+** (fica cinza sem um alvo válido ou se o objeto já estiver na lista), dê o nome e salve. A seção só cadastra, renomeia e remove; o estado da rega fica em cima.
 - O nome dado na janela vale para todos os PCs e nunca é trocado pelo nome automático. Remover um campo tira ele de todos os PCs; uma rega antiga de outro PC não traz ele de volta. Campo cadastrado e ainda não regado não aparece no painel.
-- Os canteiros de fora não têm nome no alvo do jogo; o nome vem do menu ("6th Bed, 2nd Patch" vira "Canteiro 2"). Um nome dado na janela do `/fct` não é trocado.
+- Os canteiros de fora não têm nome no alvo do jogo; o nome vem do menu ("6th Bed, 2nd Patch" vira "Canteiro 2"). Um nome dado na janela do `/fcc` não é trocado.
 - A posição na chave sai sempre com ponto, para a chave ser igual em todos os PCs. Chaves antigas com vírgula viram uma só, ficando a rega mais recente.
 - O plot geral "Plantação" some do painel e da janela quando algum canteiro identificado é regado depois dele.
 - Cada plot ou vaso tem o seu horário. Ele é identificado pela casa (território, ward e plot), pelo quarto privado quando houver e pela posição do objeto, que só muda se alguém mover o plot.
 - O plugin registra a rega quando o jogo mostra "This crop is doing well." (mensagem 4017, canteiros de fora), "The crops appear to be healthy." (3450, vasos de dentro) ou ao plantar (4015), no plot que estiver selecionado. Sem plot selecionado, a rega vai para o plot geral "Plantação". Ainda falta confirmar no jogo que essas mensagens só aparecem nesses momentos.
-- Na mão, "Reguei todos agora" ou `/fct regar` registram a rega em todos os plots conhecidos.
+- Na mão, "Reguei todos agora" ou `/fcc regar` registram a rega em todos os plots conhecidos.
 - O próximo horário de regar é 24 horas depois da última rega de cada plot, e o de morrer, 48 horas. Pela wiki, a planta precisa de rega 1 vez por dia; sem rega, as que murcham mais rápido ficam roxas em 24 horas e morrem 24 horas depois. Outras sementes só murcham em 36 ou 48 horas, então o aviso pode chegar antes do necessário, nunca depois.
 - Em cada plot, a rega mais recente entre os membros vale, e a de um PC nunca passa por cima de uma mais nova de outro.
 - No painel, cada plot tem a sua linha, com o próprio horário. Os avisos juntam os plots que ficam prontos juntos.

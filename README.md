@@ -38,7 +38,7 @@ The plugin **only reads what the game already shows**. It doesn't automate anyth
 - The panel footer warns when Dalamud hasn't been updated yet for a new game patch.
 
 **In game**
-- Tabbed window (`/fct`): Overview, Submersibles (and airships), Loot (with weekly profit and route ranking), Buffs and Gardening, plus a settings window, with tables and colors (green ready, yellow soon, red urgent).
+- Tabbed window (`/fcc`): Overview, Submersibles (and airships), Loot (with weekly profit and route ranking), Buffs and Gardening, plus a settings window, with tables and colors (green ready, yellow soon, red urgent).
 - Notifications (toast, chat or sound) and a summary in the server info bar. Text in Portuguese and English.
 
 ## Install
@@ -50,7 +50,7 @@ The plugin **only reads what the game already shows**. It doesn't automate anyth
 3. Type `/xlplugins` and install **FC Companion**.
 
 ## Setup
-1. Type `/fct`, open the settings (cog icon) and tick your character. Only ticked characters read and send data.
+1. Type `/fcc`, open the settings (cog icon) and tick your character. Only ticked characters read and send data.
 2. For the Discord panel, still in settings, paste the service address and the FC key and tick **Send and receive data**. The address and key are given to you by your FC.
 3. To get data showing up: open the sub list at the workshop, the chest tab where the tanks are and the Wheel Stand. Watering is recorded on its own when you tend a plant.
 
