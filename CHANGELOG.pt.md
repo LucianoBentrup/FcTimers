@@ -8,7 +8,7 @@ e é o que a janela de novidades mostra quando o plugin está em português. Reg
 - Os mesmos termos do plugin: submarino, airship, campo, rega, estoque, materiais de reparo, casa da FC.
 - Update grande ganha `<!-- big -->` depois da versão, e os itens dele viram cards.
 
-## [0.10.2] - 2026-11-25 <!-- big -->
+## [0.10.2] - 2026-11-25
 
 ### Added
 - **Linha do tempo:** as próximas 24 horas, 3 dias ou 7 dias numa barra só.

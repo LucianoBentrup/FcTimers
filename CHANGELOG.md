@@ -12,7 +12,7 @@ Portuguese). Rules for every entry:
 - Same terms as the plugin: submarine, airship, field, watering, supplies, repair materials, FC house.
 - A big update gets `<!-- big -->` after its version, and its entries show as cards.
 
-## [0.10.2] - 2026-11-25 <!-- big -->
+## [0.10.2] - 2026-11-25
 
 ### Added
 - **Timeline:** the next 24 hours, 3 days or 7 days on one bar.
