@@ -65,6 +65,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] private static IAddonLifecycle AddonLifecycle { get; set; } = null!;
     [PluginService] private static IPluginLog Log { get; set; } = null!;
     [PluginService] private static INotificationManager Notifications { get; set; } = null!;
+    [PluginService] private static ITextureProvider Textures { get; set; } = null!;
 
     private readonly WindowSystem windowSystem = new("FcTimers");
     private readonly MainWindow mainWindow;
@@ -114,6 +115,7 @@ public sealed class Plugin : IDalamudPlugin
         Config = saved ?? new Configuration { LastChangelogVersion = Version };
         Migrate();
         L.English = LanguageCode == "en";
+        GameIcons.Init(Textures, DataManager);
 
         Diagnostics = new DiagnosticLog(
             System.IO.Path.Combine(PluginInterface.GetPluginConfigDirectory(), "diagnostico.txt"),
@@ -584,7 +586,7 @@ public sealed class Plugin : IDalamudPlugin
         var changed = false;
 
         // Rank, peças e desgaste são lidos 1 vez por segundo, e não a cada frame como o loot.
-        var conditions = DateTime.UtcNow >= nextScan ? SubmarineParts.ReadCondition() : null;
+        var conditions = DateTime.UtcNow >= nextScan ? SubmarineParts.ReadParts() : null;
         var lastVoyages = conditions != null && Config.DetailedLog ? new List<string>() : null;
 
         // A lista tem 5 posições, mas a FC só tem 4 submarinos: a última repete o sub selecionado.
@@ -623,7 +625,18 @@ public sealed class Plugin : IDalamudPlugin
 
             if (conditions != null)
             {
-                var condition = conditions.TryGetValue(slot, out var read) ? read : record.Details?.Condition;
+                var condition = conditions.TryGetValue(slot, out var read) ? read.Min(p => p.Condition) : record.Details?.Condition;
+                if (read != null && !read.SequenceEqual(record.Parts))
+                {
+                    record.Parts = read;
+                    changed = true;
+                }
+
+                if (returnTime > 0 && sub->RegisterTime > 0 && record.DepartedAt != sub->RegisterTime)
+                {
+                    record.DepartedAt = sub->RegisterTime;
+                    changed = true;
+                }
                 var details = WorkshopScan.Read(sub, DataManager, condition);
                 if (details != record.Details)
                 {

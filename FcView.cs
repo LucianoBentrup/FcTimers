@@ -135,7 +135,8 @@ public sealed class RemoteVoyage
     public List<string> Unlocked { get; set; } = [];
 }
 
-public readonly record struct SubView(int Slot, string Name, long ReturnTime, SubDetails? Details);
+// Parts e DepartedAt só existem para os subs lidos neste PC.
+public readonly record struct SubView(int Slot, string Name, long ReturnTime, SubDetails? Details, IReadOnlyList<PartRecord>? Parts = null, long DepartedAt = 0);
 
 public readonly record struct WheelView(int Slot, string Name, long ReadyTime);
 
@@ -182,15 +183,17 @@ public sealed class FcView
         foreach (var (key, record) in config.Subs)
         {
             var slot = int.Parse(key.Split(':')[^1]);
-            subs[slot] = (new SubView(slot, record.Name, record.ReturnTime, record.Details), local.Subs.GetValueOrDefault(slot));
+            subs[slot] = (new SubView(slot, record.Name, record.ReturnTime, record.Details, record.Parts, record.DepartedAt), local.Subs.GetValueOrDefault(slot));
         }
 
         foreach (var (slotText, sub) in remote?.Subs ?? [])
         {
             if (!int.TryParse(slotText, out var slot) || slot >= LootLedger.MaxSubmarines)
                 continue;
+            // As peças são as mesmas de antes. A saída só vale se a volta não mudou, senão é de outra viagem.
             if (!subs.TryGetValue(slot, out var current) || Local(sub.ObservedAt) > current.ObservedAt)
-                subs[slot] = (new SubView(slot, sub.Name, sub.ReturnTime, sub.Details?.ToDetails() ?? current.View.Details), Local(sub.ObservedAt));
+                subs[slot] = (new SubView(slot, sub.Name, sub.ReturnTime, sub.Details?.ToDetails() ?? current.View.Details, current.View.Parts,
+                    current.View.ReturnTime == sub.ReturnTime ? current.View.DepartedAt : 0), Local(sub.ObservedAt));
         }
 
         var airships = new Dictionary<int, (SubView View, long ObservedAt)>();

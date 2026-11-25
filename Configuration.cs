@@ -15,6 +15,21 @@ public class SubRecord
     public long PreviousReturnTime { get; set; }
 
     public SubDetails? Details { get; set; }
+
+    // Hora em que o sub saiu, para a barra da viagem. Só deste PC: o serviço não guarda.
+    public long DepartedAt { get; set; }
+
+    // Peças lidas na oficina (casco, popa, proa, ponte), com o desgaste de cada uma. Só deste PC.
+    public List<PartRecord> Parts { get; set; } = [];
+}
+
+[Serializable]
+public sealed record PartRecord
+{
+    public uint ItemId { get; set; }
+
+    // De 0 a 100.
+    public double Condition { get; set; }
 }
 
 // Rank, peças, rota e desgaste, lidos quando a lista de subs da oficina é aberta.

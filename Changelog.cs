@@ -170,7 +170,7 @@ public static class Changelog
     ];
 }
 
-public sealed class ChangelogWindow : Window
+public sealed class ChangelogWindow : ThemedWindow
 {
     public ChangelogWindow() : base("FC Companion - What's new###FcTimersChangelog")
     {

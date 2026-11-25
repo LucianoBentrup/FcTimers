@@ -9,7 +9,7 @@ using Dalamud.Interface.Windowing;
 namespace FcTimers;
 
 // Configurações numa janela própria, aberta pela engrenagem do instalador do Dalamud ou pela janela principal.
-public sealed class ConfigWindow : Window
+public sealed class ConfigWindow : ThemedWindow
 {
     // Largo o bastante para "Automático (Behemoth)" e nomes de data center.
     private const float ComboWidth = 230;

@@ -9,11 +9,12 @@ namespace FcTimers;
 // Peças de interface usadas pelas janelas: cores, ícones, cartões, barras e tabelas.
 public static class UiKit
 {
-    // Verde: pronto. Amarelo: falta menos de 1 hora. Vermelho: precisa de atenção.
-    public static readonly Vector4 Good = new(0.45f, 0.85f, 0.45f, 1f);
-    public static readonly Vector4 Soon = new(0.95f, 0.80f, 0.30f, 1f);
-    public static readonly Vector4 Bad = new(1f, 0.45f, 0.35f, 1f);
-    public static readonly Vector4 Muted = new(0.6f, 0.6f, 0.6f, 1f);
+    // Verde: pronto. Amarelo: falta menos de 1 hora. Vermelho: precisa de atenção. Iguais em todos os temas.
+    public static Vector4 Good => Theme.Good;
+    public static Vector4 Soon => Theme.Soon;
+    public static Vector4 Bad => Theme.Bad;
+    public static Vector4 Muted => Theme.Current.Muted;
+    public static Vector4 Accent => Theme.Current.Accent;
 
     private const ImGuiTableFlags TableFlags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.SizingStretchProp;
 

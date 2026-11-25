@@ -9,7 +9,7 @@ using Dalamud.Interface.Windowing;
 
 namespace FcTimers;
 
-public class MainWindow : Window
+public class MainWindow : ThemedWindow
 {
     // Abaixo disso o desgaste aparece em destaque, igual ao painel do Discord.
     private const double RepairShow = 50;
