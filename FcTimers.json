@@ -2,7 +2,7 @@
   "Author": "Luciano",
   "Name": "FC Companion",
   "Punchline": "Subs, loot, estoque, plantação e buffs da FC, com painel no Discord.",
-  "Description": "Acompanha os submarinos, o loot, o estoque, a plantação e os buffs da FC, e mantém um painel compartilhado no Discord. Apenas lê e exibe informações do jogo, sem automatizar nada.",
+  "Description": "Acompanha os submarinos, o loot, o estoque, a plantação e os buffs da FC, e mantém um painel compartilhado no Discord.",
   "ApplicableVersion": "any",
   "Tags": [ "fc", "submarine", "timer" ]
 }

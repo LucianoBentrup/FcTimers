@@ -12,7 +12,7 @@ Portuguese). Rules for every entry:
 - Same terms as the plugin: submarine, airship, field, watering, supplies, repair materials, FC house.
 - A big update gets `<!-- big -->` after its version, and its entries show as cards.
 
-## [Unreleased] <!-- big -->
+## [0.10.1] - 2026-11-25 <!-- big -->
 
 ### Added
 - **Timeline:** the next 24 hours, 3 days or 7 days on one bar.
@@ -160,6 +160,6 @@ Portuguese). Rules for every entry:
 ### Fixed
 - **Submarine list:** no duplicate fifth entry.
 
-[Unreleased]: https://github.com/LucianoBentrup/FcTimers/compare/v0.10.0...HEAD
+[0.10.1]: https://github.com/LucianoBentrup/FcTimers/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/LucianoBentrup/FcTimers/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/LucianoBentrup/FcTimers/releases/tag/v0.9.0
