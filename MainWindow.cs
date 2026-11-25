@@ -91,7 +91,8 @@ public class MainWindow : ThemedWindow
         // A altura de cada linha de cartões acompanha o cartão com mais linhas, para nada ficar cortado.
         var subsLines = Math.Max(1, view.Subs.Count) + (WorstCondition(view) < RepairShow ? 1 : 0)
             + (view.Airships.Count > 0 ? view.Airships.Count + 1 : 0);
-        var lootLines = 1 + view.Voyages.Select(v => v.Voyage).Where(v => LootLedger.DayOf(v, GameTime.PanelZone) == GameTime.Today)
+        // O melhor item do dia ocupa duas linhas, por causa do ícone maior.
+        var lootLines = 3 + view.Voyages.Select(v => v.Voyage).Where(v => LootLedger.DayOf(v, GameTime.PanelZone) == GameTime.Today)
             .Select(v => v.SubName).Distinct().Count();
         var gardenLines = Math.Clamp(view.Plots.Count(p => p.NextWaterAt != 0), 1, 4);
         var buffLines = Math.Max(Math.Max(1, view.Wheels.Count) + 1, 4);
@@ -243,6 +244,20 @@ public class MainWindow : ThemedWindow
         ImGui.TextColored(UiKit.Good, $"{voyages.Sum(v => v.Items.Sum(i => i.Best)):N0} gil");
         foreach (var bySub in voyages.GroupBy(v => v.SubName))
             ImGui.TextUnformatted($"{bySub.Key}: {bySub.Sum(v => v.Items.Sum(i => i.Best)):N0}");
+
+        // O item que mais rendeu hoje, somando as viagens, com o ícone do jogo.
+        var best = voyages.SelectMany(v => v.Items).GroupBy(i => i.Name)
+            .Select(g => (Item: g.First(), Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Best)))
+            .OrderByDescending(i => i.Value).First();
+        ImGui.Spacing();
+        var size = (ImGui.GetTextLineHeight() * 2) + ImGui.GetStyle().ItemSpacing.Y;
+        GameIcons.Item(best.Item.ItemId, size);
+        ImGui.SameLine();
+        using (ImRaii.Group())
+        {
+            ImGui.TextColored(Theme.Current.Brass, $"{best.Item.Name} ×{best.Count}");
+            ImGui.TextColored(UiKit.Muted, $"{L.BestItem} · {best.Value:N0} gil");
+        }
     }
 
     private static void OverviewGarden(FcView view, long now)
@@ -374,13 +389,16 @@ public class MainWindow : ThemedWindow
 
             var items = all
                 .GroupBy(i => i.Name)
-                .Select(g => (Name: g.Key, Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Best), Market: g.Any(i => i.IsMarket)))
+                .Select(g => (Name: g.Key, ItemId: g.First().ItemId, Count: g.Sum(i => i.Count), Value: g.Sum(i => i.Best), Market: g.Any(i => i.IsMarket)))
                 .OrderByDescending(i => i.Value);
 
             foreach (var item in items)
             {
                 ImGui.TableNextRow();
-                UiKit.Cell(item.Name);
+                ImGui.TableNextColumn();
+                GameIcons.Item(item.ItemId, ImGui.GetTextLineHeight());
+                ImGui.SameLine();
+                ImGui.TextUnformatted(item.Name);
                 UiKit.Cell($"{item.Count}");
                 UiKit.Cell($"{item.Value:N0}", item.Market ? UiKit.Soon : null);
                 if (item.Market)
