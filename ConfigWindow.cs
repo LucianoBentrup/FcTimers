@@ -28,21 +28,38 @@ public sealed class ConfigWindow : ThemedWindow
     public ConfigWindow(Plugin plugin) : base("FC Companion - Settings###FcTimersConfig")
     {
         this.plugin = plugin;
+        Size = new Vector2(460, 420);
+        SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(420, 300) };
     }
 
     public override void Draw()
     {
         var config = plugin.Config;
-        DrawGeneral(config);
-        DrawAlerts(config);
-        DrawDiscord(config);
-        DrawDiagnostics(config);
+        using var tabs = ImRaii.TabBar("##settings");
+        if (!tabs)
+            return;
+
+        Tab($"{L.General}###general", () => DrawGeneral(config));
+        Tab($"{L.Alerts}###alerts", () => DrawAlerts(config));
+        Tab("Discord###discord", () => DrawDiscord(config));
+        Tab($"{L.Diagnostics}###diagnostics", () => DrawDiagnostics(config));
+    }
+
+    private static void Tab(string label, Action draw)
+    {
+        using var tab = ImRaii.TabItem(label);
+        if (!tab)
+            return;
+
+        UiKit.ActiveTabLine();
+        ImGui.Spacing();
+        draw();
     }
 
     private void DrawGeneral(Configuration config)
     {
-        UiKit.Heading(FontAwesomeIcon.User, L.Characters);
+        ImGui.TextColored(UiKit.Muted, L.Characters);
         // Com nomes repetidos, o servidor aparece junto: "Bunny Chan (Behemoth)".
         var repeated = config.Characters.Values.GroupBy(c => c.Name).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
         foreach (var (id, character) in config.Characters.OrderBy(c => c.Value.Name).ThenBy(c => c.Value.World))
@@ -77,17 +94,22 @@ public sealed class ConfigWindow : ThemedWindow
         }
 
         ImGui.Spacing();
+        if (ImGui.Button(L.WhatsNew))
+            plugin.OpenChangelog();
+        ImGui.SameLine();
+        Support.KofiButton(plugin.IsDevBuild);
     }
 
     private void DrawAlerts(Configuration config)
     {
-        UiKit.Heading(FontAwesomeIcon.Bell, L.Alerts);
+        ImGui.TextColored(UiKit.Muted, L.AlertWhat);
         Toggle(L.AlertSubs, () => config.AlertSubs, v => config.AlertSubs = v);
         Toggle(L.AlertWheels, () => config.AlertWheels, v => config.AlertWheels = v);
         Toggle(L.AlertPlots, () => config.AlertPlots, v => config.AlertPlots = v);
         Toggle(L.AlertAirships, () => config.AlertAirships, v => config.AlertAirships = v);
         Toggle(L.AlertHouse, () => config.AlertHouse, v => config.AlertHouse = v);
         ImGui.Spacing();
+        ImGui.TextColored(UiKit.Muted, L.AlertHow);
         Toggle(L.AlertToast, () => config.AlertToast, v => config.AlertToast = v);
         Toggle(L.AlertChat, () => config.AlertChat, v => config.AlertChat = v);
         Toggle(L.AlertSound, () => config.AlertSound, v => config.AlertSound = v);
@@ -105,13 +127,10 @@ public sealed class ConfigWindow : ThemedWindow
             if (ImGui.SmallButton(L.Test))
                 plugin.Notify(L.SubReturned("Navi"));
         }
-
-        ImGui.Spacing();
     }
 
     private void DrawDiscord(Configuration config)
     {
-        UiKit.Heading(FontAwesomeIcon.Wifi, "Discord");
         var sync = config.SyncEnabled;
         if (ImGui.Checkbox(L.SyncEnabled, ref sync))
         {
@@ -139,9 +158,8 @@ public sealed class ConfigWindow : ThemedWindow
             }
         }
 
-        ImGui.TextColored(UiKit.Muted, L.Sent(plugin.Sync.Status));
-        ImGui.TextColored(UiKit.Muted, plugin.Sync.LastFetch is { } fetched ? L.Received($"{fetched:HH:mm}") : L.NothingReceived);
         ImGui.Spacing();
+        ImGui.TextColored(UiKit.Muted, $"{L.Sent(plugin.Sync.Status)} · {(plugin.Sync.LastFetch is { } fetched ? L.Received($"{fetched:HH:mm}") : L.NothingReceived)}");
     }
 
     // Ligação por código: colar o código, conferir a FC e confirmar. Depois, ligar a conta do Discord ou desligar.
@@ -149,8 +167,7 @@ public sealed class ConfigWindow : ThemedWindow
     {
         var link = plugin.Link;
         ImGui.Spacing();
-        using (Fonts.Heading())
-            ImGui.TextUnformatted(L.LinkTitle);
+        ImGui.TextColored(UiKit.Muted, L.LinkTitle);
 
         using (ImRaii.Disabled(link.Busy))
         {
@@ -220,19 +237,16 @@ public sealed class ConfigWindow : ThemedWindow
 
         if (link.Status.Length > 0)
             ImGui.TextColored(UiKit.Muted, link.Status);
-        ImGui.Spacing();
     }
 
     private void DrawDiagnostics(Configuration config)
     {
-        UiKit.Heading(FontAwesomeIcon.Stethoscope, L.Diagnostics);
         var detailed = config.DetailedLog;
         if (ImGui.Checkbox(L.DetailedLog, ref detailed))
         {
             config.DetailedLog = detailed;
             plugin.SaveConfig();
         }
-
 
         if (ImGui.Button(L.CopyLog))
         {
@@ -255,18 +269,11 @@ public sealed class ConfigWindow : ThemedWindow
             ? L.Copied
             : plugin.Sync.LogStatus);
 
-        ImGui.Spacing();
-        if (ImGui.Button(L.WhatsNew))
-            plugin.OpenChangelog();
-        ImGui.SameLine();
-        Support.KofiButton(plugin.IsDevBuild);
-
         if (plugin.IsDevBuild)
         {
             ImGui.Spacing();
             if (ImGui.Button(L.ReplayWelcome))
                 plugin.ReplayWelcome();
-            UiKit.Tooltip(L.DevOnly);
         }
     }
 

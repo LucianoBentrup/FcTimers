@@ -35,7 +35,10 @@ public static class L
     public static string StepData => T("Abrir a lista de submarinos na oficina e o baú da FC", "Open the submarine list in the workshop and the FC chest");
     public static string EnableCharacter => T("Ativar", "Enable");
     public static string Done => T("Pronto, esconder", "Done, hide this");
-    public static string Alerts => T("Avisos no jogo", "In-game alerts");
+    public static string Alerts => T("Avisos", "Alerts");
+    public static string AlertWhat => T("Avisar quando", "Alert when");
+    public static string AlertHow => T("Como avisar", "How to alert");
+    public static string General => T("Geral", "General");
     public static string AlertSubs => T("Submarino voltou", "Submarine is back");
     public static string AlertWheels => T("Buff do Wheel Stand pronto", "Wheel Stand buff ready");
     public static string AlertPlots => T("Campo pronto para regar", "Field ready to water");
@@ -44,7 +47,7 @@ public static class L
     public static string AlertSound => T("Som", "Sound");
     public static string AlertSoundId => T("Som do chat (1 a 16)", "Chat sound (1 to 16)");
     public static string Test => T("Testar", "Test");
-    public static string SendLogInactive => T("Só um personagem ativo envia o log. Ative este personagem nas configurações.", "Only an enabled character sends the log. Enable this character in Settings.");
+    public static string SendLogInactive => T("Ative este personagem para enviar o log.", "Enable this character to send the log.");
     public static string ReplayWelcome => T("Testar boas-vindas", "Test welcome");
     public static string SupportKofi => T("Apoiar no Ko-fi", "Support on Ko-fi");
     public static string SupportHint => T("Abre o Ko-fi no navegador.", "Opens Ko-fi in your browser.");
@@ -73,7 +76,7 @@ public static class L
     public static string LinkAccount => T("Ligar minha conta", "Link my account");
     public static string LinkLeave => T("Desligar desta FC", "Unlink from this FC");
     public static string LinkLeaveSure => T("Clique de novo para desligar", "Click again to unlink");
-    public static string Advanced => T("Avançado: endereço e chave antiga", "Advanced: address and old key");
+    public static string Advanced => T("Avançado", "Advanced");
     public static string LinkWorking => T("Falando com o serviço...", "Talking to the service...");
     public static string LinkDone => T("Ligado! O plugin já envia e recebe os dados da FC.", "Linked! The plugin now sends and receives the FC data.");
     public static string LinkLeft => T("Desligado da FC.", "Unlinked from the FC.");
@@ -108,13 +111,12 @@ public static class L
     public static string ColRole => T("Papel", "Role");
     public static string SureClick => T("Clique de novo", "Click again");
     public static string WhatsNew => T("Novidades", "What's new");
-    public static string DevOnly => T("Só aparece na versão de dev.", "Only shown in the dev build.");
     public static string Airships => T("Airships", "Airships");
     public static string ColAirship => T("Airship", "Airship");
     public static string AlertAirships => T("Airship voltou", "Airship is back");
     public static string AirshipReturned(string name) => T($"Airship {name} voltou!", $"Airship {name} is back!");
     public static string House => T("Casa da FC", "FC house");
-    public static string AlertHouse => T("Casa da FC sem visita (30, 40 e 44 dias)", "FC house without a visit (30, 40 and 44 days)");
+    public static string AlertHouse => T("Casa da FC sem visita", "FC house not visited");
     public static string HouseUnknown => T("Abra a oficina uma vez, ou entre na casa da FC e clique em \"Esta é a casa da FC\".", "Open the workshop once, or enter the FC house and click \"This is the FC house\".");
     public static string HouseMark => T("Esta é a casa da FC", "This is the FC house");
     public static string HouseMarkReplace => T("Substitui a casa da FC salva.", "Replaces the saved FC house.");
@@ -199,12 +201,12 @@ public static class L
 
     // Configurações
     public static string Language => T("Idioma", "Language");
-    public static string Characters => T("Personagens que leem e enviam dados", "Characters that read and send data");
+    public static string Characters => T("Personagens ativos", "Active characters");
     public static string Current => T("atual", "current");
     public static string UnknownWorld => T("entre no personagem para ver o mundo", "log in to see the world");
     public static string OtherFc => T("outra FC", "other FC");
     public static string OtherFcNow => T("Personagem de outra FC: nada é lido nem enviado.", "Character in another FC: nothing is read or sent.");
-    public static string SyncEnabled => T("Enviar e receber os dados do painel da FC", "Send and receive the FC panel data");
+    public static string SyncEnabled => T("Sincronizar com a FC", "Sync with the FC");
     public static string ServiceUrl => T("Endereço do serviço", "Service address");
     public static string ServiceKey => T("Chave da FC", "FC key");
     public static string Sent(string status) => T($"Envio: {status}", $"Sending: {status}");
