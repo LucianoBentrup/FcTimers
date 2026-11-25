@@ -17,6 +17,8 @@ e é o que a janela de novidades mostra quando o plugin está em português. Reg
 - **Visual novo:** cores do FC Companion; o estilo do Dalamud não muda.
 - **Botão Novidades:** nas configurações, para abrir esta lista de novo.
 - **Botão do Ko-fi:** na janela, nas configurações e aqui.
+- **Código da FC:** ligue o plugin à FC com um código curto.
+- **Conta do Discord:** ligue com um código de 6 números, para eventos.
 
 ### Changed
 - **Um comando só:** `/fcc` no jogo e no Discord.
@@ -28,6 +30,7 @@ e é o que a janela de novidades mostra quando o plugin está em português. Reg
 
 ### Fixed
 - **Alts de outra FC:** não enviam mais dados para o painel da sua FC.
+- **Privacidade:** o log não guarda mais nada do chat.
 
 ## [0.10.0] - 2026-11-23
 

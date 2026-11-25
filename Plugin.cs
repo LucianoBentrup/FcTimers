@@ -91,6 +91,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     public Configuration Config { get; }
     public SyncClient Sync { get; }
+    public FcLink Link { get; }
     public DiagnosticLog Diagnostics { get; }
     public FcView View { get; private set; } = new();
     public ulong CurrentCharacterId { get; private set; }
@@ -120,6 +121,7 @@ public sealed partial class Plugin : IDalamudPlugin
             () => Config.DetailedLog);
         Diagnostics.Write($"Plugin {DisplayVersion} iniciado");
 
+        Link = new FcLink(Config, SaveConfig, message => Diagnostics.Write(message));
         Sync = new SyncClient(Config, SaveConfig, Diagnostics.Write, IsMarketable, () => MarketWorld);
         Diagnostics.Write($"Itens do estoque: {LookupItem(Supplies.CeruleumTank)?.Name ?? "?"} e {LookupItem(Supplies.RepairMaterials)?.Name ?? "?"}");
 
@@ -188,6 +190,7 @@ public sealed partial class Plugin : IDalamudPlugin
         CommandManager.RemoveHandler(Command);
         dtrEntry.Remove();
         windowSystem.RemoveAllWindows();
+        Link.Dispose();
         Fonts.Dispose();
 
         // Fechando o jogo logo depois de uma coleta: o log que ainda não foi enviado vai agora, esperando no máximo 3 segundos.
@@ -203,6 +206,10 @@ public sealed partial class Plugin : IDalamudPlugin
     public void SaveConfig() => PluginInterface.SavePluginConfig(Config);
 
     public bool CurrentCharacterEnabled => characterEnabled;
+
+    // FC do personagem logado, para a ligação por código. 0: sem FC ou ID ainda não lido.
+    public ulong CurrentFcId { get; private set; }
+    public string CurrentFcTag { get; private set; } = string.Empty;
     public bool CurrentCharacterOtherFc => characterEnabled && currentOtherFc;
 
     // Carregado pelo Dev Plugin Locations do Dalamud, e não pelo repositório.
@@ -401,6 +408,9 @@ public sealed partial class Plugin : IDalamudPlugin
         }
 
         currentOtherFc = character.OtherFc;
+        CurrentFcId = character.FcId;
+        CurrentFcTag = tag;
+        Sync.FcId = character.FcId;
 
         // Guardado só para personagem ativo: é o nome do log enviado depois de deslogar.
         lastCharacterActive = character.Enabled;

@@ -86,6 +86,11 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
     public void Dispose() => http.Dispose();
 
+    // ID da FC do personagem que está mandando. O serviço descarta o envio de outra FC. 0: não manda o campo.
+    public ulong FcId { get; set; }
+
+    private string? FcIdText => FcId == 0 ? null : FcId.ToString();
+
     public void ReportSub(int slot, string name, long returnTime, SubDetails? details)
     {
         if (!Enabled)
@@ -188,7 +193,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         if (!Enabled || sendingLog != null)
             return false;
 
-        var body = JsonSerializer.Serialize(new { character, text });
+        var body = JsonSerializer.Serialize(new { character, text, fcId = FcIdText });
         sendingLog = SendLogAsync(body, config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim());
         LogStatus = "Enviando log...";
         return true;
@@ -200,7 +205,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
         if (!Enabled)
             return;
 
-        var body = JsonSerializer.Serialize(new { character, text });
+        var body = JsonSerializer.Serialize(new { character, text, fcId = FcIdText });
         try
         {
             SendLogAsync(body, config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim()).Wait(wait);
@@ -290,6 +295,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     {
         var body = new
         {
+            fcId = FcIdText,
             subs = sendingSubs.Select(s => new
             {
                 slot = s.Slot,
@@ -351,9 +357,12 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
             using var response = await http.SendAsync(request).ConfigureAwait(false);
+            // 202: envio de personagem de outra FC, aceito e descartado pelo serviço. Conta como enviado.
             return response.IsSuccessStatusCode
                 ? new SendResult(true, "Conectado")
-                : new SendResult(false, $"Erro {(int)response.StatusCode} ao enviar");
+                : response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                    ? new SendResult(false, "Ligação inválida: cole o código da FC de novo")
+                    : new SendResult(false, $"Erro {(int)response.StatusCode} ao enviar");
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException or UriFormatException)
         {

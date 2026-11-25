@@ -208,6 +208,10 @@ public class Configuration : IPluginConfiguration
     // ID aleatório desta instalação, gerado uma vez. É o "dono" na ligação com o código da FC.
     public string OwnerId { get; set; } = string.Empty;
 
+    // Nome da FC e do servidor do Discord da última ligação por código, só para mostrar.
+    public string LinkedFcName { get; set; } = string.Empty;
+    public string LinkedServerName { get; set; } = string.Empty;
+
     // Último loot visto na memória de cada slot. Loot novo só é salvo quando muda.
     public Dictionary<int, string> LootSeen { get; set; } = [];
 

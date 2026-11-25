@@ -21,6 +21,8 @@ Portuguese). Rules for every entry:
 - **New look:** FC Companion colors; your Dalamud style stays the same.
 - **What's new button:** in Settings, to open this list again.
 - **Ko-fi button:** in the window, in Settings and here.
+- **FC code:** link the plugin to your FC with a short code.
+- **Discord account:** link it with a 6-digit code for events.
 
 ### Changed
 - **One command:** `/fcc` in the game and on Discord.
@@ -32,6 +34,7 @@ Portuguese). Rules for every entry:
 
 ### Fixed
 - **Alts in another FC:** no longer send data to your FC panel.
+- **Privacy:** the log no longer keeps any chat.
 
 ## [0.10.0] - 2026-11-23
 

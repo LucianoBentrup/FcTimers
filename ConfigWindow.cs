@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
@@ -18,6 +19,10 @@ public sealed class ConfigWindow : ThemedWindow
 
     private readonly Plugin plugin;
     private DateTime copiedAt = DateTime.MinValue;
+
+    private string fcCode = string.Empty;
+    private string accountCode = string.Empty;
+    private bool leaveArmed;
 
     public ConfigWindow(Plugin plugin) : base("FC Companion - Settings###FcTimersConfig")
     {
@@ -120,22 +125,94 @@ public sealed class ConfigWindow : ThemedWindow
             plugin.SaveConfig();
         }
 
-        var url = config.ServiceUrl;
-        if (ImGui.InputText(L.ServiceUrl, ref url, 256))
-        {
-            config.ServiceUrl = url;
-            plugin.SaveConfig();
-        }
+        DrawLink(config);
 
-        var key = config.ServiceKey;
-        if (ImGui.InputText(L.ServiceKey, ref key, 256, ImGuiInputTextFlags.Password))
+        // A chave antiga e o endereço continuam valendo por uma versão, para quem já usa.
+        if (ImGui.CollapsingHeader(L.Advanced))
         {
-            config.ServiceKey = key;
-            plugin.SaveConfig();
+            var url = config.ServiceUrl;
+            if (ImGui.InputText(L.ServiceUrl, ref url, 256))
+            {
+                config.ServiceUrl = url;
+                plugin.SaveConfig();
+            }
+
+            var key = config.ServiceKey;
+            if (ImGui.InputText(L.ServiceKey, ref key, 256, ImGuiInputTextFlags.Password))
+            {
+                config.ServiceKey = key;
+                plugin.SaveConfig();
+            }
         }
 
         ImGui.TextColored(UiKit.Muted, L.Sent(plugin.Sync.Status));
         ImGui.TextColored(UiKit.Muted, plugin.Sync.LastFetch is { } fetched ? L.Received($"{fetched:HH:mm}") : L.NothingReceived);
+        ImGui.Spacing();
+    }
+
+    // Ligação por código: colar o código, conferir a FC e confirmar. Depois, ligar a conta do Discord ou desligar.
+    private void DrawLink(Configuration config)
+    {
+        var link = plugin.Link;
+        ImGui.Spacing();
+        using (Fonts.Heading())
+            ImGui.TextUnformatted(L.LinkTitle);
+
+        using (ImRaii.Disabled(link.Busy))
+        {
+            if (link.Linked)
+            {
+                ImGui.TextColored(UiKit.Good, L.LinkedTo(config.LinkedFcName.Length > 0 ? config.LinkedFcName : "?", config.LinkedServerName));
+                ImGui.TextColored(UiKit.Muted, L.LinkAccountHint);
+                ImGui.SetNextItemWidth(120 * ImGuiHelpers.GlobalScale);
+                ImGui.InputText(L.LinkAccountCode, ref accountCode, 6, ImGuiInputTextFlags.CharsDecimal);
+                ImGui.SameLine();
+                using (ImRaii.Disabled(accountCode.Length != 6))
+                {
+                    if (ImGui.Button(L.LinkAccount))
+                    {
+                        link.LinkAccount(accountCode);
+                        accountCode = string.Empty;
+                    }
+                }
+
+                // Desligar pede dois cliques, porque o token deixa de valer na hora.
+                if (ImGui.Button(leaveArmed ? L.LinkLeaveSure : L.LinkLeave))
+                {
+                    if (leaveArmed)
+                        link.Leave();
+                    leaveArmed = !leaveArmed;
+                }
+            }
+            else if (link.Pending is { } pending)
+            {
+                var fcName = pending.FcName ?? (plugin.CurrentFcTag.Length > 0 ? $"«{plugin.CurrentFcTag}»" : "?");
+                ImGui.TextUnformatted(L.LinkConfirm(fcName, pending.ServerName ?? string.Empty));
+                if (ImGui.Button(L.LinkYes))
+                    link.Confirm(plugin.CurrentFcId, fcName, config.Characters.Values);
+                ImGui.SameLine();
+                if (ImGui.Button(L.Cancel))
+                    link.CancelPending();
+            }
+            else
+            {
+                ImGui.TextColored(UiKit.Muted, L.LinkHint);
+                if (plugin.CurrentFcId == 0)
+                    ImGui.TextColored(UiKit.Soon, L.LinkNeedsFcId);
+
+                ImGui.SetNextItemWidth(160 * ImGuiHelpers.GlobalScale);
+                ImGui.InputText(L.LinkCode, ref fcCode, 16);
+                ImGui.SameLine();
+                using (ImRaii.Disabled(fcCode.Trim().Length < 6 || plugin.CurrentFcId == 0))
+                {
+                    if (ImGui.Button(L.LinkCheck))
+                        link.CheckCode(fcCode.Trim(), plugin.CurrentFcId);
+                }
+            }
+        }
+
+        if (link.Status.Length > 0)
+            ImGui.TextColored(UiKit.Muted, link.Status);
         ImGui.Spacing();
     }
 
