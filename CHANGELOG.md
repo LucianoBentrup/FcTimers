@@ -10,7 +10,7 @@ starts with a bold title (`**Title:** text`) is shown there as a highlight card.
 ## [Unreleased]
 
 ### Added
-- **Timeline:** the Overview opens with the next 24 hours on one bar: submarines, airships, watering, buffs and the house deadline. Hover a marker to see the exact time.
+- **Timeline:** the Overview opens with the next 24 hours, 3 days or 7 days on one bar: submarines, airships, watering, buffs and the house deadline. Markers that land close together are grouped with a count. Hover a marker to see the exact time.
 - **Submarine cards:** each submarine gets a card with its rank, return time, voyage progress and the four parts with their game icons and wear.
 - **Item icons:** loot shows each item's icon from the game, and the Overview highlights the best item of the day.
 - **New look:** the windows use the FC Companion colors (the Maré theme). Your Dalamud style is not changed.

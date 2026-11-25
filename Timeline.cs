@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -29,7 +30,12 @@ public readonly record struct TimelineMarker(TimelineLane Lane, TimelineKind Kin
 // Os marcos depois da janela também voltam: a linha do tempo mostra o próximo deles na ponta da faixa.
 public static class Timeline
 {
-    public const long WindowSeconds = 24 * 3600;
+    public const long DaySeconds = 24 * 3600;
+
+    // Períodos que a linha do tempo oferece, em dias.
+    public static readonly int[] Periods = [1, 3, 7];
+
+    public static int ValidDays(int days) => Periods.Contains(days) ? days : Periods[0];
 
     public static List<TimelineMarker> Build(FcView view, long now, long houseLimitSeconds)
     {
@@ -73,6 +79,28 @@ public static class Timeline
     // Faixas que aparecem: só as que têm algum marco, na ordem do enum.
     public static List<TimelineLane> Lanes(IEnumerable<TimelineMarker> markers)
         => markers.Select(m => m.Lane).Distinct().OrderBy(l => l).ToList();
+
+    // Junta os marcos de uma faixa que ficariam a menos de minGap pixels um do outro, para não embolar
+    // nos períodos longos. Cada grupo começa no marco mais cedo; a posição vem de toX.
+    public static List<List<TimelineMarker>> Clusters(IEnumerable<TimelineMarker> lane, Func<long, float> toX, float minGap)
+    {
+        var clusters = new List<List<TimelineMarker>>();
+        var startX = float.MinValue;
+        foreach (var marker in lane.OrderBy(m => m.Time))
+        {
+            var x = toX(marker.Time);
+            if (clusters.Count > 0 && x - startX < minGap)
+            {
+                clusters[^1].Add(marker);
+                continue;
+            }
+
+            clusters.Add([marker]);
+            startX = x;
+        }
+
+        return clusters;
+    }
 
     // O próximo marco que ainda vai acontecer, para a frase em cima da linha ("Próximo: Gaivota volta em 1h20").
     public static TimelineMarker? Next(IEnumerable<TimelineMarker> markers, long now)

@@ -51,6 +51,26 @@ public class TimelineTests
     }
 
     [Fact]
+    public void Marcos_perto_demais_viram_um_grupo_que_comeca_no_mais_cedo()
+    {
+        var lane = new[] { 0L, 5, 30, 100, 104 }
+            .Select(t => new TimelineMarker(TimelineLane.Subs, TimelineKind.Returns, Now + t, $"s{t}", false));
+
+        var clusters = Timeline.Clusters(lane, t => t - Now, 12);
+
+        Assert.Equal([2, 1, 2], clusters.Select(c => c.Count));
+        Assert.Equal(Now + 100, clusters[2][0].Time);
+    }
+
+    [Fact]
+    public void Periodo_fora_da_lista_volta_para_24_horas()
+    {
+        Assert.Equal(7, Timeline.ValidDays(7));
+        Assert.Equal(1, Timeline.ValidDays(0));
+        Assert.Equal(1, Timeline.ValidDays(5));
+    }
+
+    [Fact]
     public void Prazo_da_casa_e_a_ultima_visita_mais_os_45_dias()
     {
         var config = new Configuration { HouseVisitAt = Now - (10 * 86400) };

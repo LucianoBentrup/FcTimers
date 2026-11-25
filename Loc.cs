@@ -165,7 +165,9 @@ public static class L
     public static string DtrReady(int count) => count == 1 ? T("1 pronto", "1 ready") : T($"{count} prontos", $"{count} ready");
     public static string HelpMain => T("Abre a janela do FC Companion. Use \"/fcc regar\" depois de regar a plantação.", "Opens the FC Companion window. Use \"/fcc water\" after watering the garden.");
     // Linha do tempo e cartões (UI-1)
-    public static string Next24h => T("Próximas 24 horas", "Next 24 hours");
+    public static string NextPeriod(int days) => days == 1 ? T("Próximas 24 horas", "Next 24 hours") : T($"Próximos {days} dias", $"Next {days} days");
+    public static string PeriodShort(int days) => days == 1 ? "24h" : T($"{days} dias", $"{days} days");
+    public static string MoreMarkers(int count) => T($"e mais {count}", $"and {count} more");
     public static string Now => T("agora", "now");
     public static string NextUp(string what) => T($"Próximo: {what}", $"Next: {what}");
     public static string NothingNext => T("Nada marcado nas próximas 24 horas.", "Nothing in the next 24 hours.");

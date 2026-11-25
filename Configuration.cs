@@ -193,6 +193,9 @@ public class Configuration : IPluginConfiguration
     public bool FcHouseManual { get; set; }
     public long HouseVisitAt { get; set; }
 
+    // Dias que a linha do tempo da Visão geral mostra: 1, 3 ou 7.
+    public int TimelineDays { get; set; } = 1;
+
     // Tag da FC ligada ao painel, aprendida com um personagem dentro da oficina da casa da FC.
     public string FcTag { get; set; } = string.Empty;
 

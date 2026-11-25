@@ -7,12 +7,14 @@ using Dalamud.Interface.Utility;
 
 namespace FcTimers;
 
-// Linha do tempo da Visão geral: as próximas 24 horas numa barra só, uma faixa por assunto.
-// Marco que já passou da hora fica no "agora" com um anel verde. O que passa das 24 horas aparece como texto na ponta da faixa.
+// Linha do tempo da Visão geral: as próximas 24 horas, 3 ou 7 dias numa barra só, uma faixa por assunto.
+// Marco que já passou da hora fica no "agora" com um anel verde. O que passa do período aparece como texto na ponta da faixa.
 public static class TimelineView
 {
     private const float HitRadius = 8f;
     private const float LaneHeight = 24f;
+    private const float ClusterGap = 12f;
+    private const int MaxTooltip = 8;
 
     // Cabeçalho, o rótulo do "agora", uma faixa por assunto e a linha das horas.
     public static float Height(List<TimelineMarker> markers)
@@ -24,12 +26,15 @@ public static class TimelineView
         return (style.WindowPadding.Y * 2) + line + style.ItemSpacing.Y + body + 4;
     }
 
-    public static void Draw(List<TimelineMarker> markers, long now)
+    // days: 1, 3 ou 7. setDays troca o período e grava na config.
+    public static void Draw(List<TimelineMarker> markers, long now, int days, Action<int> setDays)
     {
         var lanes = Timeline.Lanes(markers);
         var theme = Theme.Current;
+        var window = days * Timeline.DaySeconds;
+        var end = now + window;
 
-        ImGui.TextUnformatted(L.Next24h);
+        ImGui.TextUnformatted(L.NextPeriod(days));
         var ready = markers.Count(m => m.Ready);
         if (ready > 0)
         {
@@ -37,11 +42,13 @@ public static class TimelineView
             ImGui.TextColored(Theme.Good, L.DtrReady(ready));
         }
 
-        if (Timeline.Next(markers.Where(m => m.Time <= now + Timeline.WindowSeconds), now) is { } next)
+        if (Timeline.Next(markers.Where(m => m.Time <= end), now) is { } next)
         {
             ImGui.SameLine();
             ImGui.TextColored(theme.Muted, $"· {L.NextUp($"{Label(next)} {L.InTime(Plugin.FormatRemaining(next.Time - now))}")}");
         }
+
+        PeriodPicker(days, setDays);
 
         if (lanes.Count == 0)
         {
@@ -67,25 +74,12 @@ public static class TimelineView
         var bottom = top + (lanes.Count * laneHeight);
         var left = start.X + labelWidth;
         var right = start.X + width - edgeWidth;
-        float X(long time) => left + ((right - left) * Math.Clamp((time - now) / (float)Timeline.WindowSeconds, 0f, 1f));
+        float X(long time) => left + ((right - left) * Math.Clamp((time - now) / (float)window, 0f, 1f));
 
         draw.AddRectFilled(new Vector2(left, top), new Vector2(right, bottom), ImGui.GetColorU32(theme.Field), 3 * scale);
+        DrawAxis(draw, now, days, X, top, bottom, scale);
 
-        // Marcas a cada 3 horas do relógio do PC, com a hora embaixo.
-        var local = DateTimeOffset.FromUnixTimeSeconds(now).ToLocalTime();
-        var hour = new DateTimeOffset(local.Year, local.Month, local.Day, local.Hour, 0, 0, local.Offset).AddHours(1);
-        while (hour.Hour % 3 != 0)
-            hour = hour.AddHours(1);
-        for (; hour.ToUnixTimeSeconds() < now + Timeline.WindowSeconds; hour = hour.AddHours(3))
-        {
-            var x = X(hour.ToUnixTimeSeconds());
-            draw.AddLine(new Vector2(x, top), new Vector2(x, bottom), ImGui.GetColorU32(Theme.Fade(theme.Line, 0.8f)));
-            var text = hour.ToString("HH:mm");
-            var size = ImGui.CalcTextSize(text);
-            draw.AddText(new Vector2(x - (size.X / 2), bottom + (2 * scale)), ImGui.GetColorU32(theme.Muted), text);
-        }
-
-        var hits = new List<(Vector2 Position, TimelineMarker Marker)>();
+        var hits = new List<(Vector2 Position, List<TimelineMarker> Markers)>();
         for (var i = 0; i < lanes.Count; i++)
         {
             var lane = lanes[i];
@@ -96,23 +90,27 @@ public static class TimelineView
             if (i > 0)
                 draw.AddLine(new Vector2(left, y - (laneHeight / 2)), new Vector2(right, y - (laneHeight / 2)), ImGui.GetColorU32(Theme.Fade(theme.Line, 0.5f)));
 
+            // Marcos muito perto viram um só, com o número de marcos ao lado.
             var inLane = markers.Where(m => m.Lane == lane).ToList();
-            foreach (var marker in inLane.Where(m => m.Time <= now + Timeline.WindowSeconds))
+            foreach (var cluster in Timeline.Clusters(inLane.Where(m => m.Time <= end), X, ClusterGap * scale))
             {
-                var position = new Vector2(X(Math.Max(marker.Time, now)), y);
-                DrawMarker(draw, position, MarkerColor(marker, now), marker.Ready, scale);
-                hits.Add((position, marker));
+                var first = cluster[0];
+                var position = new Vector2(X(first.Time), y);
+                DrawMarker(draw, position, MarkerColor(first, now), cluster.Any(m => m.Ready), scale);
+                if (cluster.Count > 1)
+                    draw.AddText(position + new Vector2(8 * scale, -laneHeight / 2), ImGui.GetColorU32(theme.Ink), $"{cluster.Count}");
+                hits.Add((position, cluster));
             }
 
-            // Depois das 24 horas: só o próximo, como texto na ponta.
-            var later = inLane.FirstOrDefault(m => m.Time > now + Timeline.WindowSeconds);
+            // Depois do período: só o próximo, como texto na ponta.
+            var later = inLane.FirstOrDefault(m => m.Time > end);
             if (later.Time > 0)
             {
                 var text = Later(later.Time - now);
                 var size = ImGui.CalcTextSize(text);
                 var position = new Vector2(right + (6 * scale), y - (size.Y / 2));
                 draw.AddText(position, ImGui.GetColorU32(later.Kind == TimelineKind.HouseDemolish ? MarkerColor(later, now) : theme.Muted), text);
-                hits.Add((position + (size / 2), later));
+                hits.Add((position + (size / 2), [later]));
             }
         }
 
@@ -125,16 +123,72 @@ public static class TimelineView
 
         // Passando o mouse: todos os marcos debaixo do cursor, com o horário.
         var mouse = ImGui.GetMousePos();
-        var under = hits.Where(h => Vector2.Distance(h.Position, mouse) <= HitRadius * scale * 1.5f).Select(h => h.Marker).ToList();
+        var under = hits.Where(h => Vector2.Distance(h.Position, mouse) <= HitRadius * scale * 1.5f).SelectMany(h => h.Markers).ToList();
         if (under.Count == 0)
             return;
 
         using var tooltip = Dalamud.Interface.Utility.Raii.ImRaii.Tooltip();
-        foreach (var marker in under)
+        foreach (var marker in under.Take(MaxTooltip))
         {
             ImGui.TextColored(MarkerColor(marker, now), Label(marker));
             var when = UiKit.LocalTime(marker.Time, "HH:mm · dd/MM");
             ImGui.TextColored(theme.Muted, marker.Ready ? L.AtTime(when) : $"{L.InTime(Plugin.FormatRemaining(marker.Time - now))} · {L.AtTime(when)}");
+        }
+
+        if (under.Count > MaxTooltip)
+            ImGui.TextColored(theme.Muted, L.MoreMarkers(under.Count - MaxTooltip));
+    }
+
+    // 24h | 3 dias | 7 dias, no canto direito do cabeçalho. O período escolhido fica com a cor da marca.
+    private static void PeriodPicker(int days, Action<int> setDays)
+    {
+        var theme = Theme.Current;
+        var style = ImGui.GetStyle();
+        var widths = Timeline.Periods.Select(d => ImGui.CalcTextSize(L.PeriodShort(d)).X + (style.FramePadding.X * 2)).ToList();
+        var total = widths.Sum() + (style.ItemSpacing.X * (widths.Count - 1));
+        ImGui.SameLine(Math.Max(ImGui.GetCursorPosX(), ImGui.GetContentRegionMax().X - total));
+
+        for (var i = 0; i < Timeline.Periods.Length; i++)
+        {
+            var period = Timeline.Periods[i];
+            if (i > 0)
+                ImGui.SameLine();
+
+            using (Dalamud.Interface.Utility.Raii.ImRaii.PushColor(ImGuiCol.Button, theme.AccentDeep, period == days)
+                .Push(ImGuiCol.Text, period == days ? theme.Ink : theme.Muted))
+            {
+                if (ImGui.SmallButton($"{L.PeriodShort(period)}###period{period}") && period != days)
+                    setDays(period);
+            }
+        }
+    }
+
+    // Em 24 horas, marcas a cada 3 horas. Em 3 dias, a cada 6 horas. Em 7 dias, a cada 12 horas, com texto só na data.
+    // A meia-noite sempre ganha uma linha mais forte, para separar os dias.
+    private static void DrawAxis(ImDrawListPtr draw, long now, int days, Func<long, float> x, float top, float bottom, float scale)
+    {
+        var theme = Theme.Current;
+        var step = days switch { 1 => 3, 3 => 6, _ => 12 };
+        var local = DateTimeOffset.FromUnixTimeSeconds(now).ToLocalTime();
+        var tick = new DateTimeOffset(local.Year, local.Month, local.Day, local.Hour, 0, 0, local.Offset).AddHours(1);
+        while (tick.Hour % step != 0)
+            tick = tick.AddHours(1);
+
+        var end = now + (days * Timeline.DaySeconds);
+        for (; tick.ToUnixTimeSeconds() < end; tick = tick.AddHours(step))
+        {
+            var position = x(tick.ToUnixTimeSeconds());
+            var midnight = tick.Hour == 0;
+            draw.AddLine(new Vector2(position, top), new Vector2(position, bottom),
+                ImGui.GetColorU32(midnight ? theme.Line : Theme.Fade(theme.Line, 0.5f)), midnight ? 1.5f * scale : 1f);
+
+            if (days == 7 && !midnight)
+                continue;
+
+            var dated = midnight && days > 1;
+            var text = dated ? tick.ToString("dd/MM") : tick.ToString("HH:mm");
+            var size = ImGui.CalcTextSize(text);
+            draw.AddText(new Vector2(position - (size.X / 2), bottom + (2 * scale)), ImGui.GetColorU32(dated ? theme.Ink : theme.Muted), text);
         }
     }
 

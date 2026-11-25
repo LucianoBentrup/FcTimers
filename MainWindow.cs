@@ -127,7 +127,11 @@ public class MainWindow : ThemedWindow
         using (var timeline = ImRaii.Child("##timeline", new Vector2(-1, TimelineView.Height(markers)), true))
         {
             if (timeline)
-                TimelineView.Draw(markers, now);
+                TimelineView.Draw(markers, now, Timeline.ValidDays(plugin.Config.TimelineDays), days =>
+                {
+                    plugin.Config.TimelineDays = days;
+                    plugin.SaveConfig();
+                });
         }
 
         using var grid = ImRaii.Table("##cards", 2, ImGuiTableFlags.SizingStretchSame);
