@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
-  COMMANDS, fcFor, langOf, LEGACY, menuComponents, menuMessage, panelComponents, parseCustomId, SECTIONS, sectionEmbed, sharedMessage, text, TEXT, userOf,
+  codeScreen, COMMANDS, fcFor, langOf, LEGACY, menuComponents, menuMessage, panelComponents, parseCustomId, SECTIONS, sectionEmbed, sharedMessage, text, TEXT, userOf,
 } from '../src/menu.js';
 import { EPHEMERAL } from '../src/discord.js';
 
@@ -129,9 +129,12 @@ test('Eventos: Novo evento só para quem pode criar; o lembrete por DM é de cad
   assert.equal(creator.find((b) => b.custom_id === 'fc:pref:dm').label, 'Lembrete por DM: ligado');
 });
 
-test('os ajustes têm os canais do bot e a lista de cargos com o cargo atual', () => {
+test('os ajustes têm o código da FC e a lista de cargos; os canais ficam na tela do código', () => {
   const rows = menuComponents('en', { view: 'manage', manager: true, eventRole: '77' });
-  assert.ok(['fc:do:panel-here', 'fc:do:alerts-here', 'fc:do:events-here'].every((id) => ids(rows).includes(id)));
+  assert.ok(ids(rows).includes('fc:do:code'));
+  const code = codeScreen('en', 'FCC-ABCDEF', 0);
+  const codeRows = code.data?.components ?? code.components;
+  assert.ok(['fc:do:panel-here', 'fc:do:alerts-here', 'fc:do:events-here'].every((id) => ids(codeRows).includes(id)));
   const select = buttons(rows).find((b) => b.custom_id === 'fc:set:eventrole');
   assert.equal(select.type, 6);
   assert.deepEqual(select.default_values, [{ id: '77', type: 'role' }]);
@@ -206,4 +209,16 @@ test('quem clicou vem do membro no servidor ou do usuário fora dele', () => {
   assert.equal(userOf({ member: { user: { id: '1' } } }), '1');
   assert.equal(userOf({ user: { id: '2' } }), '2');
   assert.equal(userOf({}), null);
+});
+
+test('nenhuma tela do menu passa de 5 linhas nem de 5 botões por linha (limite do Discord)', () => {
+  for (const view of ['panel', 'subs', 'loot', 'supplies', 'profit', 'events', 'manage']) {
+    for (const testTools of [false, true]) {
+      for (const pub of [false, true]) {
+        const rows = menuComponents('pt', { view, manager: true, testTools, pub, canCreate: true });
+        assert.ok(rows.length <= 5, `${view} test=${testTools} pub=${pub}: ${rows.length} linhas`);
+        for (const r of rows) assert.ok(r.components.length <= 5, `${view}: ${r.components.length} botões numa linha`);
+      }
+    }
+  }
 });

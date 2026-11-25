@@ -154,20 +154,16 @@ export function menuComponents(lang, {
       button(t('log'), 'fc:do:log', SECONDARY, '🧾'),
       button(t('language'), lang === 'en' ? 'fc:do:lang-pt' : 'fc:do:lang-en', SECONDARY, '🌐'),
     ]));
+    // O Discord aceita no máximo 5 linhas. Painel/Avisos/Eventos aqui ficam na tela do código da FC.
     rows.push(row([
-      button(t('panelHere'), 'fc:do:panel-here', SECONDARY, '📋'),
-      button(t('alertsHere'), 'fc:do:alerts-here', SECONDARY, '🔔'),
-      button(t('eventsHere'), 'fc:do:events-here', SECONDARY, '📅'),
       button(t('fcCode'), 'fc:do:code', SUCCESS, '🔑'),
-    ]));
-    // TESTE: tirar depois da fase de testes.
-    if (testTools) {
-      rows.push(row([
+      // TESTE: tirar depois da fase de testes.
+      ...(testTools ? [
         button(t('testAlert'), 'fc:do:test-alert', SECONDARY, '🧪'),
         button(t('testDm'), 'fc:do:test-dm', SECONDARY, '🧪'),
         button(t('testRequest'), 'fc:do:test-request', SECONDARY, '🧪'),
-      ]));
-    }
+      ] : []),
+    ]));
     rows.push(row([{
       type: ROLE_SELECT, custom_id: 'fc:set:eventrole', placeholder: t('eventRole'), min_values: 0, max_values: 1,
       ...(eventRole ? { default_values: [{ id: eventRole, type: 'role' }] } : {}),
