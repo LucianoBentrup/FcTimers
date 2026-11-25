@@ -273,8 +273,7 @@ public class MainWindow : ThemedWindow
         UiKit.TimeTooltip(house.VisitedAt);
         if (house.By is { Length: > 0 } by)
             ImGui.TextColored(UiKit.Muted, L.HouseBy(by));
-        ImGui.TextColored(UiKit.Muted, L.HouseDemolish(UiKit.DaysOrTime(Math.Max(0, left))));
-        UiKit.ThinBar(Math.Clamp(ago / (float)Plugin.HouseLimitSeconds, 0, 1), UiKit.Bad);
+        UiKit.Bar(Math.Clamp(ago / (float)Plugin.HouseLimitSeconds, 0, 1), L.HouseDemolish(UiKit.DaysOrTime(Math.Max(0, left))), UiKit.Bad);
         UiKit.Tooltip(L.HouseHint);
         HouseMarkButton();
     }

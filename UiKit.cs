@@ -99,19 +99,6 @@ public static class UiKit
         drawList.AddText(position, ImGui.GetColorU32(ImGuiCol.Text), overlay);
     }
 
-    // Barra fina, sem texto, para quando o texto já está na linha de cima.
-    public static void ThinBar(float fraction, Vector4 color)
-    {
-        var scale = Dalamud.Interface.Utility.ImGuiHelpers.GlobalScale;
-        var min = ImGui.GetCursorScreenPos();
-        var size = new Vector2(ImGui.GetContentRegionAvail().X, 6 * scale);
-        var draw = ImGui.GetWindowDrawList();
-        draw.AddRectFilled(min, min + size, ImGui.GetColorU32(Theme.Current.Field), 3 * scale);
-        if (fraction > 0)
-            draw.AddRectFilled(min, min + size with { X = Math.Max(size.Y, size.X * Math.Clamp(fraction, 0f, 1f)) }, ImGui.GetColorU32(color), 3 * scale);
-        ImGui.Dummy(size);
-    }
-
     // Horário absoluto ao passar o mouse sobre um tempo relativo ("em 2h10" mostra "às 15:47 · 03/11").
     public static void TimeTooltip(long unix)
     {
