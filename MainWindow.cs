@@ -274,7 +274,6 @@ public class MainWindow : ThemedWindow
         if (house.By is { Length: > 0 } by)
             ImGui.TextColored(UiKit.Muted, L.HouseBy(by));
         UiKit.Bar(Math.Clamp(ago / (float)Plugin.HouseLimitSeconds, 0, 1), L.HouseDemolish(UiKit.DaysOrTime(Math.Max(0, left))), UiKit.Bad);
-        UiKit.Tooltip(L.HouseHint);
         HouseMarkButton();
     }
 
@@ -286,7 +285,8 @@ public class MainWindow : ThemedWindow
 
         if (ImGui.SmallButton(L.HouseMark))
             plugin.MarkCurrentHouse();
-        UiKit.Tooltip(plugin.Config.FcHouse.Length == 0 ? L.HouseMarkHint : L.HouseMarkReplace);
+        if (plugin.Config.FcHouse.Length > 0)
+            UiKit.Tooltip(L.HouseMarkReplace);
     }
 
     private static void OverviewLoot(LootDay? today)
@@ -450,8 +450,6 @@ public class MainWindow : ThemedWindow
                 ImGui.TextUnformatted(item.Name);
                 UiKit.Cell($"{item.Count}");
                 UiKit.Cell($"{item.Value:N0}", item.Market ? UiKit.Soon : null);
-                if (item.Market)
-                    UiKit.Tooltip(L.MarketHint);
             }
         }
     }
@@ -463,7 +461,6 @@ public class MainWindow : ThemedWindow
             return;
 
         UiKit.Heading(FontAwesomeIcon.ChartLine, L.Profit);
-        UiKit.Tooltip(L.ProfitHint);
         using (var weeks = UiKit.Table("##weeks", L.ColWeek, L.ColGil, L.ColVoyages))
         {
             if (weeks != null)
@@ -576,7 +573,6 @@ public class MainWindow : ThemedWindow
 
         if (ImGui.Button(L.WaterAll))
             plugin.WaterAll("botão Reguei todos agora");
-        UiKit.Tooltip(L.WaterAllHint);
 
         ImGui.Spacing();
         UiKit.Heading(FontAwesomeIcon.MapMarkerAlt, L.Fields);

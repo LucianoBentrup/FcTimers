@@ -75,7 +75,6 @@ public sealed class ConfigWindow : ThemedWindow
             plugin.SaveConfig();
         }
 
-        UiKit.Tooltip(L.MarketHint);
         ImGui.Spacing();
     }
 
@@ -220,7 +219,6 @@ public sealed class ConfigWindow : ThemedWindow
             plugin.SaveConfig();
         }
 
-        UiKit.Tooltip(L.DetailedLogHint);
 
         if (ImGui.Button(L.CopyLog))
         {

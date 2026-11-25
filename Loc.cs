@@ -47,7 +47,7 @@ public static class L
     public static string SendLogInactive => T("Só um personagem ativo envia o log. Ative este personagem nas configurações.", "Only an enabled character sends the log. Enable this character in Settings.");
     public static string ReplayWelcome => T("Testar boas-vindas", "Test welcome");
     public static string SupportKofi => T("Apoiar no Ko-fi", "Support on Ko-fi");
-    public static string SupportHint => T("Abre o Ko-fi no navegador. O apoio ajuda a pagar o serviço do Discord, e tudo no plugin continua grátis.", "Opens Ko-fi in your browser. Support helps pay for the Discord service, and everything in the plugin stays free.");
+    public static string SupportHint => T("Abre o Ko-fi no navegador.", "Opens Ko-fi in your browser.");
     public static string SupportNotSet => T("O link do Ko-fi ainda não foi colocado (Support.KofiUrl).", "The Ko-fi link is not set yet (Support.KofiUrl).");
     public static string WhatsNewIn(string version) => T($"Novidades da {version}", $"What's new in {version}");
     public static string WhatsNewNext => T("Novidades da próxima versão", "What's new in the next version");
@@ -95,13 +95,11 @@ public static class L
     public static string AlertHouse => T("Casa da FC sem visita (30, 40 e 44 dias)", "FC house without a visit (30, 40 and 44 days)");
     public static string HouseUnknown => T("Abra a oficina uma vez, ou entre na casa da FC e clique em \"Esta é a casa da FC\".", "Open the workshop once, or enter the FC house and click \"This is the FC house\".");
     public static string HouseMark => T("Esta é a casa da FC", "This is the FC house");
-    public static string HouseMarkHint => T("Marca a casa onde você está agora como a casa da FC.", "Marks the house you're in as the FC house.");
-    public static string HouseMarkReplace => T("Você está em outra casa. Clique só se esta for a casa da FC: ela substitui a que está salva agora.", "You're in a different house. Click only if this is the FC house: it replaces the one saved now.");
+    public static string HouseMarkReplace => T("Substitui a casa da FC salva.", "Replaces the saved FC house.");
     public static string HouseNoVisit => T("Nenhuma entrada registrada ainda.", "No visit recorded yet.");
     public static string HouseVisited(string ago) => T($"Última visita há {ago}", $"Last visit {ago} ago");
     public static string HouseBy(string name) => T($"por {name}", $"by {name}");
     public static string HouseDemolish(string time) => T($"Vai ser derrubada em {time} sem visita", $"Will be demolished in {time} without a visit");
-    public static string HouseHint => T("O jogo derruba a casa da FC depois de 45 dias sem nenhum membro entrar. Aqui só conta quem usa o plugin.", "The game demolishes the FC house after 45 days with no member going in. Only members with the plugin count here.");
     public static string HouseWarning(int days) => T($"Ninguém entra na casa da FC há {days} dias. Ela é derrubada aos 45!", $"Nobody has been in the FC house for {days} days. It gets demolished at 45!");
     public static string EndsAround(string date) => T($"acabam por volta de {date}", $"run out around {date}");
     public static string Profit => T("Lucro (submarinos e airships)", "Profit (submarines and airships)");
@@ -110,7 +108,6 @@ public static class L
     public static string ColRoute => T("Rota", "Route");
     public static string ColPerVoyage => T("Gil por viagem", "Gil per voyage");
     public static string ColPerTank => T("Gil por tanque", "Gil per tank");
-    public static string ProfitHint => T("Últimas 4 semanas, somando o que todos os membros enviaram ao serviço.", "Last 4 weeks, counting what every member sent to the service.");
     public static string ColRank => T("Rank", "Rank");
     public static string ColReturn => T("Volta em", "Back in");
     public static string ColItem => T("Item", "Item");
@@ -153,7 +150,6 @@ public static class L
     public static string IncludesMarket(string value) => T($"inclui {value} gil de market", $"includes {value} gil from the market board");
     public static string Market => T("Preços do market", "Market prices");
     public static string MarketAuto(string world) => T($"Automático ({world})", $"Automatic ({world})");
-    public static string MarketHint => T("Itens que valem mais no market contam pelo preço do market (média das vendas recentes no Universalis).", "Items worth more on the market board count at the market price (average of recent sales on Universalis).");
 
     // Buffs
     public static string Wheels => T("Wheel Stand", "Wheel Stand");
@@ -164,7 +160,7 @@ public static class L
     // Plantação
     public static string NoPlots => T("Nenhum campo ainda. Selecione um canteiro ou vaso da casa e clique em +.", "No fields yet. Target a garden patch or pot and press +.");
     public static string Fields => T("Campos", "Fields");
-    public static string AddFieldHint => T("Selecione um canteiro ou vaso da casa para cadastrar.", "Target a garden patch or pot to add it.");
+    public static string AddFieldHint => T("Selecione um canteiro ou vaso.", "Target a garden patch or pot.");
     public static string FieldExists => T("Esse objeto já está na lista.", "That object is already on the list.");
     public static string FieldName => T("Nome do campo", "Field name");
     public static string Save => T("Salvar", "Save");
@@ -174,7 +170,6 @@ public static class L
     public static string Outside => T("fora", "outside");
     public static string Remove => T("Remover", "Remove");
     public static string WaterAll => T("Reguei todos agora", "Watered all now");
-    public static string WaterAllHint => T("Ou digite /fcc regar. Cada campo também é registrado sozinho quando você rega.", "Or type /fcc water. Each field is also picked up on its own when you water it.");
     public static string WaterIn(string time) => T($"regar em {time}", $"water in {time}");
     public static string WaterNow(string time) => T($"pode regar. Morre em {time}", $"ready to water. Dies in {time}");
     public static string WaterLate => T("passou do prazo de rega", "past the watering deadline");
@@ -195,7 +190,6 @@ public static class L
     public static string NothingReceived => T("Recebido: nada ainda", "Received: nothing yet");
     public static string Diagnostics => T("Diagnóstico", "Diagnostics");
     public static string DetailedLog => T("Log detalhado", "Detailed log");
-    public static string DetailedLogHint => T("Desligado: só loot, rega, estoque e erros. Ligado: também cada leitura e envio.", "Off: only loot, watering, supplies and errors. On: every reading and upload too.");
     public static string CopyLog => T("Copiar log", "Copy log");
     public static string SendLog => T("Enviar log", "Send log");
     public static string Copied => T("Copiado. Cole no Discord.", "Copied. Paste it in Discord.");
@@ -207,7 +201,7 @@ public static class L
     public static string WateredAll => T("Rega registrada em todos os campos.", "Watering recorded for every field.");
     public static string DtrReady(int count) => count == 1 ? T("1 pronto", "1 ready") : T($"{count} prontos", $"{count} ready");
 
-    public static string HelpMain => T("Abre a janela do FC Companion. Use \"/fcc regar\" depois de regar a plantação.", "Opens the FC Companion window. Use \"/fcc water\" after watering the garden.");
+    public static string HelpMain => T("Abre o FC Companion.", "Opens FC Companion.");
 
     // Linha do tempo e cartões
     public static string NextPeriod(int days) => days == 1 ? T("Próximas 24 horas", "Next 24 hours") : T($"Próximos {days} dias", $"Next {days} days");
