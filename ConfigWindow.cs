@@ -43,12 +43,18 @@ public sealed class ConfigWindow : Window
         {
             var enabled = character.Enabled;
             var world = repeated.Contains(character.Name) ? $" ({(character.World.Length > 0 ? character.World : L.UnknownWorld)})" : string.Empty;
-            var mark = id == plugin.CurrentCharacterId ? $" · {L.Current}" : string.Empty;
+            var mark = (id == plugin.CurrentCharacterId ? $" · {L.Current}" : string.Empty) + (character.OtherFc ? $" · {L.OtherFc}" : string.Empty);
             if (ImGui.Checkbox($"{character.Name}{world}{mark}###{id}", ref enabled))
             {
                 character.Enabled = enabled;
                 plugin.SaveConfig();
             }
+        }
+
+        if (config.Characters.Values.Any(c => c.OtherFc))
+        {
+            using (ImRaii.PushColor(ImGuiCol.Text, UiKit.Muted))
+                ImGui.TextWrapped(L.OtherFcHint);
         }
 
         ImGui.Spacing();

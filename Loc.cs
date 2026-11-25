@@ -135,6 +135,13 @@ public static class L
     public static string Characters => T("Personagens que leem e enviam dados", "Characters that read and send data");
     public static string Current => T("atual", "current");
     public static string UnknownWorld => T("logue para ver o servidor", "log in to see the world");
+    public static string OtherFc => T("outra FC", "other FC");
+    public static string OtherFcHint => T(
+        "Personagens de outra FC (alts de sub, por exemplo) não leem nem enviam nada, para não misturar com o painel da FC. Se a FC mudou de casa, entre na casa nova e use o botão \"Esta é a casa da FC\" na Visão geral.",
+        "Characters in another FC (submarine alts, for example) don't read or send anything, so they don't mix with the FC panel. If the FC moved, go into the new house and use the \"This is the FC house\" button on the Overview.");
+    public static string OtherFcNow => T(
+        "Este personagem é de outra FC. O plugin não lê nem envia nada dele, para não misturar com o painel da FC.",
+        "This character is in another FC. The plugin doesn't read or send anything from it, so it doesn't mix with the FC panel.");
     public static string SyncEnabled => T("Enviar e receber dados do painel da FC", "Send and receive FC panel data");
     public static string ServiceUrl => T("Endereço do serviço", "Service address");
     public static string ServiceKey => T("Chave da FC", "FC key");

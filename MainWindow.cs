@@ -70,6 +70,14 @@ public class MainWindow : Window
         if (!plugin.Config.OnboardingDone)
             DrawWelcome(view);
 
+        if (plugin.CurrentCharacterOtherFc)
+        {
+            UiKit.Icon(FontAwesomeIcon.UserSecret, UiKit.Muted);
+            using (ImRaii.PushColor(ImGuiCol.Text, UiKit.Muted))
+                ImGui.TextWrapped(L.OtherFcNow);
+            ImGui.Spacing();
+        }
+
         using var grid = ImRaii.Table("##cards", 2, ImGuiTableFlags.SizingStretchSame);
         if (!grid)
             return;

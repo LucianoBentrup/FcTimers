@@ -48,8 +48,8 @@
 
 ## Casa da FC
 - O jogo derruba a casa da FC depois de 45 dias sem nenhum membro entrar nela.
-- O plugin aprende qual é a casa da FC pela oficina, que fica dentro dela: mundo, ward e plot.
-- Também dá para marcar à mão: dentro de uma casa que não é a da FC, o card "Casa da FC" da Visão geral mostra o botão "Esta é a casa da FC". A casa marcada à mão vale mais que a da oficina, que não troca mais a casa depois disso. Marcar outra casa pelo botão troca de novo.
+- O plugin aprende qual é a casa da FC pela primeira oficina que vê, que fica dentro dela: mundo, ward e plot. Uma oficina de outra casa depois disso é de outra FC e não troca a casa da FC.
+- Para trocar a casa (a FC mudou de casa, ou a primeira oficina vista era de um alt): dentro da casa certa, o card "Casa da FC" da Visão geral mostra o botão "Esta é a casa da FC". Marcar pelo botão troca a casa, libera o personagem que marcou e os que têm a mesma tag de FC.
 - Toda vez que um personagem ativo está dentro dessa casa, a entrada é registrada (no máximo de 10 em 10 minutos) e vai ao serviço com o nome do personagem. Vale a entrada mais recente entre os membros.
 - O painel mostra "🏠 Última visita na casa" a partir de 7 dias, com ⚠️ a partir de 30.
 - Avisos marcando @Subs aos 30, 40 e 44 dias, um por marco. O de 44 dias sai com 🚨. Uma entrada nova recomeça a contagem.
@@ -111,6 +111,10 @@
 - Cada personagem entra na lista do plugin na primeira vez que loga, desmarcado.
 - Só um personagem marcado lê dados do jogo e os envia ao serviço.
 - O plugin ignora leituras em duty ou trocando de área, e só aceita uma lista que ficou igual por 5 segundos.
+- **Personagem de outra FC** (um alt de sub, por exemplo) não lê nem envia nada, para os subs, o loot, o estoque, a plantação e os buffs dele não irem para o painel da FC no lugar dos de verdade. Ele é reconhecido de 2 jeitos:
+  - ao entrar numa oficina que não é a da casa da FC;
+  - ao logar com uma tag de FC diferente da tag da FC do painel (aprendida com um personagem dentro da oficina da FC).
+- Na lista de personagens das configurações, ele aparece com "outra FC", e a Visão geral avisa quando ele está logado. Entrar na oficina da FC libera o personagem de novo. Ver várias FCs ao mesmo tempo fica para a versão com várias FCs.
 - Um buff com tempo sai sozinho do painel quando acaba. Um buff ativado com todos offline só aparece na próxima leitura.
 
 ## Sincronia entre membros

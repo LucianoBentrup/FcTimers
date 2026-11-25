@@ -53,6 +53,13 @@ public class CharacterRecord
     // Servidor de origem, guardado ao logar. Aparece quando há personagens com o mesmo nome.
     public string World { get; set; } = string.Empty;
     public bool Enabled { get; set; }
+
+    // Tag da FC do personagem, lida ao logar.
+    public string FcTag { get; set; } = string.Empty;
+
+    // True quando o personagem é de outra FC (um alt de sub, por exemplo): ele não lê nem envia nada,
+    // para os dados dele não irem para o painel da FC. Volta a false quando ele entra na oficina da FC.
+    public bool OtherFc { get; set; }
 }
 
 [Serializable]
@@ -164,11 +171,15 @@ public class Configuration : IPluginConfiguration
     // Airships da FC. Chave: "<id da casa>:<slot>". O loot delas fica em Voyages, com a chave "<id da casa>:air:<slot>:<hora>".
     public Dictionary<string, SubRecord> Airships { get; set; } = [];
 
-    // Casa da FC ("<mundo>:<ward>:<plot>"): aprendida pela oficina, que fica dentro dela. E a última entrada vista neste PC.
+    // Casa da FC ("<mundo>:<ward>:<plot>"): aprendida pela primeira oficina vista, que fica dentro dela. E a última entrada vista neste PC.
+    // Depois disso, só o botão "Esta é a casa da FC" troca a casa. Oficina de outra casa é de outra FC.
     public string FcHouse { get; set; } = string.Empty;
-    // True quando a casa foi marcada pelo botão. A oficina não troca mais a casa.
+    // True quando a casa foi marcada pelo botão.
     public bool FcHouseManual { get; set; }
     public long HouseVisitAt { get; set; }
+
+    // Tag da FC ligada ao painel, aprendida com um personagem dentro da oficina da casa da FC.
+    public string FcTag { get; set; } = string.Empty;
 
     // Último loot visto na memória de cada slot. Loot novo só é salvo quando muda.
     public Dictionary<int, string> LootSeen { get; set; } = [];

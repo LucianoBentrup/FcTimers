@@ -79,6 +79,8 @@ public sealed class Plugin : IDalamudPlugin
     private int secondsSinceLogin;
     private HashSet<string> seenBuffs = [];
     private bool characterEnabled;
+    // O personagem logado é de outra FC: não lê nem envia nada além da oficina, que é onde ele pode voltar a valer.
+    private bool currentOtherFc;
     private bool inWorkshop;
     private string? lastIndoorHouse;
     private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
@@ -197,6 +199,7 @@ public sealed class Plugin : IDalamudPlugin
     public void SaveConfig() => PluginInterface.SavePluginConfig(Config);
 
     public bool CurrentCharacterEnabled => characterEnabled;
+    public bool CurrentCharacterOtherFc => characterEnabled && currentOtherFc;
 
     // Carregado pelo Dev Plugin Locations do Dalamud, e não pelo repositório.
     public bool IsDevBuild => PluginInterface.IsDev;
@@ -446,13 +449,15 @@ public sealed class Plugin : IDalamudPlugin
         nextUpdate = DateTime.UtcNow.AddSeconds(1);
 
         characterEnabled = IsCurrentCharacterEnabled();
-        if (characterEnabled)
+        if (characterEnabled && !currentOtherFc)
         {
             ReadWheels(now);
             ReadActiveBuffs(now);
             ReadSupplies(now);
-            CheckHouseVisit(now);
         }
+
+        if (characterEnabled)
+            CheckHouseVisit(now);
         else
             lastIndoorHouse = null;
 
@@ -524,6 +529,23 @@ public sealed class Plugin : IDalamudPlugin
             SaveConfig();
         }
 
+        // Personagem de outra FC: a tag diferente da FC do painel basta, sem precisar entrar na oficina.
+        var tag = player.CompanyTag.TextValue;
+        if (character.FcTag != tag)
+        {
+            character.FcTag = tag;
+            SaveConfig();
+        }
+
+        if (character.Enabled && !character.OtherFc && tag.Length > 0 && Config.FcTag.Length > 0 && tag != Config.FcTag)
+        {
+            character.OtherFc = true;
+            SaveConfig();
+            Diagnostics.Write($"{name} é de outra FC («{tag}», FC do painel: «{Config.FcTag}»). Nada deste personagem é lido nem enviado.");
+        }
+
+        currentOtherFc = character.OtherFc;
+
         // Guardado só para personagem ativo: é o nome do log enviado depois de deslogar.
         lastCharacterActive = character.Enabled;
         if (character.Enabled && Config.LastCharacterName != name)
@@ -549,6 +571,9 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         var workshop = manager->WorkshopTerritory;
+        if (!CheckWorkshopFc(workshop->HouseId))
+            return;
+
         var pointers = workshop->Submersible.DataPointers;
         var changed = false;
 
@@ -608,7 +633,6 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         changed |= ReadAirships(workshop, now);
-        changed |= LearnFcHouse(workshop->HouseId);
 
         if (conditions != null)
         {
@@ -717,13 +741,47 @@ public sealed class Plugin : IDalamudPlugin
 
     private bool LearnFcHouse(HouseId id)
     {
-        // A casa marcada à mão vale mais que a da oficina.
-        if (Config.FcHouseManual || HouseKey(id) is not { } house || house == Config.FcHouse)
+        // Só a primeira oficina ensina a casa. Uma oficina de outra casa é de outra FC e não troca a casa da FC.
+        if (Config.FcHouse.Length > 0 || HouseKey(id) is not { } house)
             return false;
 
         Config.FcHouse = house;
         Diagnostics.Write($"Casa da FC reconhecida pela oficina ({house})");
         return true;
+    }
+
+    // Oficina de outra FC (de um alt de sub, por exemplo): os subs, o loot e as airships dela não são lidos nem enviados,
+    // para não irem para o painel da FC no lugar dos subs de verdade. Entrar na oficina da FC libera o personagem de novo.
+    private bool CheckWorkshopFc(HouseId id)
+    {
+        if (HouseKey(id) is not { } house)
+            return true;
+
+        var changed = LearnFcHouse(id);
+        var other = house != Config.FcHouse;
+        if (Config.Characters.TryGetValue(CurrentCharacterId, out var character))
+        {
+            if (character.OtherFc != other)
+            {
+                character.OtherFc = other;
+                changed = true;
+                Diagnostics.Write(other
+                    ? $"Oficina de outra FC ({house}; casa da FC: {Config.FcHouse}). Nada deste personagem é lido nem enviado. Se a FC mudou de casa, use o botão \"Esta é a casa da FC\" dentro da casa nova."
+                    : "Oficina da FC: este personagem volta a ler e enviar dados");
+            }
+
+            if (!other && character.FcTag.Length > 0 && Config.FcTag != character.FcTag)
+            {
+                Config.FcTag = character.FcTag;
+                changed = true;
+            }
+
+            currentOtherFc = character.OtherFc;
+        }
+
+        if (changed)
+            SaveConfig();
+        return !other;
     }
 
     // Casa em que o personagem ativo está agora (fora de apartamento). Null fora de casa.
@@ -737,6 +795,20 @@ public sealed class Plugin : IDalamudPlugin
 
         Config.FcHouse = house;
         Config.FcHouseManual = true;
+
+        // Quem marca a casa é da FC dela: o personagem volta a valer e a tag dele vira a da FC.
+        if (Config.Characters.TryGetValue(CurrentCharacterId, out var character))
+        {
+            character.OtherFc = false;
+            currentOtherFc = false;
+            if (character.FcTag.Length > 0)
+            {
+                Config.FcTag = character.FcTag;
+                foreach (var same in Config.Characters.Values.Where(c => c.FcTag == character.FcTag))
+                    same.OtherFc = false;
+            }
+        }
+
         SaveConfig();
         Diagnostics.Write($"Casa da FC marcada à mão ({house})");
     }
@@ -759,7 +831,7 @@ public sealed class Plugin : IDalamudPlugin
             Diagnostics.Detail($"Dentro da casa {current ?? "?"} (casa da FC: {(Config.FcHouse.Length == 0 ? "?" : Config.FcHouse)})");
         }
 
-        if (Config.FcHouse.Length == 0 || current != Config.FcHouse || now - Config.HouseVisitAt < HouseVisitStep)
+        if (currentOtherFc || Config.FcHouse.Length == 0 || current != Config.FcHouse || now - Config.HouseVisitAt < HouseVisitStep)
             return;
 
         if (now - Config.HouseVisitAt >= HouseVisitLogGap)
@@ -912,7 +984,7 @@ public sealed class Plugin : IDalamudPlugin
         if (id == PotTendedMessage)
         {
             Diagnostics.Write($"Mensagem do vaso {id}: {message.GameData.ValueNullable?.Text.ToString()}");
-            if (characterEnabled)
+            if (characterEnabled && !currentOtherFc)
                 WaterTargetedPlot($"mensagem do jogo {id}");
             return;
         }
@@ -929,7 +1001,7 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         Diagnostics.Write($"Mensagem da horta {id}: {message.GameData.ValueNullable?.Text.ToString()}");
-        if (characterEnabled && id is CropTendedMessage or SeedsPlantedMessage)
+        if (characterEnabled && !currentOtherFc && id is CropTendedMessage or SeedsPlantedMessage)
             WaterTargetedPlot($"mensagem do jogo {id}");
     }
 
