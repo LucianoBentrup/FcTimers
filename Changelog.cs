@@ -55,10 +55,12 @@ public sealed class ChangelogWindow : ThemedWindow
         ("english", FontAwesomeIcon.Language),
     ];
 
+    private readonly bool isDev;
     private List<Release> fresh = [];
 
-    public ChangelogWindow() : base("FC Companion - What's new###FcTimersChangelog")
+    public ChangelogWindow(bool isDev) : base("FC Companion - What's new###FcTimersChangelog")
     {
+        this.isDev = isDev;
         Size = new Vector2(640, 560);
         SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(420, 260) };
@@ -89,6 +91,13 @@ public sealed class ChangelogWindow : ThemedWindow
         ImGui.Separator();
         if (ImGui.Button("Close"))
             IsOpen = false;
+
+        // Apoio no canto direito do rodapé, longe do Close.
+        if (Support.KofiUrl.Length > 0 || isDev)
+        {
+            ImGui.SameLine(ImGui.GetContentRegionMax().X - ImGui.CalcTextSize(L.SupportKofi).X - (ImGui.GetStyle().FramePadding.X * 2) - ImGui.GetFrameHeight());
+            Support.KofiButton(isDev);
+        }
     }
 
     private void DrawBody()

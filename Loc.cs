@@ -46,6 +46,9 @@ public static class L
     public static string Test => T("Testar", "Test");
     public static string SendLogInactive => T("Só um personagem ativo envia o log. Ative este personagem nas configurações.", "Only an enabled character sends the log. Enable this character in the settings.");
     public static string ReplayWelcome => T("Testar boas-vindas", "Test welcome");
+    public static string SupportKofi => T("Apoiar no Ko-fi", "Support on Ko-fi");
+    public static string SupportHint => T("Abre o Ko-fi no navegador. Ajuda a pagar o serviço do Discord; nada no plugin é pago.", "Opens Ko-fi in your browser. It helps pay for the Discord service; nothing in the plugin is paid.");
+    public static string SupportNotSet => T("O link do Ko-fi ainda não foi colocado (Support.KofiUrl).", "The Ko-fi link is not set yet (Support.KofiUrl).");
     public static string WhatsNew => T("Novidades", "What's new");
     public static string DevOnly => T("Só aparece na versão de dev.", "Only shown in the dev build.");
     public static string Airships => T("Airships", "Airships");

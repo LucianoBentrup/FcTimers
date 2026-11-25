@@ -128,7 +128,7 @@ public sealed partial class Plugin : IDalamudPlugin
             .ToDictionary(s => s.RowId, s => s.Name.ToString());
 
         mainWindow = new MainWindow(this);
-        changelogWindow = new ChangelogWindow();
+        changelogWindow = new ChangelogWindow(PluginInterface.IsDev);
         configWindow = new ConfigWindow(this);
         windowSystem.AddWindow(mainWindow);
         windowSystem.AddWindow(changelogWindow);

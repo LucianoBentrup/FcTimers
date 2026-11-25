@@ -176,6 +176,8 @@ public sealed class ConfigWindow : ThemedWindow
         ImGui.Spacing();
         if (ImGui.Button(L.WhatsNew))
             plugin.OpenChangelog();
+        ImGui.SameLine();
+        Support.KofiButton(plugin.IsDevBuild);
 
         if (plugin.IsDevBuild)
         {
