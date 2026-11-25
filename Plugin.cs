@@ -248,7 +248,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if (!Config.SyncEnabled || Config.ServiceKey.Length == 0)
             return (UiKit.Muted, L.SyncOff);
-        if (Sync.LastFetch is { } fetched && DateTime.Now - fetched < TimeSpan.FromMinutes(10) && !Sync.Status.StartsWith("Erro") && !Sync.Status.StartsWith("Sem"))
+        if (Sync.LastFetch is { } fetched && DateTime.Now - fetched < TimeSpan.FromMinutes(10) && Sync.LastOk)
             return (UiKit.Good, L.SyncOk($"{fetched:HH:mm}"));
         return (UiKit.Soon, L.SyncProblem);
     }

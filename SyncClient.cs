@@ -34,7 +34,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private sealed record PendingVisit(string Name, DateTime ReadAt);
     private sealed record SendResult(bool Success, string Status);
 
-    private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient http = NetHttp.Create(TimeSpan.FromSeconds(20));
     private readonly Dictionary<int, string> lastSubs = [];
     private readonly Dictionary<int, PendingSub> pendingSubs = [];
     private readonly Dictionary<int, string> lastAirships = [];
@@ -67,10 +67,13 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private Task<RemoteState?>? fetching;
     private DateTime nextFetch = DateTime.MinValue;
     private string lastStatus = string.Empty;
+
+    // Último envio deu certo. Antes comparava o texto do status, que agora muda com o idioma.
+    public bool LastOk { get; private set; } = true;
     private List<KeyValuePair<string, string>> sendingVoyages = [];
     private Task<string>? sendingLog;
 
-    public string Status { get; private set; } = "Aguardando dados";
+    public string Status { get; private set; } = L.StWaiting;
     public string LogStatus { get; private set; } = string.Empty;
     public bool SendingLog => sendingLog != null;
 
@@ -195,7 +198,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
         var body = JsonSerializer.Serialize(new { character, text, fcId = FcIdText });
         sendingLog = SendLogAsync(body, config.ServiceUrl.Trim().TrimEnd('/'), config.ServiceKey.Trim());
-        LogStatus = "Enviando log...";
+        LogStatus = L.StSendingLog;
         return true;
     }
 
@@ -224,11 +227,11 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
             using var response = await http.SendAsync(request).ConfigureAwait(false);
-            return response.IsSuccessStatusCode ? $"Log enviado ({DateTime.Now:HH:mm})" : $"Erro {(int)response.StatusCode} ao enviar o log";
+            return response.IsSuccessStatusCode ? L.StLogSent($"{DateTime.Now:HH:mm}") : L.StError((int)response.StatusCode);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException or UriFormatException)
         {
-            return "Sem conexão com o serviço";
+            return L.StOffline;
         }
     }
 
@@ -241,7 +244,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
         if (sendingLog is { IsCompleted: true })
         {
-            LogStatus = Outcome(sendingLog, "Erro ao enviar o log");
+            LogStatus = Outcome(sendingLog, L.StError(0));
             sendingLog = null;
             log($"Diagnóstico: {LogStatus}");
         }
@@ -251,13 +254,13 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             if (!sending.IsCompleted)
                 return;
 
-            Finish(sending.IsCompletedSuccessfully ? sending.Result : new SendResult(false, Failure(sending, "Erro ao enviar")));
+            Finish(sending.IsCompletedSuccessfully ? sending.Result : new SendResult(false, Failure(sending, L.StError(0))));
             sending = null;
         }
 
         if (!Enabled)
         {
-            Status = "Desligado";
+            Status = L.StOff;
             return;
         }
 
@@ -359,16 +362,16 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             using var response = await http.SendAsync(request).ConfigureAwait(false);
             // 202: envio de personagem de outra FC, aceito e descartado pelo serviço. Conta como enviado.
             return response.IsSuccessStatusCode
-                ? new SendResult(true, "Conectado")
+                ? new SendResult(true, L.StConnected)
                 : response.StatusCode == System.Net.HttpStatusCode.Forbidden
-                    ? new SendResult(false, "Aguardando aprovação na FC")
+                    ? new SendResult(false, L.LinkRequested)
                 : response.StatusCode == System.Net.HttpStatusCode.Unauthorized
-                    ? new SendResult(false, "Ligação inválida: cole o código da FC de novo")
-                    : new SendResult(false, $"Erro {(int)response.StatusCode} ao enviar");
+                    ? new SendResult(false, L.LinkExpired)
+                    : new SendResult(false, L.StError((int)response.StatusCode));
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException or UriFormatException)
         {
-            return new SendResult(false, "Sem conexão com o serviço");
+            return new SendResult(false, L.StOffline);
         }
     }
 
@@ -427,6 +430,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private void Finish(SendResult result)
     {
         Status = result.Success ? $"{result.Status} ({DateTime.Now:HH:mm})" : result.Status;
+        LastOk = result.Success;
         if (result.Status != lastStatus)
         {
             lastStatus = result.Status;

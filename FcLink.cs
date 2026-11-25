@@ -19,7 +19,7 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
     public const string DefaultServiceUrl = "https://fc-timers.lucianobentrup.workers.dev";
 
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
-    private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient http = NetHttp.Create(TimeSpan.FromSeconds(20));
 
     public sealed record Check(string Code, string? FcName, string? ServerName, bool FirstLink);
 

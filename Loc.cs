@@ -110,6 +110,13 @@ public static class L
     public static string ColWorld => T("Mundo", "World");
     public static string ColRole => T("Papel", "Role");
     public static string SureClick => T("Clique de novo", "Click again");
+    public static string StWaiting => T("Aguardando dados", "Waiting for data");
+    public static string StSendingLog => T("Enviando log...", "Sending log...");
+    public static string StLogSent(string time) => T($"Log enviado ({time})", $"Log sent ({time})");
+    public static string StError(int code) => code > 0 ? T($"Erro {code}", $"Error {code}") : T("Erro ao enviar", "Send error");
+    public static string StOffline => T("Sem conexão com o serviço", "Can't reach the service");
+    public static string StOff => T("Desligado", "Off");
+    public static string StConnected => T("Conectado", "Connected");
     public static string WhatsNew => T("Novidades", "What's new");
     public static string Airships => T("Airships", "Airships");
     public static string ColAirship => T("Airship", "Airship");
