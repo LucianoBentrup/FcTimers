@@ -18,6 +18,7 @@
     <Compile Include="../../Timeline.cs" Link="Plugin/Timeline.cs" />
     <Compile Include="../../LootSummary.cs" Link="Plugin/LootSummary.cs" />
     <Compile Include="../../ChangelogDoc.cs" Link="Plugin/ChangelogDoc.cs" />
+    <Compile Include="../../FcIdentity.cs" Link="Plugin/FcIdentity.cs" />
     <None Include="../../CHANGELOG.md" Link="CHANGELOG.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>

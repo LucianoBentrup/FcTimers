@@ -46,6 +46,13 @@ public sealed partial class Plugin
                 changed = true;
             }
 
+            if (!other && character.FcId != 0 && Config.FcId != character.FcId)
+            {
+                Config.FcId = character.FcId;
+                changed = true;
+                Diagnostics.Write($"ID da FC do painel: {Config.FcId}");
+            }
+
             currentOtherFc = character.OtherFc;
         }
 
@@ -75,6 +82,13 @@ public sealed partial class Plugin
             {
                 Config.FcTag = character.FcTag;
                 foreach (var same in Config.Characters.Values.Where(c => c.FcTag == character.FcTag))
+                    same.OtherFc = false;
+            }
+
+            if (character.FcId != 0)
+            {
+                Config.FcId = character.FcId;
+                foreach (var same in Config.Characters.Values.Where(c => c.FcId == character.FcId))
                     same.OtherFc = false;
             }
         }

@@ -70,6 +70,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private string candidateBuffs = string.Empty;
     private int candidateSeconds;
     private int secondsSinceLogin;
+    private bool fcIdWaiting;
     private HashSet<string> seenBuffs = [];
     private bool characterEnabled;
     // O personagem logado é de outra FC: não lê nem envia nada além da oficina, que é onde ele pode voltar a valer.
@@ -107,6 +108,11 @@ public sealed partial class Plugin : IDalamudPlugin
         Migrate();
         L.English = LanguageCode == "en";
         GameIcons.Init(Textures, DataManager);
+        if (Config.OwnerId.Length == 0)
+        {
+            Config.OwnerId = FcIdentity.NewOwnerId();
+            SaveConfig();
+        }
         Fonts.Init(PluginInterface.UiBuilder);
 
         Diagnostics = new DiagnosticLog(
@@ -369,7 +375,6 @@ public sealed partial class Plugin : IDalamudPlugin
             SaveConfig();
         }
 
-        // Personagem de outra FC: a tag diferente da FC do painel basta, sem precisar entrar na oficina.
         var tag = player.CompanyTag.TextValue;
         if (character.FcTag != tag)
         {
@@ -377,11 +382,22 @@ public sealed partial class Plugin : IDalamudPlugin
             SaveConfig();
         }
 
-        if (character.Enabled && !character.OtherFc && tag.Length > 0 && Config.FcTag.Length > 0 && tag != Config.FcTag)
+        ReadFcId(character, tag, player.CurrentWorld.RowId == player.HomeWorld.RowId);
+
+        // Personagem de outra FC: o ID da FC (ou, sem ele, a tag) diferente da FC do painel basta, sem precisar entrar na oficina.
+        // Com o ID igual, o personagem volta a valer; a tag sozinha nunca libera, porque pode coincidir.
+        var other = FcIdentity.IsOtherFc(character, Config);
+        if (character.Enabled && other == true && !character.OtherFc)
         {
             character.OtherFc = true;
             SaveConfig();
-            Diagnostics.Write($"{name} é de outra FC («{tag}», FC do painel: «{Config.FcTag}»). Nada deste personagem é lido nem enviado.");
+            Diagnostics.Write($"{name} é de outra FC (ID {character.FcId}, «{tag}»; FC do painel: ID {Config.FcId}, «{Config.FcTag}»). Nada deste personagem é lido nem enviado.");
+        }
+        else if (other == false && character.OtherFc)
+        {
+            character.OtherFc = false;
+            SaveConfig();
+            Diagnostics.Write($"{name} tem o mesmo ID de FC do painel ({Config.FcId}): volta a ler e enviar dados");
         }
 
         currentOtherFc = character.OtherFc;
@@ -395,6 +411,35 @@ public sealed partial class Plugin : IDalamudPlugin
         }
 
         return character.Enabled;
+    }
+
+    // O ID da FC só vale no mundo de origem e pode demorar uns segundos depois do login.
+    // Com tag e ID 0, ainda não carregou: espera o próximo segundo. Sem tag, o personagem não tem FC.
+    private unsafe void ReadFcId(CharacterRecord character, string tag, bool homeWorld)
+    {
+        if (!homeWorld)
+            return;
+
+        var proxy = FFXIVClientStructs.FFXIV.Client.UI.Info.InfoProxyFreeCompany.Instance();
+        var id = proxy == null ? 0 : proxy->Id;
+        if (tag.Length > 0 && id == 0)
+        {
+            if (!fcIdWaiting)
+                Diagnostics.Detail($"{character.Name}: tag «{tag}», mas o ID da FC ainda não carregou");
+            fcIdWaiting = true;
+            return;
+        }
+
+        if (fcIdWaiting)
+            Diagnostics.Write($"{character.Name}: ID da FC carregou {secondsSinceLogin} s depois do login");
+        fcIdWaiting = false;
+
+        if (character.FcId == id)
+            return;
+
+        Diagnostics.Write($"{character.Name}: ID da FC {(id == 0 ? "nenhum (sem FC)" : id.ToString())}");
+        character.FcId = id;
+        SaveConfig();
     }
 
     public string LogText()

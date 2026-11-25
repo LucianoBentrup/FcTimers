@@ -72,6 +72,9 @@ public class CharacterRecord
     // Tag da FC do personagem, lida ao logar.
     public string FcTag { get; set; } = string.Empty;
 
+    // ID da FC dado pelo jogo, lido no mundo de origem. 0: sem FC ou ainda não lido.
+    public ulong FcId { get; set; }
+
     // True quando o personagem é de outra FC (um alt de sub, por exemplo): ele não lê nem envia nada,
     // para os dados dele não irem para o painel da FC. Volta a false quando ele entra na oficina da FC.
     public bool OtherFc { get; set; }
@@ -198,6 +201,12 @@ public class Configuration : IPluginConfiguration
 
     // Tag da FC ligada ao painel, aprendida com um personagem dentro da oficina da casa da FC.
     public string FcTag { get; set; } = string.Empty;
+
+    // ID da FC do painel, aprendido como a tag: na oficina da FC ou no botão "Esta é a casa da FC".
+    public ulong FcId { get; set; }
+
+    // ID aleatório desta instalação, gerado uma vez. É o "dono" na ligação com o código da FC.
+    public string OwnerId { get; set; } = string.Empty;
 
     // Último loot visto na memória de cada slot. Loot novo só é salvo quando muda.
     public Dictionary<int, string> LootSeen { get; set; } = [];
