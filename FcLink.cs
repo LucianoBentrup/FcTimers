@@ -194,6 +194,14 @@ public sealed class FcLink(Configuration config, Action save, Action<string> log
         Status = string.Empty;
     }, quiet: true);
 
+    // TESTE: cria um pedido falso para a aba Gerenciar. O serviço só aceita com TEST_TOOLS ligado.
+    public void TestRequest() => Run(async () =>
+    {
+        var (status, _) = await Post<AccountReply>("/link/test-request", new { }, config.ServiceKey);
+        Status = status == HttpStatusCode.OK ? "Pedido de teste criado." : L.LinkFailed((int)status);
+        nextMe = DateTime.MinValue;
+    });
+
     public void LoadMembers() => Run(async () =>
     {
         var (status, reply) = await Post<MembersReply>("/link/members", new { }, config.ServiceKey);

@@ -44,6 +44,7 @@ export class Registry extends DurableObject {
       case '/me': return json(await this.me(body.token));
       case '/members': return json(await this.members(body.token));
       case '/manage': return json(await this.manage(body));
+      case '/test-request': return json(await this.testRequest(body));
       default: return json({ error: 'not found' }, 404);
     }
   }
@@ -224,6 +225,19 @@ export class Registry extends DurableObject {
       return { ok: true, fc: caller.fc, owner: target.owner };
     }
     return { error: 'invalid' };
+  }
+
+  // TESTE: pedido falso para o dono ver na aba Gerenciar. Tirar depois da fase de testes.
+  async testRequest({ fc, token }) {
+    if (this.env.TEST_TOOLS !== '1') return { error: 'not found' };
+    const target = fc ?? (await this.caller(token))?.fc;
+    if (!target) return { error: 'unauthorized' };
+    const id = (await sha256(`teste:${Date.now()}:${Math.random()}`)).slice(0, 16);
+    const n = (await this.memberList(target)).filter((m) => m.owner?.startsWith('teste-')).length + 1;
+    await this.ctx.storage.put(`member:${target}:${id}`, {
+      owner: `teste-${id}`, name: `Pedido Teste ${n}`, world: 'Teste', role: 'member', status: 'pending', requestedAt: nowSeconds(), joinedAt: null,
+    });
+    return { ok: true };
   }
 
   async token(token) {

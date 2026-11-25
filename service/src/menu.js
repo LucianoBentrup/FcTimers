@@ -53,6 +53,7 @@ export const SECTIONS = [
 const MANAGE = { id: 'manage', emoji: '⚙️', manager: true };
 export const ACTIONS = [
   'repost', 'regroup', 'weekly-on', 'weekly-off', 'log', 'lang-en', 'lang-pt', 'panel-here', 'alerts-here', 'events-here', 'code', 'code-new', 'code-off',
+  'test-alert', 'test-dm', 'test-request',
 ];
 const DRAFT_OPS = ['size', 'repeat', 'notify', 'lead', 'post', 'edit', 'cancel'];
 const sectionOf = (id) => [...SECTIONS, MANAGE].find((s) => s.id === id);
@@ -126,7 +127,7 @@ export const sectionEmbed = (title, body) => ({ title, description: truncate(bod
 // Ajustes aparecem sempre (a permissão é conferida no clique), o botão de DM não mostra o estado de ninguém e não
 // tem Postar no canal, porque o menu já está no canal.
 export function menuComponents(lang, {
-  view, arg, manager, weeklyOff, canCreate, dmOn, eventRole, accountLinked, pub = false, supportUrl = SUPPORT_URL,
+  view, arg, manager, weeklyOff, canCreate, dmOn, eventRole, accountLinked, pub = false, supportUrl = SUPPORT_URL, testTools = false,
 }) {
   const t = (key) => text(lang, key);
   const tab = (s) => button(t(s.id), `fc:${s.id}`, s.id === view ? PRIMARY : SECONDARY, s.emoji);
@@ -159,6 +160,14 @@ export function menuComponents(lang, {
       button(t('eventsHere'), 'fc:do:events-here', SECONDARY, '📅'),
       button(t('fcCode'), 'fc:do:code', SUCCESS, '🔑'),
     ]));
+    // TESTE: tirar depois da fase de testes.
+    if (testTools) {
+      rows.push(row([
+        button(t('testAlert'), 'fc:do:test-alert', SECONDARY, '🧪'),
+        button(t('testDm'), 'fc:do:test-dm', SECONDARY, '🧪'),
+        button(t('testRequest'), 'fc:do:test-request', SECONDARY, '🧪'),
+      ]));
+    }
     rows.push(row([{
       type: ROLE_SELECT, custom_id: 'fc:set:eventrole', placeholder: t('eventRole'), min_values: 0, max_values: 1,
       ...(eventRole ? { default_values: [{ id: eventRole, type: 'role' }] } : {}),

@@ -221,6 +221,11 @@ async function handleLink(request, env, pathname) {
     return json(result, result.ok ? 200 : 404);
   }
   if (pathname === '/link/me') return json(await ask(registry, '/me', { token: bearer(request) }));
+  // TESTE: tirar depois da fase de testes.
+  if (pathname === '/link/test-request') {
+    if (env.TEST_TOOLS !== '1' || !['owner', 'admin'].includes(caller.role)) return json({ error: 'not found' }, 404);
+    return json(await ask(registry, '/test-request', { token: bearer(request) }));
+  }
   if (pathname === '/link/members') {
     const result = await ask(registry, '/members', { token: bearer(request) });
     return json(result, result.error ? 403 : 200);

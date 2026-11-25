@@ -107,6 +107,17 @@ public class MainWindow : ThemedWindow
             }
         }
 
+        // TESTE: tirar depois da fase de testes.
+        if (TestTools.Enabled && plugin.IsDevBuild)
+        {
+            using var tab = ImRaii.TabItem("Teste###test");
+            if (tab)
+            {
+                UiKit.ActiveTabLine();
+                TestTools.Draw(plugin);
+            }
+        }
+
         if (plugin.Link.Manager)
         {
             var count = plugin.Link.PendingRequests;

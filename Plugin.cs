@@ -228,7 +228,10 @@ public sealed partial class Plugin : IDalamudPlugin
 
     public void OpenSettings() => configWindow.IsOpen = true;
 
-    public void OpenChangelog() => changelogWindow.Show(null);
+    public void OpenChangelog(string? lastSeen = null) => changelogWindow.Show(lastSeen);
+
+    // TESTE: finge que o personagem logado é de outra FC. Só em memória.
+    public bool TestOtherFc { get; set; }
 
     public void EnableCurrentCharacter()
     {
@@ -408,7 +411,7 @@ public sealed partial class Plugin : IDalamudPlugin
             Diagnostics.Write($"{name} tem o mesmo ID de FC do painel ({Config.FcId}): volta a ler e enviar dados");
         }
 
-        currentOtherFc = character.OtherFc;
+        currentOtherFc = character.OtherFc || TestOtherFc;
         CurrentFcId = character.FcId;
         CurrentFcTag = tag;
         Sync.FcId = character.FcId;

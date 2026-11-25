@@ -147,6 +147,7 @@ export const InteractMethods = {
       embed, notice, view: shown, arg, manager: p.manager, pub: Boolean(p.pub),
       weeklyOff: Boolean(state.weekly?.off), eventRole: settings.eventRole ?? null,
       canCreate: canCreate(p, settings), dmOn: Boolean(pref.dm), accountLinked: accountLinked(state, p.user),
+      testTools: this.env.TEST_TOOLS === '1',
     });
   },
 
@@ -254,6 +255,25 @@ export const InteractMethods = {
         }
         await this.saveSettings({ eventsChannel: p.channelId });
         return manage(t('eventsMoved')(p.channelId));
+      }
+      // TESTE: tirar depois da fase de testes.
+      case 'test-alert':
+      case 'test-dm':
+      case 'test-request': {
+        if (this.env.TEST_TOOLS !== '1') return note(t('unknown'));
+        if (p.name === 'test-alert') {
+          const transport = transportOf('alerts', state.settings ?? {}, this.env);
+          const sent = transport ? await transport.create({ content: `🧪 ${t('testAlertText')}`, allowed_mentions: { parse: [] } }) : { ok: false };
+          return manage(sent.ok ? t('testDone') : t('testFailed'));
+        }
+        if (p.name === 'test-dm') {
+          if (!this.env.DISCORD_BOT_TOKEN) return manage(t('noBot'));
+          const sent = await sendDm(this.env.DISCORD_BOT_TOKEN, p.user, { content: `🧪 ${t('testDmText')}` }, this.env.DISCORD_API ?? DISCORD_API);
+          return manage(sent.ok ? t('testDone') : t('testFailed'));
+        }
+        const registry = this.env.REGISTRY.get(this.env.REGISTRY.idFromName('registry'));
+        const made = await (await registry.fetch('https://r/test-request', { method: 'POST', body: JSON.stringify({ fc: p.fc }) })).json();
+        return manage(made.ok ? t('testDone') : t('testFailed'));
       }
       default: return note(t('unknown'));
     }

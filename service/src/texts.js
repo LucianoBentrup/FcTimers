@@ -41,6 +41,8 @@ export const TEXT = {
     unknown: 'Unknown command.',
     moved: 'This command moved into **/fcc**.',
 
+    testAlert: 'Test alert', testDm: 'Test DM', testRequest: 'Test request', testAlertText: 'FC Companion test alert.', testDmText: 'FC Companion test DM.',
+    testDone: '✅ Test sent.', testFailed: '⚠️ Test failed.',
     fcCode: 'FC code', setup: 'Create FC code', setupText: 'FC Companion setup.',
     codeText: (code, linked) => `**${code}**\nIn game: /fcc → Settings → Link to your FC.\nPlugins linked: ${linked}`,
     codeOffText: (linked) => `Code off.\nPlugins linked: ${linked}`,
@@ -115,6 +117,8 @@ export const TEXT = {
     unknown: 'Comando desconhecido.',
     moved: 'Este comando agora fica dentro do **/fcc**.',
 
+    testAlert: 'Aviso de teste', testDm: 'DM de teste', testRequest: 'Pedido de teste', testAlertText: 'Aviso de teste do FC Companion.', testDmText: 'DM de teste do FC Companion.',
+    testDone: '✅ Teste enviado.', testFailed: '⚠️ O teste falhou.',
     fcCode: 'Código da FC', setup: 'Criar código da FC', setupText: 'Configuração do FC Companion.',
     codeText: (code, linked) => `**${code}**\nNo jogo: /fcc → Configurações → Ligar à FC.\nPlugins ligados: ${linked}`,
     codeOffText: (linked) => `Código desligado.\nPlugins ligados: ${linked}`,
