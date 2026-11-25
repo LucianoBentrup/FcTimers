@@ -17,7 +17,8 @@ starts with a bold title (`**Title:** text`) is shown there as a highlight card.
 - A "What's new" button in Settings to open this list again.
 
 ### Changed
-- The command is now `/fcc`. `/fct` still works for this version but no longer shows in the help.
+- **One command:** `/fcc` in the game and on Discord. On Discord it opens a menu with buttons for the panel, submarines, loot, supplies, profit and events, and the old Portuguese commands are gone.
+- The game command is now `/fcc`. `/fct` still works for this version but no longer shows in the help.
 - The "What's new" window shows the highlights of each version as cards, grouped by type of change.
 - The windows do less work per frame, so they stay light with many days of loot.
 
@@ -31,12 +32,12 @@ starts with a bold title (`**Title:** text`) is shown there as a highlight card.
 - **FC house:** every visit to the FC house is recorded. The Overview shows the days since anyone last went in, and alerts go out at 30, 40 and 44 days, before the game demolishes it at 45. A button on the card marks the house you are in.
 - **Supply forecast:** the date your ceruleum tanks and repair materials run out, based on recent use. The low supply alert now comes 5 days ahead.
 - **Profit:** the Loot tab shows the last 4 weeks and how much each route makes per voyage and per tank.
-- Discord: `/lucro`, `/loot mes` and a weekly summary every Monday at 9:00 (Brasília), turned on or off with `/resumo`.
+- Discord: profit, loot for the month and a weekly summary every Monday morning, which can be turned off. These are in the `/fcc` menu now.
 
 ## [0.9.0] - 2026-11-22
 
 ### Added
-- **Discord commands:** `/painel`, `/avisos limpar`, `/loot`, `/estoque`, `/subs` and `/log`, answered by the FC Companion app.
+- **Discord commands:** repost the panel, clean up alerts, and check loot, supplies, submarines and the plugin log from Discord. These are in the `/fcc` menu now.
 - **Fields:** in the Garden tab, target a garden patch or pot and press + to add it with a name. Names and removals are shared with the other members.
 
 ### Changed
@@ -58,7 +59,7 @@ starts with a bold title (`**Title:** text`) is shown there as a highlight card.
 
 ### Fixed
 - Garden patch names no longer carry the game's icon character, which showed as a box on Discord.
-- Opening a garden patch menu renames an automatically named patch to its number from the game ("Canteiro 2").
+- Opening a garden patch menu renames an automatically named patch to its number from the game.
 
 ## [0.8.4] - 2026-11-03
 
@@ -69,8 +70,8 @@ starts with a bold title (`**Title:** text`) is shown there as a highlight card.
 
 ### Fixed
 - The same garden patch no longer shows up twice when members use different game languages.
-- Outdoor garden patches are named after the game menu ("Canteiro 2" for the 2nd Patch) instead of a blank name.
-- The general "Plantação" entry is hidden once an identified patch is watered after it.
+- Outdoor garden patches are named after their number in the game menu instead of a blank name.
+- The general "Garden" entry is hidden once an identified patch is watered after it.
 
 ## [0.8.2] - 2026-11-03
 
@@ -121,24 +122,24 @@ starts with a bold title (`**Title:** text`) is shown there as a highlight card.
 ## [0.7.1] - 2026-11-02
 
 ### Added
-- "Enviar log" button to upload the diagnostic log to the FC service.
+- "Send log" button to upload the diagnostic log to the FC service.
 - The log is uploaded on its own when submarine loot is missed, at most once every 10 minutes.
 
 ### Changed
-- "Plantas" renamed to "Plantação".
+- "Plants" renamed to "Garden".
 
 ## [0.7.0] - 2026-11-02
 
 ### Added
 - **Two-way sync:** the window, the server info bar and chat alerts include what other FC members read.
-- **Watering per plot:** detected on its own, or recorded with "Reguei todos agora" and `/fct regar`.
+- **Watering per plot:** detected on its own, or recorded with the "Watered all now" button.
 - Discord alerts for submarines and plots: 1 hour before, when ready, and wither warnings 3, 2 and 1 hours ahead. Alerts are deleted after 8 hours.
-- Diagnostic log with a "Copiar log" button and an optional detailed mode.
+- Diagnostic log with a "Copy log" button and an optional detailed mode.
 - This changelog, inside the game.
 
 ### Changed
 - Submarine loot is captured as soon as the voyage result arrives, including during AutoRetainer runs.
-- Loot is grouped by day in Brasília time (UTC-3) on every PC.
+- Loot is grouped by the same day on every PC, using the FC's time zone.
 - The Discord panel no longer lists the day's items. Totals are still shown.
 
 ## [0.6.1]

@@ -44,7 +44,7 @@ public class ChangelogDocTests
         Assert.Equal([ChangeType.Added, ChangeType.Fixed], latest.Sections.Select(s => s.Type));
         var card = latest.Highlights.Single();
         Assert.Equal("Airships", card.Title);
-        Assert.Equal("return time and loot, read from the workshop.", card.Text);
+        Assert.Equal("Return time and loot, read from the workshop.", card.Text);
         Assert.Equal("Discord: /lucro.", ChangelogDoc.Plain(latest.Sections[0].Entries[1].Text));
     }
 

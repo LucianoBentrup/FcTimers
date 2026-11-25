@@ -34,6 +34,7 @@ public static class Changelog
 public sealed class ChangelogWindow : ThemedWindow
 {
     private const float CardMinWidth = 260;
+    private static readonly Vector2 CardPadding = new(12, 10);
 
     private static readonly (string Word, FontAwesomeIcon Icon)[] Icons =
     [
@@ -166,7 +167,8 @@ public sealed class ChangelogWindow : ThemedWindow
         var available = ImGui.GetContentRegionAvail().X;
         var columns = Math.Clamp((int)((available + style.ItemSpacing.X) / ((CardMinWidth * scale) + style.ItemSpacing.X)), 1, Math.Min(cards.Count, 3));
         var cardWidth = (available - ((columns - 1) * style.ItemSpacing.X)) / columns;
-        var textWidth = cardWidth - (style.WindowPadding.X * 2);
+        var padding = CardPadding * scale;
+        var textWidth = cardWidth - (padding.X * 2) - BodyIndent();
 
         using var grid = ImRaii.Table($"##cards{release.Version}", columns, ImGuiTableFlags.SizingStretchSame);
         if (!grid)
@@ -176,7 +178,7 @@ public sealed class ChangelogWindow : ThemedWindow
         {
             var inRow = cards.Skip(row).Take(columns).ToList();
             var height = inRow.Max(c => ImGui.CalcTextSize(ChangelogDoc.Plain(c.Entry.Text), false, textWidth).Y)
-                + ImGui.GetTextLineHeightWithSpacing() + (style.WindowPadding.Y * 2) + (4 * scale);
+                + ImGui.GetTextLineHeightWithSpacing() + (padding.Y * 2) + (6 * scale);
 
             ImGui.TableNextRow();
             foreach (var (type, entry) in inRow)
@@ -187,9 +189,11 @@ public sealed class ChangelogWindow : ThemedWindow
         }
     }
 
+    // Ícone, título e tipo numa linha; o texto embaixo começa alinhado com o título, não com o ícone.
     private static void Card(string id, ChangeType type, ChangeEntry entry, float height)
     {
         var theme = Theme.Current;
+        using var padding = ImRaii.PushStyle(ImGuiStyleVar.WindowPadding, CardPadding * ImGuiHelpers.GlobalScale);
         using var child = ImRaii.Child(id, new Vector2(-1, height), true, ImGuiWindowFlags.NoScrollbar);
         if (!child)
             return;
@@ -198,15 +202,29 @@ public sealed class ChangelogWindow : ThemedWindow
         var min = ImGui.GetWindowPos();
         ImGui.GetWindowDrawList().AddRectFilled(min, min + new Vector2(3 * ImGuiHelpers.GlobalScale, ImGui.GetWindowHeight()), ImGui.GetColorU32(TypeColor(type)));
 
+        var left = ImGui.GetCursorPosX();
         using (ImRaii.PushFont(UiBuilder.IconFont))
             ImGui.TextColored(TypeColor(type), IconFor(entry.Title).ToIconString());
-        ImGui.SameLine();
+        ImGui.SameLine(left + BodyIndent());
         ImGui.TextUnformatted(ChangelogDoc.Plain(entry.Title));
         ImGui.SameLine(ImGui.GetContentRegionMax().X - ImGui.CalcTextSize(TypeName(type)).X);
         ImGui.TextColored(TypeColor(type), TypeName(type));
 
+        ImGui.Dummy(new Vector2(1, 2 * ImGuiHelpers.GlobalScale));
+        ImGui.SetCursorPosX(left + BodyIndent());
         using (ImRaii.PushColor(ImGuiCol.Text, theme.Muted))
-            ImGui.TextWrapped(ChangelogDoc.Plain(entry.Text));
+        {
+            ImGui.PushTextWrapPos(ImGui.GetContentRegionMax().X);
+            ImGui.TextUnformatted(ChangelogDoc.Plain(entry.Text));
+            ImGui.PopTextWrapPos();
+        }
+    }
+
+    // Largura do ícone mais o espaço até o título: é onde o texto do card começa.
+    private static float BodyIndent()
+    {
+        using (ImRaii.PushFont(UiBuilder.IconFont))
+            return ImGui.CalcTextSize(FontAwesomeIcon.Star.ToIconString()).X + (8 * ImGuiHelpers.GlobalScale);
     }
 
     // Itens sem destaque, agrupados por tipo. Nas versões antigas, os destaques entram na lista também.

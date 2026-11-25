@@ -55,7 +55,7 @@ public static partial class ChangelogDoc
             {
                 var text = line[2..].Trim();
                 section.Entries.Add(BoldLead().Match(text) is { Success: true } lead
-                    ? new ChangeEntry(lead.Groups["t"].Value.Trim(), lead.Groups["r"].Value.Trim())
+                    ? new ChangeEntry(lead.Groups["t"].Value.Trim(), Capitalize(lead.Groups["r"].Value.Trim()))
                     : new ChangeEntry(string.Empty, text));
             }
             else if (section is { Entries.Count: > 0 } && line.StartsWith("  ", StringComparison.Ordinal) && line.Trim().Length > 0)
@@ -68,6 +68,9 @@ public static partial class ChangelogDoc
 
         return releases;
     }
+
+    // "return time..." vira "Return time...", porque no card o texto vem sozinho, embaixo do título.
+    public static string Capitalize(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
 
     // Tira a marcação que a janela não desenha: `código` e [texto](link).
     public static string Plain(string text) => Link().Replace(text.Replace("`", string.Empty), "$1");
