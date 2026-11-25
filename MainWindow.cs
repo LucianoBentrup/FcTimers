@@ -478,6 +478,8 @@ public class MainWindow : ThemedWindow
                 ImGui.TextUnformatted(item.Name);
                 UiKit.Cell($"{item.Count}");
                 UiKit.Cell($"{item.Value:N0}", item.Market ? UiKit.Soon : null);
+                if (item.Market)
+                    UiKit.Tooltip(L.MarketPrice);
             }
         }
     }

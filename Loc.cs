@@ -181,6 +181,7 @@ public static class L
     public static string DayTotal(string total, string voyages) => T($"{total} gil em {voyages}", $"{total} gil in {voyages}");
     public static string IncludesMarket(string value) => T($"inclui {value} gil de market", $"includes {value} gil from the market board");
     public static string Market => T("Preços do market", "Market prices");
+    public static string MarketPrice => T("Preço do market", "Market board price");
     public static string MarketAuto(string world) => T($"Automático ({world})", $"Automatic ({world})");
 
     // Buffs
