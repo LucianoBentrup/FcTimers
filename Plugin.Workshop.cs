@@ -288,7 +288,7 @@ public sealed partial class Plugin
         {
             lastEmptyPages = empty;
             if (empty.Length > 0)
-                Diagnostics.Write($"Baú da FC: página(s) {empty} carregada(s) sem itens, ignorada(s)");
+                Diagnostics.Detail($"Baú da FC: página(s) {empty} carregada(s) sem itens, ignorada(s)");
         }
 
         foreach (var (page, count) in chest)

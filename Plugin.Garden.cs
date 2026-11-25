@@ -197,11 +197,6 @@ public sealed partial class Plugin
             }
         }
 
-        // Por 30 segundos depois do menu de um canteiro ou vaso, as mensagens do sistema vão para o log,
-        // para descobrir qual mensagem a rega de um vaso de dentro de casa mostra. Chat de jogador nunca entra.
-        if (texts.Any(t => PlotNames.GardenMenu.IsMatch(t)))
-            gardenWatchUntil = DateTime.UtcNow.AddSeconds(30);
-
         // Os canteiros de fora não têm nome no alvo; o menu diz qual é ("6th Bed, 2nd Patch").
         if (ReadHousingTarget() is var (key, name, indoor))
         {
@@ -233,31 +228,13 @@ public sealed partial class Plugin
             return;
         }
 
+        // Fora das mensagens da horta, nada vai para o log: elas podem trazer nome de outros jogadores.
         if (id < FirstGardenMessage || id > LastGardenMessage)
-        {
-            if (DateTime.UtcNow < gardenWatchUntil)
-            {
-                Diagnostics.Write($"Mensagem do jogo {id} depois do menu da plantação: {message.GameData.ValueNullable?.Text.ToString()}");
-                QueueLogUpload();
-            }
-
             return;
-        }
 
         Diagnostics.Write($"Mensagem da horta {id}: {message.GameData.ValueNullable?.Text.ToString()}");
         if (characterEnabled && !currentOtherFc && id is CropTendedMessage or SeedsPlantedMessage)
             WaterTargetedPlot($"mensagem do jogo {id}");
     }
 
-    private void OnChatMessage(IChatMessage message)
-    {
-        if (DateTime.UtcNow >= gardenWatchUntil || !SystemChat.Contains(message.LogKind))
-            return;
-
-        Diagnostics.Write($"Chat {message.LogKind} depois do menu da plantação: {message.Message.TextValue}");
-        QueueLogUpload();
-    }
-
-    private static readonly HashSet<XivChatType> SystemChat =
-        [XivChatType.SystemMessage, XivChatType.LootNotice, XivChatType.GatheringSystemMessage, XivChatType.ErrorMessage];
 }

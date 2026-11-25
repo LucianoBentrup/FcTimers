@@ -24,7 +24,12 @@ public sealed class DiagnosticLog
         try
         {
             if (File.Exists(path))
-                lines.AddRange(File.ReadAllLines(path).TakeLast(MaxLines));
+            {
+                var saved = File.ReadAllLines(path);
+                lines.AddRange(saved.Where(l => !Private(l)).TakeLast(MaxLines));
+                if (saved.Any(Private))
+                    File.WriteAllLines(path, lines);
+            }
         }
         catch (IOException)
         {
@@ -67,6 +72,11 @@ public sealed class DiagnosticLog
     }
 
     public string Text(string header) => string.Join('\n', lines.TakeLast(MaxLines).Prepend(header));
+
+    // Versões antigas gravavam o chat e mensagens do jogo depois dos menus da casa. Isso pode ter nome
+    // e conversa de outros jogadores, então nunca fica no arquivo nem é enviado.
+    public static bool Private(string line)
+        => line.Contains(" depois do menu da ", StringComparison.Ordinal);
 
     public static string Time(long unix) => DateTimeOffset.FromUnixTimeSeconds(unix).ToLocalTime().ToString("dd/MM HH:mm:ss");
 }

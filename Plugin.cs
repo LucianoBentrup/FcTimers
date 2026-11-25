@@ -79,7 +79,6 @@ public sealed partial class Plugin : IDalamudPlugin
     private string? lastIndoorHouse;
     private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
-    private DateTime gardenWatchUntil = DateTime.MinValue;
     private RemoteState? appliedRemote;
     private string lastScan = string.Empty;
     private DateTime nextScan = DateTime.MinValue;
@@ -119,7 +118,7 @@ public sealed partial class Plugin : IDalamudPlugin
             System.IO.Path.Combine(PluginInterface.GetPluginConfigDirectory(), "diagnostico.txt"),
             message => Log.Information(message),
             () => Config.DetailedLog);
-        Diagnostics.Write($"Plugin {Version} iniciado");
+        Diagnostics.Write($"Plugin {DisplayVersion} iniciado");
 
         Sync = new SyncClient(Config, SaveConfig, Diagnostics.Write, IsMarketable, () => MarketWorld);
         Diagnostics.Write($"Itens do estoque: {LookupItem(Supplies.CeruleumTank)?.Name ?? "?"} e {LookupItem(Supplies.RepairMaterials)?.Name ?? "?"}");
@@ -168,7 +167,6 @@ public sealed partial class Plugin : IDalamudPlugin
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
         ChatGui.LogMessage += OnLogMessage;
-        ChatGui.ChatMessageUnhandled += OnChatMessage;
 
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += mainWindow.Toggle;
@@ -183,7 +181,6 @@ public sealed partial class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenMainUi -= mainWindow.Toggle;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         ChatGui.LogMessage -= OnLogMessage;
-        ChatGui.ChatMessageUnhandled -= OnChatMessage;
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
         foreach (var old in OldCommands)
@@ -210,6 +207,9 @@ public sealed partial class Plugin : IDalamudPlugin
 
     // Carregado pelo Dev Plugin Locations do Dalamud, e não pelo repositório.
     public bool IsDevBuild => PluginInterface.IsDev;
+
+    // A versão de dev se identifica no log, para não ser confundida com a publicada.
+    public string DisplayVersion => IsDevBuild ? $"{Version}-dev" : Version;
 
     // Só na versão de dev: mostra as boas-vindas de novo, para testar.
     public void ReplayWelcome()
@@ -425,7 +425,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (tag.Length > 0 && id == 0)
         {
             if (!fcIdWaiting)
-                Diagnostics.Detail($"{character.Name}: tag «{tag}», mas o ID da FC ainda não carregou");
+                Diagnostics.Write($"{character.Name}: tag «{tag}», mas o ID da FC ainda não carregou");
             fcIdWaiting = true;
             return;
         }
@@ -443,7 +443,7 @@ public sealed partial class Plugin : IDalamudPlugin
     }
 
     public string LogText()
-        => Diagnostics.Text($"FC Companion {Version} | fuso UTC{DateTimeOffset.Now:zzz} | gerado {DateTime.Now:dd/MM HH:mm}");
+        => Diagnostics.Text($"FC Companion {DisplayVersion} | fuso UTC{DateTimeOffset.Now:zzz} | gerado {DateTime.Now:dd/MM HH:mm}");
 
     // Depois de deslogar (o log que vai ao fechar o jogo), vale o último personagem que estava jogando.
     private string CurrentCharacterName()
