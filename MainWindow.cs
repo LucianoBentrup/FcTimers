@@ -342,11 +342,19 @@ public class MainWindow : ThemedWindow
         var rounds = tanksPerRound > 0 ? stock.Tanks / tanksPerRound : -1;
         UiKit.Text(L.Tanks($"{stock.Tanks:N0}") + EndsAround(view.Forecast?.TanksUntil, now), rounds is >= 0 and < 2 ? UiKit.Bad : null);
         if (rounds >= 0)
+        {
             UiKit.Bar(Math.Min(rounds, 10) / 10f, L.Rounds(rounds), rounds < 2 ? UiKit.Bad : rounds < 4 ? UiKit.Soon : UiKit.Good);
-        ImGui.TextUnformatted(L.Kits($"{stock.Kits:N0}") + (kitsPerRepair > 0 ? $" ({L.Repairs(stock.Kits / kitsPerRepair, subs)})" : string.Empty)
-            + EndsAround(view.Forecast?.KitsUntil, now));
+            UiKit.Tooltip(L.RoundsHint(tanksPerRound, subs));
+        }
+
+        var repairs = kitsPerRepair > 0 ? stock.Kits / kitsPerRepair : -1;
+        UiKit.Text(L.Kits($"{stock.Kits:N0}") + (repairs >= 0 ? $" · {L.Repairs(repairs)}" : string.Empty) + EndsAround(view.Forecast?.KitsUntil, now),
+            repairs == 0 ? UiKit.Bad : null);
+        if (repairs >= 0)
+            UiKit.Tooltip(L.RepairsHint(kitsPerRepair, subs));
+
         var age = now - stock.ObservedAt;
-        ImGui.TextColored(UiKit.Muted, age < 60 ? L.CountedNow : L.CountedAgo(Plugin.FormatRemaining(age)));
+        ImGui.TextColored(UiKit.Muted, age < 60 ? L.CountedNow : L.CountedAgo(UiKit.DaysOrTime(age)));
     }
 
     // Data em que o estoque acaba pelo gasto dos últimos dias, calculada pelo serviço.
