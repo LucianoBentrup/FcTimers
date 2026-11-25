@@ -618,7 +618,7 @@ public class MainWindow : ThemedWindow
         if (requests.Count == 0)
             ImGui.TextColored(UiKit.Muted, L.NoRequests);
 
-        using (var table = UiKit.Table("##requests", L.ColName, L.ColWorld, string.Empty))
+        using (var table = requests.Count == 0 ? null : UiKit.Table("##requests", L.ColName, L.ColWorld, string.Empty))
         {
             if (table != null)
             {
@@ -681,7 +681,7 @@ public class MainWindow : ThemedWindow
     private bool Confirmed(string id, string label)
     {
         var ready = armed == id;
-        if (!ImGui.SmallButton(ready ? $"{L.SureClick}###{id}" : $"{label}###{id}"))
+        if (!ImGui.SmallButton(ready ? $"{L.Confirm(label)}###{id}" : $"{label}###{id}"))
             return false;
 
         armed = ready ? string.Empty : id;

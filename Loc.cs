@@ -109,7 +109,7 @@ public static class L
     public static string You => T("você", "you");
     public static string ColWorld => T("Mundo", "World");
     public static string ColRole => T("Papel", "Role");
-    public static string SureClick => T("Clique de novo", "Click again");
+    public static string Confirm(string action) => T($"Confirmar: {action.ToLowerInvariant()}", $"Confirm {action.ToLowerInvariant()}");
     public static string StWaiting => T("Aguardando dados", "Waiting for data");
     public static string StSendingLog => T("Enviando log...", "Sending log...");
     public static string StLogSent(string time) => T($"Log enviado ({time})", $"Log sent ({time})");
