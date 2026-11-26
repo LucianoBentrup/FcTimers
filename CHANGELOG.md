@@ -12,6 +12,11 @@ Portuguese). Rules for every entry:
 - Same terms as the plugin: submarine, airship, field, watering, supplies, repair materials, FC house.
 - A big update gets `<!-- big -->` after its version, and its entries show as cards.
 
+## [0.10.3] - 2026-11-26
+
+### Fixed
+- **Loot:** saved from each submarine's last voyage report, even if collected without the plugin.
+
 ## [0.10.2] - 2026-11-25
 
 ### Added

@@ -3,7 +3,7 @@
     "Author": "Luciano",
     "Name": "FC Companion",
     "InternalName": "FcTimers",
-    "AssemblyVersion": "0.10.2.0",
+    "AssemblyVersion": "0.10.3.0",
     "Description": "Acompanha os submarinos, o loot, o estoque, a plantação e os buffs da FC, e mantém um painel compartilhado no Discord.",
     "ApplicableVersion": "any",
     "Tags": [
@@ -24,6 +24,6 @@
     "DownloadLinkTesting": "https://raw.githubusercontent.com/LucianoBentrup/FcTimers/main/dist/latest.zip",
     "IsHide": false,
     "IsTestingExclusive": false,
-    "LastUpdate": 1795621584
+    "LastUpdate": 1795733604
   }
 ]

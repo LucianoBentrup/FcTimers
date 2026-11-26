@@ -96,6 +96,7 @@ public sealed partial class Plugin
             Sync.ReportSub(slot, name, returnTime, record.Details);
         }
 
+        changed |= CaptureSelectedLoot(workshop, now);
         changed |= ReadAirships(workshop, now);
 
         if (conditions != null)
@@ -234,6 +235,67 @@ public sealed partial class Plugin
             QueueLogUpload();
         }
 
+        return true;
+    }
+
+    // A 5ª posição da lista é o sub selecionado, preenchida pelo servidor quando o relatório da última viagem abre.
+    // É o único lugar com o loot quando a coleta foi feita por alguém sem o plugin: as posições 0 a 3 ficam com o loot antigo.
+    private unsafe bool CaptureSelectedLoot(WorkshopTerritory* workshop, long now)
+    {
+        var pointers = workshop->Submersible.DataPointers;
+        if (pointers.Length <= LootLedger.MaxSubmarines)
+            return false;
+
+        var selected = pointers[LootLedger.MaxSubmarines].Value;
+        if (selected == null || selected->RankId == 0)
+            return false;
+
+        var signature = SubmarineLoot.Signature(selected);
+        if (signature.Length == 0 || signature == lastSelectedLoot)
+            return false;
+        lastSelectedLoot = signature;
+
+        var name = selected->NameString;
+        var slot = -1;
+        for (var i = 0; i < LootLedger.MaxSubmarines; i++)
+        {
+            var sub = pointers[i].Value;
+            if (sub != null && sub->RankId != 0 && sub->NameString == name)
+                slot = i;
+        }
+
+        if (slot < 0)
+        {
+            Diagnostics.Write($"Relatório de {name}: loot na posição do sub selecionado, mas nenhum sub da lista tem esse nome. Não foi salvo.");
+            QueueLogUpload();
+            return false;
+        }
+
+        // O mesmo loot já salvo (pela leitura normal ou por um relatório aberto antes) não entra de novo.
+        if (Config.Voyages.Any(v => !LootLedger.IsAirship(v.Key) && LootLedger.SlotOf(v.Key) == slot && SubmarineLoot.Signature(v.Value.Items) == signature))
+        {
+            Diagnostics.Detail($"Relatório de {name}: loot já salvo");
+            return false;
+        }
+
+        var key = $"{workshop->HouseId}:{slot}";
+        Config.Subs.TryGetValue(key, out var record);
+        // A lista já foi lida neste frame: se o sub saiu de novo, a volta da viagem do relatório é a anterior.
+        var returnTime = new[] { (long)selected->ReturnTime, record?.ReturnTime ?? 0, record?.PreviousReturnTime ?? 0 }
+            .FirstOrDefault(t => t != 0 && t <= now);
+        if (returnTime == 0)
+        {
+            Diagnostics.Write($"Relatório de {name}: loot novo, mas sem horário de volta conhecido. Não foi salvo.");
+            QueueLogUpload();
+            return false;
+        }
+
+        var voyage = SubmarineLoot.Read(selected, name, returnTime, LookupItem, SectorName);
+        if (voyage == null || !LootLedger.Upsert(Config.Voyages, LootLedger.VoyageKey(key, returnTime), voyage))
+            return false;
+
+        Diagnostics.Write($"{name}: viagem de {DiagnosticLog.Time(returnTime)} salva pelo relatório da última viagem, {voyage.Items.Count} itens, {LootLedger.Total([voyage]):N0} gil");
+        QueueLogUpload();
         return true;
     }
 

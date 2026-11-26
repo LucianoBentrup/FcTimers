@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui.Dtr;
 using Dalamud.Interface.ImGuiNotification;
@@ -76,6 +77,7 @@ public sealed partial class Plugin : IDalamudPlugin
     // O personagem logado é de outra FC: não lê nem envia nada além da oficina, que é onde ele pode voltar a valer.
     private bool currentOtherFc;
     private bool inWorkshop;
+    private string lastSelectedLoot = string.Empty;
     private string? lastIndoorHouse;
     private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
     private string lastEmptyPages = string.Empty;
@@ -167,6 +169,10 @@ public sealed partial class Plugin : IDalamudPlugin
         }
 
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
+        AddonLifecycle.RegisterListener(AddonEvent.PostRefresh, ResultAddons, OnVoyageResult);
+        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ResultAddons, LogVoyageResult);
+        AddonLifecycle.RegisterListener(AddonEvent.PostRefresh, ResultAddons, LogVoyageResult);
+        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAnyAddon);
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
         ChatGui.LogMessage += OnLogMessage;
 
@@ -174,6 +180,68 @@ public sealed partial class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenMainUi += mainWindow.Toggle;
         PluginInterface.UiBuilder.OpenConfigUi += configWindow.Toggle;
         Framework.Update += OnUpdate;
+    }
+
+    // Diagnóstico: nome de cada janela aberta dentro da oficina.
+    private void OnAnyAddon(AddonEvent type, AddonArgs args)
+    {
+        if (inWorkshop)
+            Diagnostics.Write($"Janela aberta na oficina: {args.AddonName}");
+    }
+
+    // Diagnóstico: os AtkValues da tela de resultado e o loot na memória de cada sub e airship.
+    private unsafe void LogVoyageResult(AddonEvent type, AddonArgs args)
+    {
+        var lines = new List<string> { $"Resultado da viagem ({args.AddonName}, {type}):" };
+        var addon = (FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase*)args.Addon.Address;
+        if (addon != null)
+        {
+            for (var i = 0; i < addon->AtkValuesCount; i++)
+            {
+                var value = addon->AtkValues[i];
+                var text = value.Type switch
+                {
+                    FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Int => value.Int.ToString(),
+                    FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.UInt => value.UInt.ToString(),
+                    FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Bool => (value.Byte != 0).ToString(),
+                    FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Float => value.Float.ToString("0.###"),
+                    FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String
+                        or FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ManagedString
+                        or FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ConstString => $"\"{value.String}\"",
+                    _ => null,
+                };
+                if (text != null)
+                    lines.Add($"  [{i}] {value.Type}: {text}");
+            }
+        }
+
+        var manager = FFXIVClientStructs.FFXIV.Client.Game.HousingManager.Instance();
+        if (manager != null && manager->WorkshopTerritory != null)
+        {
+            var workshop = manager->WorkshopTerritory;
+            var pointers = workshop->Submersible.DataPointers;
+            for (var slot = 0; slot < pointers.Length; slot++)
+            {
+                var sub = pointers[slot].Value;
+                var label = slot < LootLedger.MaxSubmarines ? $"sub {slot}" : "sub selecionado";
+                if (sub != null && sub->RankId != 0)
+                    lines.Add($"  {label} {sub->NameString}: volta {DiagnosticLog.Time(sub->ReturnTime)}, loot {SubmarineLoot.Signature(sub)}");
+            }
+
+            var ships = workshop->Airship.Data;
+            for (var slot = 0; slot < Math.Min(ships.Length, LootLedger.MaxSubmarines); slot++)
+            {
+                fixed (FFXIVClientStructs.FFXIV.Client.Game.HousingWorkshopAirshipSubData* ship = &ships[slot])
+                {
+                    if (ship->RankId != 0)
+                        lines.Add($"  airship {slot} {ship->NameString}: volta {DiagnosticLog.Time(ship->ReturnTime)}, loot {SubmarineLoot.Signature(ship)}");
+                }
+            }
+        }
+        else
+            lines.Add("  fora da oficina: sem loot na memória");
+
+        Diagnostics.Write(string.Join('\n', lines));
     }
 
     public void Dispose()
@@ -184,6 +252,10 @@ public sealed partial class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         ChatGui.LogMessage -= OnLogMessage;
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectString", OnSelectString);
+        AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, OnAnyAddon);
+        AddonLifecycle.UnregisterListener(AddonEvent.PostRefresh, ResultAddons, LogVoyageResult);
+        AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, ResultAddons, LogVoyageResult);
+        AddonLifecycle.UnregisterListener(AddonEvent.PostRefresh, ResultAddons, OnVoyageResult);
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, ResultAddons, OnVoyageResult);
         foreach (var old in OldCommands)
             CommandManager.RemoveHandler(old);
