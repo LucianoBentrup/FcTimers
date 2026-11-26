@@ -13,7 +13,7 @@ import {
   accountScreen, codeScreen, MODAL, menuMessage, screenMessage, sectionEmbed, sharedMessage, UPDATE_MESSAGE,
 } from './menu.js';
 import {
-  accountLinked, addOwner, confirmAccount, linkedOwners, removeOwner, requestAccount,
+  ACCOUNT_ATTEMPTS, ACCOUNT_CODE_TTL, accountLinked, addOwner, confirmAccount, linkedOwners, removeOwner, requestAccount,
 } from './link.js';
 import { langOf, text } from './texts.js';
 import { sendDm, transportOf, DISCORD_API } from './transport.js';
@@ -147,7 +147,7 @@ export const InteractMethods = {
       embed, notice, view: shown, arg, manager: p.manager, pub: Boolean(p.pub),
       weeklyOff: Boolean(state.weekly?.off), eventRole: settings.eventRole ?? null,
       canCreate: canCreate(p, settings), dmOn: Boolean(pref.dm), accountLinked: accountLinked(state, p.user),
-      testTools: this.env.TEST_TOOLS === '1',
+      testTools: this.env.TEST_TOOLS === '1' && this.legacy,
     });
   },
 
@@ -260,9 +260,9 @@ export const InteractMethods = {
       case 'test-alert':
       case 'test-dm':
       case 'test-request': {
-        if (this.env.TEST_TOOLS !== '1') return note(t('unknown'));
+        if (this.env.TEST_TOOLS !== '1' || !this.legacy) return note(t('unknown'));
         if (p.name === 'test-alert') {
-          const transport = transportOf('alerts', state.settings ?? {}, this.env);
+          const transport = transportOf('alerts', state.settings ?? {}, this.env, this.legacy);
           const sent = transport ? await transport.create({ content: `🧪 ${t('testAlertText')}`, allowed_mentions: { parse: [] } }) : { ok: false };
           return manage(sent.ok ? t('testDone') : t('testFailed'));
         }
@@ -291,9 +291,19 @@ export const InteractMethods = {
 
   async handleLinkAccount(request) {
     const { owner, code } = await request.json();
+    const now = nowSeconds();
+    // 6 dígitos caem no chute sem limite: 5 erros por dono a cada 15 minutos.
+    const failKey = `acctfail:${owner}`;
+    const fails = await this.ctx.storage.get(failKey);
+    const fresh = !fails || now - fails.since >= ACCOUNT_CODE_TTL;
+    if (!fresh && fails.count >= ACCOUNT_ATTEMPTS) return json({ ok: false, error: 'too-many' });
     const state = await this.state();
-    const user = confirmAccount(state, owner, code, nowSeconds());
-    if (!user) return json({ ok: false, error: 'unknown-code' });
+    const user = confirmAccount(state, owner, code, now);
+    if (!user) {
+      await this.ctx.storage.put(failKey, fresh ? { count: 1, since: now } : { ...fails, count: fails.count + 1 });
+      return json({ ok: false, error: 'unknown-code' });
+    }
+    await this.ctx.storage.delete(failKey);
     await this.ctx.storage.put('state', state);
     return json({ ok: true, discordUser: user });
   },
@@ -366,7 +376,7 @@ export const InteractMethods = {
     if (!canCreate(p, settings)) return note(t('cantCreate')(settings.eventRole));
     if (draft.error) return review(t(draft.error));
     if (!(draft.start > now)) return review(t('pastWhen'));
-    const transport = transportOf('events', settings, this.env);
+    const transport = transportOf('events', settings, this.env, this.legacy);
     if (!transport) return eventsMenu(this.env.DISCORD_BOT_TOKEN ? t('noEventsChannel') : t('noBot'));
     if (openEvents(await this.events()).length >= MAX_OPEN) return review(t('tooMany'));
 
@@ -432,7 +442,7 @@ export const InteractMethods = {
     const settings = state.settings ?? {};
     const body = content(lang);
     if (event.notify !== 'dm') {
-      const transport = transportOf('alerts', settings, this.env);
+      const transport = transportOf('alerts', settings, this.env, this.legacy);
       if (transport) {
         const mentions = users.slice(0, 50);
         const link = event.messageId && event.guildId ? `\nhttps://discord.com/channels/${event.guildId}/${event.channelId}/${event.messageId}` : '';
@@ -468,7 +478,7 @@ export const InteractMethods = {
       }
       if (closeDue(event, now)) {
         const closed = await this.changeEvent(event.id, (e) => { Object.assign(e, { status: 'done', closedAt: now }); });
-        const transport = transportOf('events', settings, this.env);
+        const transport = transportOf('events', settings, this.env, this.legacy);
         if (transport && closed.messageId) await transport.edit(closed.messageId, eventPost(closed, lang, state));
         if (closed.repeat && transport) {
           const next = nextOccurrence(closed, newId(), now);

@@ -53,9 +53,10 @@ export async function sendDm(token, userId, payload, api = DISCORD_API) {
 }
 
 // Transporte de uma mensagem já enviada, pelo `via` gravado com ela. Mensagem antiga, sem `via`, é do webhook.
-export function transportFor(via, env) {
+// O DISCORD_WEBHOOK é o canal da FC antiga: nenhuma outra FC pode cair nele.
+export function transportFor(via, env, legacy = false) {
   if (via?.startsWith('bot:')) return env.DISCORD_BOT_TOKEN ? botTransport(env.DISCORD_BOT_TOKEN, via.slice(4), env.DISCORD_API ?? DISCORD_API) : null;
-  return env.DISCORD_WEBHOOK ? webhookTransport(env.DISCORD_WEBHOOK) : null;
+  return legacy && env.DISCORD_WEBHOOK ? webhookTransport(env.DISCORD_WEBHOOK) : null;
 }
 
 // Onde sai cada tipo de mensagem agora. Com o bot configurado e o canal escolhido, pelo bot; senão, pelo webhook.
@@ -66,9 +67,9 @@ export function channelFor(kind, settings = {}) {
   return settings.panelChannel ?? null;
 }
 
-export function transportOf(kind, settings, env) {
+export function transportOf(kind, settings, env, legacy = false) {
   const channel = channelFor(kind, settings);
   if (channel && env.DISCORD_BOT_TOKEN) return botTransport(env.DISCORD_BOT_TOKEN, channel, env.DISCORD_API ?? DISCORD_API);
   if (kind === 'events') return null;
-  return env.DISCORD_WEBHOOK ? webhookTransport(env.DISCORD_WEBHOOK) : null;
+  return legacy && env.DISCORD_WEBHOOK ? webhookTransport(env.DISCORD_WEBHOOK) : null;
 }

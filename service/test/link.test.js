@@ -106,3 +106,12 @@ test('telas do código: servidor novo, código ligado e desligado', () => {
   const off = codeScreen('en', null, 0);
   assert.deepEqual(off.components[0].components.map((b) => b.label), ['Turn code on', 'Back']);
 });
+
+test('o webhook do wrangler.toml só serve à FC antiga', async () => {
+  const { transportOf, transportFor } = await import('../src/transport.js');
+  const env = { DISCORD_WEBHOOK: 'https://discord.com/api/webhooks/1/abc' };
+  assert.equal(transportOf('panel', {}, env), null);
+  assert.equal(transportOf('alerts', {}, env, true).via, 'webhook');
+  assert.equal(transportFor(undefined, env), null);
+  assert.equal(transportOf('panel', { panelChannel: '9' }, { ...env, DISCORD_BOT_TOKEN: 'x' }).via, 'bot:9');
+});

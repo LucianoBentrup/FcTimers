@@ -12,6 +12,9 @@ export const CODE_ATTEMPTS = 10;
 export const CODE_WINDOW = 3600;
 // Código para ligar a conta do Discord: 6 dígitos, vale 15 minutos.
 export const ACCOUNT_CODE_TTL = 900;
+export const ACCOUNT_ATTEMPTS = 5;
+// Pedidos esperando aprovação numa FC. Um código vazado não enche a lista.
+export const MAX_PENDING = 20;
 const MAX_CHARACTERS = 20;
 const MAX_NAME = 40;
 

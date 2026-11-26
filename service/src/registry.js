@@ -14,7 +14,7 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import {
-  CODE_ATTEMPTS, CODE_WINDOW, isCode, isGameFcId, isOwner, newCode, newToken, normalizeCode, sha256,
+  CODE_ATTEMPTS, CODE_WINDOW, MAX_PENDING, isCode, isGameFcId, isOwner, newCode, newToken, normalizeCode, sha256,
 } from './link.js';
 
 const json = (body, status = 200) => Response.json(body, { status });
@@ -138,11 +138,13 @@ export class Registry extends DurableObject {
     const memberKey = `member:${checked.fc}:${id}`;
     const known = await this.ctx.storage.get(memberKey);
     const now = nowSeconds();
+    const list = await this.memberList(checked.fc);
+    if (!known && list.filter((m) => m.status === 'pending').length >= MAX_PENDING) return { error: 'too-many' };
     const member = known?.status === 'member' ? known : {
       owner,
       name: cleanText(requester?.name) || known?.name || null,
       world: cleanText(requester?.world) || known?.world || null,
-      role: (await this.memberList(checked.fc)).some((m) => m.status === 'member') ? 'member' : 'owner',
+      role: list.some((m) => m.status === 'member') ? 'member' : 'owner',
       status: 'pending',
       requestedAt: now,
       joinedAt: null,

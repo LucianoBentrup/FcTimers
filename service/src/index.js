@@ -217,13 +217,14 @@ async function handleLink(request, env, pathname) {
   const caller = await pluginCaller(request, env);
   if (!caller?.owner) return json({ error: 'unauthorized' }, 401);
   if (pathname === '/link/account') {
+    if (caller.status !== 'member') return json({ error: 'pending' }, 403);
     const result = await ask(fcStub(caller.fc), '/link/account', { owner: caller.owner, code: body.code });
-    return json(result, result.ok ? 200 : 404);
+    return json(result, result.ok ? 200 : result.error === 'too-many' ? 429 : 404);
   }
   if (pathname === '/link/me') return json(await ask(registry, '/me', { token: bearer(request) }));
   // TESTE: tirar depois da fase de testes.
   if (pathname === '/link/test-request') {
-    if (env.TEST_TOOLS !== '1' || !['owner', 'admin'].includes(caller.role)) return json({ error: 'not found' }, 404);
+    if (env.TEST_TOOLS !== '1' || caller.fc !== LEGACY_FC || !['owner', 'admin'].includes(caller.role)) return json({ error: 'not found' }, 404);
     return json(await ask(registry, '/test-request', { token: bearer(request) }));
   }
   if (pathname === '/link/members') {
@@ -275,17 +276,22 @@ export default {
     if (caller.status === 'pending') return json({ error: 'pending' }, 403);
 
     const stub = env.FC_STATE.get(env.FC_STATE.idFromName(caller.fc));
-    // Envio de um personagem de outra FC (alt): fica de fora desta FC, sem erro para o plugin.
-    if (request.method === 'POST' && caller.gameFcId) {
+    if (request.method === 'POST') {
       const text = await request.text();
-      let fcId = null;
-      try {
-        fcId = JSON.parse(text)?.fcId ?? null;
-      } catch {
-        // O objeto da FC responde ao JSON inválido.
+      // Envio de um personagem de outra FC (alt): fica de fora desta FC, sem erro para o plugin.
+      if (caller.gameFcId) {
+        let fcId = null;
+        try {
+          fcId = JSON.parse(text)?.fcId ?? null;
+        } catch {
+          // O objeto da FC responde ao JSON inválido.
+        }
+        if (fcId != null && String(fcId) !== caller.gameFcId) return json({ ok: true, stored: false, reason: 'other-fc' }, 202);
       }
-      if (fcId != null && String(fcId) !== caller.gameFcId) return json({ ok: true, stored: false, reason: 'other-fc' }, 202);
-      return stub.fetch(new Request(request.url, { method: 'POST', headers: request.headers, body: text }));
+      // Quem mandou vem do token, nunca do pedido: o log de um membro não sobrescreve o de outro.
+      const headers = new Headers(request.headers);
+      headers.set('X-Fc-Caller', caller.owner ?? 'legacy');
+      return stub.fetch(new Request(request.url, { method: 'POST', headers, body: text }));
     }
     // Todo pedido da FC passa pelo mesmo objeto, que é o único ponto de gravação.
     return stub.fetch(request);
@@ -293,6 +299,16 @@ export default {
 };
 
 export class FcState extends DurableObject {
+  // Só a FC antiga usa o DISCORD_WEBHOOK e o ROLE_ID do wrangler.toml.
+  get legacy() {
+    this.isLegacy ??= this.ctx.id.equals(this.env.FC_STATE.idFromName(LEGACY_FC));
+    return this.isLegacy;
+  }
+
+  get roleId() {
+    return this.legacy ? this.env.ROLE_ID : null;
+  }
+
   async fetch(request) {
     switch (`${request.method} ${new URL(request.url).pathname}`) {
       case 'POST /update': return this.handleUpdate(request);
@@ -325,7 +341,8 @@ export class FcState extends DurableObject {
     if (!character || typeof body.text !== 'string') return json({ error: 'invalid log' }, 400);
 
     const storage = this.ctx.storage;
-    await storage.put(`log:${character}`, { character, uploadedAt: nowSeconds(), text: body.text });
+    const from = request.headers.get('X-Fc-Caller') ?? 'legacy';
+    await storage.put(`log:${from}:${character}`, { character, uploadedAt: nowSeconds(), text: body.text });
 
     const logs = [...(await storage.list({ prefix: 'log:' })).entries()].sort((a, b) => b[1].uploadedAt - a[1].uploadedAt);
     if (logs.length > MAX_LOGS) await storage.delete(logs.slice(MAX_LOGS).map(([key]) => key));
@@ -402,7 +419,7 @@ export class FcState extends DurableObject {
   async repostPanel() {
     const state = (await this.ctx.storage.get('state')) ?? newState();
     if (state.messageId) {
-      const response = await transportFor(state.panelVia, this.env)?.remove(state.messageId);
+      const response = await transportFor(state.panelVia, this.env, this.legacy)?.remove(state.messageId);
       // 404: alguém já apagou a mensagem.
       if (response && !response.ok && response.status !== 404) return { error: `discord ${response.status}` };
     }
@@ -433,15 +450,15 @@ export class FcState extends DurableObject {
     // Avisos antigos, sem o tipo gravado, também são trocados.
     const removed = [];
     for (const alert of (state.alerts ?? []).filter((a) => !a.kind || ['subReady', 'subForgotten', 'repairNeeded'].includes(a.kind))) {
-      const response = await transportFor(alert.via, this.env)?.remove(alert.id);
+      const response = await transportFor(alert.via, this.env, this.legacy)?.remove(alert.id);
       if (!response || response.ok || response.status === 404) removed.push(alert.id);
       await new Promise((resolve) => { setTimeout(resolve, 300); });
     }
 
     const sent = [];
-    const transport = transportOf('alerts', state.settings, this.env);
+    const transport = transportOf('alerts', state.settings, this.env, this.legacy);
     for (const alert of transport ? recentSubAlerts(state, now) : []) {
-      const payload = { ...alertPayload(alert, this.env.ROLE_ID), allowed_mentions: { parse: [], roles: [] } };
+      const payload = { ...alertPayload(alert, this.roleId), allowed_mentions: { parse: [], roles: [] } };
       const response = await transport.create(payload);
       if (response.ok) sent.push({ id: response.id, deleteAt: alertDeleteAt(now), kind: alert.kind, via: transport.via });
       await new Promise((resolve) => { setTimeout(resolve, 600); });
@@ -492,10 +509,10 @@ export class FcState extends DurableObject {
   // Um aviso por tipo, juntando o que ficou pronto junto. Devolve quando tentar de novo, ou null.
   async sendAlerts(now) {
     const state = (await this.ctx.storage.get('state')) ?? newState();
-    const transport = transportOf('alerts', state.settings, this.env);
+    const transport = transportOf('alerts', state.settings, this.env, this.legacy);
     if (!transport) return null;
     for (const alert of pendingAlerts(state, now)) {
-      const response = await transport.create(alertPayload(alert, this.env.ROLE_ID));
+      const response = await transport.create(alertPayload(alert, this.roleId));
       if (response.retryAt) return response.retryAt;
       if (!response.ok) {
         console.error(`Discord respondeu ${response.status} ao avisar`);
@@ -522,7 +539,7 @@ export class FcState extends DurableObject {
       await this.ctx.storage.put('state', latest);
       return null;
     }
-    const transport = transportOf('panel', state.settings, this.env);
+    const transport = transportOf('panel', state.settings, this.env, this.legacy);
     if (!transport) return null;
     const payload = weeklySummary(state, await this.voyagesSince(now, 16), now);
     const response = await transport.create(payload);
@@ -556,7 +573,7 @@ export class FcState extends DurableObject {
 
     const removed = [];
     for (const alert of due) {
-      const response = await transportFor(alert.via, this.env)?.remove(alert.id);
+      const response = await transportFor(alert.via, this.env, this.legacy)?.remove(alert.id);
       // 404: alguém já apagou a mensagem. Sem transporte (webhook ou bot tirado), não há como apagar.
       if (!response || response.ok || response.status === 404) removed.push(alert.id);
     }
@@ -664,7 +681,7 @@ export class FcState extends DurableObject {
   // o antigo é apagado e sai um novo.
   async publish(now) {
     const state = (await this.ctx.storage.get('state')) ?? newState();
-    const transport = transportOf('panel', state.settings, this.env);
+    const transport = transportOf('panel', state.settings, this.env, this.legacy);
     if (!transport) return null;
     const panelBody = renderPanel(state, await this.voyagesOn(dayOf(now)), now);
     if (transport.via !== 'webhook') panelBody.components = panelComponents(langOf(state));
@@ -673,7 +690,7 @@ export class FcState extends DurableObject {
     if (state.messageId && sameVia && state.lastPanel === panel) return null;
 
     let messageId = sameVia ? state.messageId : null;
-    if (state.messageId && !sameVia) await transportFor(state.panelVia, this.env)?.remove(state.messageId);
+    if (state.messageId && !sameVia) await transportFor(state.panelVia, this.env, this.legacy)?.remove(state.messageId);
     let response = null;
 
     if (messageId) {
