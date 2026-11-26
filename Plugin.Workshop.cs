@@ -50,7 +50,7 @@ public sealed partial class Plugin
 
             if (!Config.Subs.TryGetValue(key, out var record))
             {
-                record = new SubRecord { Name = name, ReturnTime = returnTime };
+                record = new SubRecord { Name = name, ReturnTime = returnTime, ReturnSeenAt = now };
                 Config.Subs[key] = record;
                 Diagnostics.Detail($"{name}: visto pela primeira vez, volta {DiagnosticLog.Time(returnTime)}");
                 changed = true;
@@ -61,6 +61,7 @@ public sealed partial class Plugin
                 {
                     LogReturnChange(key, name, record.ReturnTime, returnTime, now);
                     record.PreviousReturnTime = record.ReturnTime;
+                    record.ReturnSeenAt = now;
                 }
 
                 record.Name = name;
@@ -97,7 +98,7 @@ public sealed partial class Plugin
         }
 
         changed |= CaptureSelectedLoot(workshop, now);
-        changed |= FixLootDates(workshop);
+        changed |= FixLootDates(workshop, now);
         changed |= ReadAirships(workshop, now);
 
         if (conditions != null)
@@ -222,7 +223,7 @@ public sealed partial class Plugin
         Config.Subs.TryGetValue(key, out var record);
         var known = new[] { (long)sub->ReturnTime, record?.ReturnTime ?? 0, record?.PreviousReturnTime ?? 0 }
             .FirstOrDefault(t => t != 0 && t <= now);
-        var returnTime = LootReturnTime(name, known, sub->RegisterTime, sub->ReturnTime);
+        var returnTime = LootReturnTime(name, known, SeenAt(record, sub->ReturnTime, now), sub->ReturnTime);
         if (returnTime == 0)
         {
             Diagnostics.Write($"{name}: loot novo na memória, mas sem horário de volta conhecido. Não foi salvo.");
@@ -285,7 +286,7 @@ public sealed partial class Plugin
         // A lista já foi lida neste frame: se o sub saiu de novo, a volta da viagem do relatório é a anterior.
         var known = new[] { (long)selected->ReturnTime, record?.ReturnTime ?? 0, record?.PreviousReturnTime ?? 0 }
             .FirstOrDefault(t => t != 0 && t <= now);
-        var returnTime = LootReturnTime(name, known, selected->RegisterTime, selected->ReturnTime);
+        var returnTime = LootReturnTime(name, known, SeenAt(record, selected->ReturnTime, now), selected->ReturnTime);
         if (returnTime == 0)
         {
             Diagnostics.Write($"Relatório de {name}: loot novo, mas sem horário de volta conhecido. Não foi salvo.");
@@ -303,9 +304,9 @@ public sealed partial class Plugin
     }
 
     // Uma vez só: o loot salvo antes da 0.10.4 com uma volta antiga vai para a hora da saída atual do sub.
-    private unsafe bool FixLootDates(WorkshopTerritory* workshop)
+    private unsafe bool FixLootDates(WorkshopTerritory* workshop, long now)
     {
-        if (Config.LootDatesChecked.Count >= LootLedger.MaxSubmarines)
+        if (Config.LootDatesMoved.Count >= LootLedger.MaxSubmarines)
             return false;
 
         var pointers = workshop->Submersible.DataPointers;
@@ -313,14 +314,14 @@ public sealed partial class Plugin
         for (var slot = 0; slot < LootLedger.MaxSubmarines; slot++)
         {
             var sub = pointers[slot].Value;
-            if (Config.LootDatesChecked.Contains(slot) || sub == null || sub->RankId == 0)
+            if (Config.LootDatesMoved.Contains(slot) || sub == null || sub->RankId == 0)
                 continue;
 
             var signature = SubmarineLoot.Signature(sub);
             if (signature.Length == 0)
                 continue;
 
-            Config.LootDatesChecked.Add(slot);
+            Config.LootDatesMoved.Add(slot);
             changed = true;
 
             var match = Config.Voyages
@@ -331,7 +332,8 @@ public sealed partial class Plugin
                 continue;
 
             var voyage = match.Value;
-            var fixedTime = LootLedger.LootReturnTime(voyage.ReturnTime, sub->RegisterTime, sub->ReturnTime);
+            Config.Subs.TryGetValue(match.Key[..match.Key.LastIndexOf(':')], out var record);
+            var fixedTime = LootLedger.LootReturnTime(voyage.ReturnTime, SeenAt(record, sub->ReturnTime, now), sub->ReturnTime);
             if (fixedTime == voyage.ReturnTime)
                 continue;
 
@@ -348,9 +350,13 @@ public sealed partial class Plugin
         return changed;
     }
 
-    private long LootReturnTime(string name, long known, long departedAt, long nextReturn)
+    // Hora em que este PC viu a volta atual. Sem registro (subs vistos antes da 0.10.6), vale agora.
+    private static long SeenAt(SubRecord? record, long returnTime, long now)
+        => record != null && record.ReturnTime == returnTime && record.ReturnSeenAt > 0 ? record.ReturnSeenAt : now;
+
+    private long LootReturnTime(string name, long known, long seenAt, long nextReturn)
     {
-        var returnTime = LootLedger.LootReturnTime(known, departedAt, nextReturn);
+        var returnTime = LootLedger.LootReturnTime(known, seenAt, nextReturn);
         if (returnTime != known)
             Diagnostics.Write($"{name}: a última volta conhecida ({DiagnosticLog.Time(known)}) é antiga. O loot fica com a hora da saída atual, {DiagnosticLog.Time(returnTime)}.");
         return returnTime;

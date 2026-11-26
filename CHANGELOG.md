@@ -12,6 +12,11 @@ Portuguese). Rules for every entry:
 - Same terms as the plugin: submarine, airship, field, watering, supplies, repair materials, FC house.
 - A big update gets `<!-- big -->` after its version, and its entries show as cards.
 
+## [0.10.6] - 2026-11-26
+
+### Fixed
+- **Loot:** the old-date fix now finds the right day.
+
 ## [0.10.5] - 2026-11-26
 
 ### Fixed

@@ -14,6 +14,9 @@ public class SubRecord
     // Volta anterior, para o loot que só chega depois de o sub já ter saído de novo.
     public long PreviousReturnTime { get; set; }
 
+    // Quando este PC viu a volta atual pela primeira vez: perto da hora em que o sub saiu.
+    public long ReturnSeenAt { get; set; }
+
     public SubDetails? Details { get; set; }
 
     // Hora em que o sub saiu, para a barra da viagem. Só deste PC: o serviço não guarda.
@@ -197,7 +200,7 @@ public class Configuration : IPluginConfiguration
 
     // 0.10.5: subs cujo loot salvo com uma volta antiga (coletado sem o plugin) já foi conferido e trazido para a hora da saída.
     // O loot de cada sub só aparece na memória quando ele é selecionado na oficina, então a conferência é por sub.
-    public List<int> LootDatesChecked { get; set; } = [];
+    public List<int> LootDatesMoved { get; set; } = [];
     public long HouseVisitAt { get; set; }
 
     // Dias que a linha do tempo da Visão geral mostra: 1, 3 ou 7.

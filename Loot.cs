@@ -57,15 +57,18 @@ public static class LootLedger
     // Chaves locais são "<id da casa>:<slot>:<hora de retorno>"; o slot é o penúltimo pedaço.
     public static int SlotOf(string voyageKey) => int.Parse(voyageKey.Split(':')[^2]);
 
+    // Nenhuma viagem dura tanto: uma volta conhecida mais antiga que isso, antes da volta atual, é de semanas atrás.
+    public const long MaxVoyageSeconds = 7 * 86400;
+
     // Volta da viagem dona do loot. Se ninguém com o plugin viu as voltas do meio, a última volta conhecida
-    // pode ser de semanas atrás. O loot é da viagem que voltou antes da saída atual, então vale a hora da saída.
-    public static long LootReturnTime(long known, long departedAt, long nextReturn)
+    // pode ser de semanas atrás. O loot é da viagem que voltou antes da saída atual, então vale a hora em que
+    // este PC viu a saída (o RegisterTime do jogo não é a hora da saída).
+    public static long LootReturnTime(long known, long seenAt, long nextReturn)
     {
-        if (known == 0 || departedAt == 0 || nextReturn <= departedAt)
+        if (known == 0 || seenAt <= known || nextReturn - known <= MaxVoyageSeconds)
             return known;
 
-        var duration = nextReturn - departedAt;
-        return departedAt - known > duration * 3 / 2 ? departedAt : known;
+        return seenAt;
     }
 
     // Se a mesma viagem vier com dados diferentes, vale a leitura mais recente. Leitura sem itens é ignorada.
