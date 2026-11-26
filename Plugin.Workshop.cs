@@ -219,8 +219,9 @@ public sealed partial class Plugin
 
         // O loot é da última viagem que já voltou. Se o sub já saiu de novo, é a volta anterior.
         Config.Subs.TryGetValue(key, out var record);
-        var returnTime = new[] { (long)sub->ReturnTime, record?.ReturnTime ?? 0, record?.PreviousReturnTime ?? 0 }
+        var known = new[] { (long)sub->ReturnTime, record?.ReturnTime ?? 0, record?.PreviousReturnTime ?? 0 }
             .FirstOrDefault(t => t != 0 && t <= now);
+        var returnTime = LootReturnTime(name, known, sub->RegisterTime, sub->ReturnTime);
         if (returnTime == 0)
         {
             Diagnostics.Write($"{name}: loot novo na memória, mas sem horário de volta conhecido. Não foi salvo.");
@@ -281,8 +282,9 @@ public sealed partial class Plugin
         var key = $"{workshop->HouseId}:{slot}";
         Config.Subs.TryGetValue(key, out var record);
         // A lista já foi lida neste frame: se o sub saiu de novo, a volta da viagem do relatório é a anterior.
-        var returnTime = new[] { (long)selected->ReturnTime, record?.ReturnTime ?? 0, record?.PreviousReturnTime ?? 0 }
+        var known = new[] { (long)selected->ReturnTime, record?.ReturnTime ?? 0, record?.PreviousReturnTime ?? 0 }
             .FirstOrDefault(t => t != 0 && t <= now);
+        var returnTime = LootReturnTime(name, known, selected->RegisterTime, selected->ReturnTime);
         if (returnTime == 0)
         {
             Diagnostics.Write($"Relatório de {name}: loot novo, mas sem horário de volta conhecido. Não foi salvo.");
@@ -297,6 +299,14 @@ public sealed partial class Plugin
         Diagnostics.Write($"{name}: viagem de {DiagnosticLog.Time(returnTime)} salva pelo relatório da última viagem, {voyage.Items.Count} itens, {LootLedger.Total([voyage]):N0} gil");
         QueueLogUpload();
         return true;
+    }
+
+    private long LootReturnTime(string name, long known, long departedAt, long nextReturn)
+    {
+        var returnTime = LootLedger.LootReturnTime(known, departedAt, nextReturn);
+        if (returnTime != known)
+            Diagnostics.Write($"{name}: a última volta conhecida ({DiagnosticLog.Time(known)}) é antiga. O loot fica com a hora da saída atual, {DiagnosticLog.Time(returnTime)}.");
+        return returnTime;
     }
 
     private void LogReturnChange(string key, string name, long previous, long current, long now)

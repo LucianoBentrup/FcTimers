@@ -12,6 +12,11 @@ Portuguese). Rules for every entry:
 - Same terms as the plugin: submarine, airship, field, watering, supplies, repair materials, FC house.
 - A big update gets `<!-- big -->` after its version, and its entries show as cards.
 
+## [0.10.4] - 2026-11-26
+
+### Fixed
+- **Loot:** voyages collected without the plugin count on the right day.
+
 ## [0.10.3] - 2026-11-26
 
 ### Fixed

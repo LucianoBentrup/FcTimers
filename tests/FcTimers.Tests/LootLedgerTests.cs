@@ -78,4 +78,17 @@ public class LootLedgerTests
         Assert.Equal(3, LootLedger.SlotOf(key));
         Assert.False(LootLedger.IsAirship(LootLedger.VoyageKey("123:3", 1000)));
     }
+
+    [Fact]
+    public void LootReturnTimeUsesDepartureWhenKnownReturnIsStale()
+    {
+        const long day = 86400;
+        // Volta conhecida de 3 semanas atrás, sub saiu agora para 1 dia e meio: o loot fica com a hora da saída.
+        Assert.Equal(30 * day, LootLedger.LootReturnTime(9 * day, 30 * day, 31 * day + (day / 2)));
+        // Volta conhecida logo antes da saída: continua valendo.
+        Assert.Equal(29 * day, LootLedger.LootReturnTime(29 * day, 30 * day, 31 * day + (day / 2)));
+        // Sub ainda no porto (a volta já passou): não muda.
+        Assert.Equal(31 * day, LootLedger.LootReturnTime(31 * day, 30 * day, 31 * day));
+        Assert.Equal(0, LootLedger.LootReturnTime(0, 30 * day, 31 * day));
+    }
 }
