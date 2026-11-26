@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
-  alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, MARKET_CACHE, markSent, mergeVoyage, needsPrice, newState,
+  alertDeleteAt, alertPayload, applyUpdate, dayOf, isRealSlot, isValidUpdate, MARKET_CACHE, markSent, mergeVoyage, movedVoyageKey, needsPrice, newState,
   applyDalamud, dalamudDue, nextEvent, parseUniversalis, pendingAlerts, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
   profitReport, VOYAGE_KEEP_DAYS, weeklyDue, weeklySummary,
 } from './logic.js';
@@ -393,7 +393,13 @@ export class FcState extends DurableObject {
     applyUpdate(state, body, nowSeconds());
 
     const changes = { state };
+    const removed = [];
     for (const incoming of (body.voyages ?? []).filter((v) => isRealSlot(v.slot))) {
+      if (incoming.movedFrom) {
+        const oldKey = voyageKey({ ...incoming, returnTime: incoming.movedFrom });
+        const moved = movedVoyageKey(incoming, await storage.get(oldKey));
+        if (moved) removed.push(moved);
+      }
       const key = voyageKey(incoming);
       const existing = changes[key] ?? (await storage.get(key));
       const merged = mergeVoyage(existing, incoming);
@@ -405,8 +411,9 @@ export class FcState extends DurableObject {
       changes[key] = merged;
       if (!existing) addNotice(state, sectorNotice(merged), merged.returnTime, nowSeconds());
     }
-    if (Object.keys(changes).length > 1) this.profitCache = null;
+    if (Object.keys(changes).length > 1 || removed.length > 0) this.profitCache = null;
     await storage.put(changes);
+    if (removed.length > 0) await storage.delete(removed);
 
     const soon = Date.now() + DEBOUNCE_MS;
     const alarm = await storage.getAlarm();

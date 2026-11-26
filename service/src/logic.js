@@ -413,6 +413,7 @@ function isVoyage(v) {
       && (i.market == null || typeof i.market === 'boolean'))
     && (v.world == null || (typeof v.world === 'string' && v.world.length <= 32))
     && (v.airship == null || typeof v.airship === 'boolean')
+    && (v.movedFrom == null || (isTime(v.movedFrom) && v.movedFrom > 0 && v.movedFrom !== v.returnTime))
     && (v.unlocked == null || (Array.isArray(v.unlocked) && v.unlocked.length <= 5 && v.unlocked.every(isName)));
 }
 
@@ -622,6 +623,14 @@ export function applyUpdate(state, body, now) {
 
   state.updatedAt = now;
   return state;
+}
+
+// Viagem que o plugin mudou de horário (loot salvo antes com uma volta antiga). A cópia antiga só sai se tiver os mesmos itens.
+export function movedVoyageKey(incoming, existing) {
+  if (!incoming.movedFrom || !existing) return null;
+  const same = existing.items.length === incoming.items.length
+    && existing.items.every((x, n) => x.itemId === incoming.items[n].itemId && x.count === incoming.items[n].count);
+  return same ? voyageKey({ ...incoming, returnTime: incoming.movedFrom }) : null;
 }
 
 // A mesma viagem vira um único registro. Só é substituída por uma leitura com pelo menos tantos itens.

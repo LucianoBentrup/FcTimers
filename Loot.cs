@@ -29,6 +29,9 @@ public class VoyageRecord
 
     // Setores desbloqueados nesta viagem.
     public List<string> Unlocked { get; set; } = [];
+
+    // Volta antiga com que a viagem foi salva antes de mudar de horário. O serviço apaga a cópia antiga. 0: não mudou.
+    public long MovedFrom { get; set; }
 }
 
 // Regras do loot:

@@ -8,6 +8,11 @@ e é o que a janela de novidades mostra quando o plugin está em português. Reg
 - Os mesmos termos do plugin: submarino, airship, campo, rega, estoque, materiais de reparo, casa da FC.
 - Update grande ganha `<!-- big -->` depois da versão, e os itens dele viram cards.
 
+## [0.10.5] - 2026-11-26
+
+### Fixed
+- **Loot:** viagens salvas com data antiga passam para o dia certo.
+
 ## [0.10.4] - 2026-11-26
 
 ### Fixed

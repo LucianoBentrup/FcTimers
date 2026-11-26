@@ -97,6 +97,7 @@ public sealed partial class Plugin
         }
 
         changed |= CaptureSelectedLoot(workshop, now);
+        changed |= FixLootDates(workshop);
         changed |= ReadAirships(workshop, now);
 
         if (conditions != null)
@@ -299,6 +300,52 @@ public sealed partial class Plugin
         Diagnostics.Write($"{name}: viagem de {DiagnosticLog.Time(returnTime)} salva pelo relatório da última viagem, {voyage.Items.Count} itens, {LootLedger.Total([voyage]):N0} gil");
         QueueLogUpload();
         return true;
+    }
+
+    // Uma vez só: o loot salvo antes da 0.10.4 com uma volta antiga vai para a hora da saída atual do sub.
+    private unsafe bool FixLootDates(WorkshopTerritory* workshop)
+    {
+        if (Config.LootDatesChecked.Count >= LootLedger.MaxSubmarines)
+            return false;
+
+        var pointers = workshop->Submersible.DataPointers;
+        var changed = false;
+        for (var slot = 0; slot < LootLedger.MaxSubmarines; slot++)
+        {
+            var sub = pointers[slot].Value;
+            if (Config.LootDatesChecked.Contains(slot) || sub == null || sub->RankId == 0)
+                continue;
+
+            var signature = SubmarineLoot.Signature(sub);
+            if (signature.Length == 0)
+                continue;
+
+            Config.LootDatesChecked.Add(slot);
+            changed = true;
+
+            var match = Config.Voyages
+                .Where(v => !LootLedger.IsAirship(v.Key) && LootLedger.SlotOf(v.Key) == slot && SubmarineLoot.Signature(v.Value.Items) == signature)
+                .OrderByDescending(v => v.Value.ReturnTime)
+                .FirstOrDefault();
+            if (match.Value == null)
+                continue;
+
+            var voyage = match.Value;
+            var fixedTime = LootLedger.LootReturnTime(voyage.ReturnTime, sub->RegisterTime, sub->ReturnTime);
+            if (fixedTime == voyage.ReturnTime)
+                continue;
+
+            var subKey = match.Key[..match.Key.LastIndexOf(':')];
+            Config.Voyages.Remove(match.Key);
+            Config.SyncedVoyages.Remove(match.Key);
+            voyage.MovedFrom = voyage.ReturnTime;
+            voyage.ReturnTime = fixedTime;
+            Config.Voyages[LootLedger.VoyageKey(subKey, fixedTime)] = voyage;
+            Diagnostics.Write($"{voyage.SubName}: viagem de {DiagnosticLog.Time(voyage.MovedFrom)} passou para {DiagnosticLog.Time(fixedTime)}, a hora da saída");
+            QueueLogUpload();
+        }
+
+        return changed;
     }
 
     private long LootReturnTime(string name, long known, long departedAt, long nextReturn)

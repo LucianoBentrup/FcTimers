@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  alertDeleteAt, alertPayload, applyDalamud, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, needsPrice, newState, nextEvent, nextMidnight,
+  alertDeleteAt, alertPayload, applyDalamud, applyUpdate, dayOf, isValidUpdate, markSent, mergeVoyage, movedVoyageKey, needsPrice, newState, nextEvent, nextMidnight,
   lootSummary, parseUniversalis, pendingAlerts, subsSummary, suppliesSummary, priceVoyage, publicState, recentDays, recentSubAlerts, renderPanel, sectorNotice, voyageKey,
   lastWeekly, nextWeekly, profitReport, profitSummary, supplyForecast, weeklyDue, weeklySummary, vesselKey,
 } from '../src/logic.js';
@@ -708,4 +708,15 @@ test('resumo semanal: segunda às 9h de Brasília, uma vez, com gil, gasto e tem
   assert.match(content, /Sub0\*\* \(3\.000 gil\)/);
   assert.match(content, /30 tanques e 10 kits/);
   assert.match(content, /3h no total/);
+});
+
+test('viagem com movedFrom: a cópia antiga só sai com os mesmos itens', () => {
+  const old = voyage(1, at(5, 5), 100);
+  const moved = { ...old, returnTime: at(26, 19), movedFrom: at(5, 5) };
+  assert.ok(isValidUpdate({ voyages: [moved] }));
+  assert.equal(isValidUpdate({ voyages: [{ ...old, movedFrom: old.returnTime }] }), false);
+  assert.equal(movedVoyageKey(moved, old), voyageKey(old));
+  assert.equal(movedVoyageKey(moved, voyage(1, at(5, 5), 100, 2)), null);
+  assert.equal(movedVoyageKey(moved, undefined), null);
+  assert.equal(movedVoyageKey(old, old), null);
 });

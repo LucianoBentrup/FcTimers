@@ -341,6 +341,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
                     airship = LootLedger.IsAirship(v.Key),
                     subName = voyage.SubName,
                     returnTime = voyage.ReturnTime,
+                    movedFrom = voyage.MovedFrom == 0 ? (long?)null : voyage.MovedFrom,
                     world = marketWorld(),
                     unlocked = voyage.Unlocked,
                     items = voyage.Items.Select(i => new { itemId = i.ItemId, name = i.Name, count = i.Count, value = i.Value, market = isMarketable(i.ItemId) }),

@@ -194,6 +194,10 @@ public class Configuration : IPluginConfiguration
     public string FcHouse { get; set; } = string.Empty;
     // True quando a casa foi marcada pelo botão.
     public bool FcHouseManual { get; set; }
+
+    // 0.10.5: subs cujo loot salvo com uma volta antiga (coletado sem o plugin) já foi conferido e trazido para a hora da saída.
+    // O loot de cada sub só aparece na memória quando ele é selecionado na oficina, então a conferência é por sub.
+    public List<int> LootDatesChecked { get; set; } = [];
     public long HouseVisitAt { get; set; }
 
     // Dias que a linha do tempo da Visão geral mostra: 1, 3 ou 7.
