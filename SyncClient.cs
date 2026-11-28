@@ -27,7 +27,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
     private sealed record PendingSub(int Slot, string Name, long ReturnTime, SubDetails? Details, DateTime ReadAt);
     private sealed record PendingBuffs(List<BuffReading> Slots, DateTime ReadAt);
     private sealed record PendingActive(List<ActiveBuffReading> Buffs, DateTime ReadAt);
-    private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, bool Indoor, DateTime ReadAt);
+    private sealed record PendingPlot(string Key, string Name, long NextWaterAt, long DieAt, bool Indoor, DateTime ReadAt, long ReadyAt = 0, int Ready = 0);
     private sealed record PendingName(string Key, string Name, bool Indoor, long At);
     private sealed record PendingSupplies(int Tanks, int Kits, DateTime ReadAt);
     private sealed record PendingAirship(int Slot, string Name, long ReturnTime, int Rank, int Exp, DateTime ReadAt);
@@ -154,14 +154,14 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
 
     // A leitura da rega vale a partir do horário em que a planta foi regada, e não do envio.
     // Assim uma rega antiga deste PC nunca passa por cima de uma rega mais nova de outro membro.
-    public void ReportPlot(string key, string name, long wateredAt, long nextWaterAt, long dieAt, bool indoor)
+    public void ReportPlot(string key, string name, long wateredAt, long nextWaterAt, long dieAt, bool indoor, long readyAt = 0, int ready = 0)
     {
-        var signature = $"{name}|{nextWaterAt}|{dieAt}|{indoor}";
+        var signature = $"{name}|{nextWaterAt}|{dieAt}|{indoor}|{readyAt}|{ready}";
         if (!Enabled || wateredAt == 0 || lastPlots.GetValueOrDefault(key) == signature)
             return;
 
         lastPlots[key] = signature;
-        pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, indoor, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime);
+        pendingPlots[key] = new PendingPlot(key, name, nextWaterAt, dieAt, indoor, DateTimeOffset.FromUnixTimeSeconds(wateredAt).UtcDateTime, readyAt, ready);
     }
 
     // Nome dado ou campo cadastrado na janela. O serviço guarda e manda para os outros PCs.
@@ -331,7 +331,7 @@ public sealed class SyncClient(Configuration config, Action save, Action<string>
             supplies = sendingSupplies == null ? null : new { tanks = sendingSupplies.Tanks, kits = sendingSupplies.Kits, age = Age(sendingSupplies.ReadAt, now) },
             plotNames = sendingNames.Select(n => new { key = n.Key, name = n.Name, indoor = n.Indoor, at = n.At }),
             plotRemovals = sendingRemovals.Select(r => new { key = r.Key, at = r.Value }),
-            plots = sendingPlots.Select(p => new { key = p.Key, name = p.Name, nextWaterAt = p.NextWaterAt, dieAt = p.DieAt, indoor = p.Indoor, age = Age(p.ReadAt, now) }),
+            plots = sendingPlots.Select(p => new { key = p.Key, name = p.Name, nextWaterAt = p.NextWaterAt, dieAt = p.DieAt, indoor = p.Indoor, readyAt = p.ReadyAt, ready = p.Ready, age = Age(p.ReadAt, now) }),
             voyages = sendingVoyages.Select(v =>
             {
                 var voyage = config.Voyages[v.Key];

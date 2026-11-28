@@ -720,3 +720,14 @@ test('viagem com movedFrom: a cópia antiga só sai com os mesmos itens', () => 
   assert.equal(movedVoyageKey(moved, undefined), null);
   assert.equal(movedVoyageKey(old, old), null);
 });
+test('colheita avisa uma vez por horário de pronta', () => {
+  const state = newState();
+  const patch = (readyAt) => ({ key: 'c2', name: 'Canteiro 2', nextWaterAt: 0, dieAt: 0, age: 0, indoor: false, readyAt, ready: 3 });
+  applyUpdate(state, { plots: [patch(at(2, 9))] }, at(1, 9));
+  assert.deepEqual(pendingAlerts(state, at(2, 8)).filter((a) => a.kind === 'plotHarvest'), []);
+  const [harvest] = pendingAlerts(state, at(2, 9)).filter((a) => a.kind === 'plotHarvest');
+  assert.equal(alertPayload(harvest, '').content, '🌾 Pronto pra colher: **Canteiro 2**.');
+  markSent(state, harvest);
+  assert.deepEqual(pendingAlerts(state, at(2, 12)).filter((a) => a.kind === 'plotHarvest'), []);
+  assert.deepEqual(pendingAlerts(state, at(2, 12)).filter((a) => a.kind.startsWith('plot')), []);
+});

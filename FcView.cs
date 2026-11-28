@@ -232,7 +232,9 @@ public sealed class FcView
         // Campo cadastrado e ainda sem rega entra com horários zerados.
         foreach (var (key, plot) in config.Plots)
         {
-            var view = plot.WateredAt == 0 ? new PlotView(key, plot.Name, 0, 0) : new PlotView(key, plot.Name, plot.NextWaterAt, plot.DieAt);
+            // Com os Beds lidos, rega e morte vêm do Bed mais atrasado. Bed pronto não pede nada.
+            var beds = Beds.Summarize(plot, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            var view = new PlotView(key, plot.Name, beds.NextWaterAt, beds.DieAt);
             plots[key] = (view, plot.WateredAt);
         }
 

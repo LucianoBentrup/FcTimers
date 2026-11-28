@@ -22,7 +22,10 @@ public sealed partial class Plugin
             Config.Plots[GeneralPlot] = new PlotRecord { Name = GeneralPlotName };
 
         foreach (var plot in Config.Plots.Values)
+        {
             plot.WateredAt = now;
+            Beds.Tend(plot, 0, now);
+        }
         SaveConfig();
         Diagnostics.Write($"Rega registrada em todos os plots ({source})");
         QueueLogUpload();
@@ -60,6 +63,7 @@ public sealed partial class Plugin
         plot.Name = name;
         plot.Indoor = indoor;
         plot.NamedAt = now;
+        ApplyPendingLink(key, plot);
         SaveConfig();
         Sync.ReportPlotName(key, name, indoor, now);
         Diagnostics.Write($"Campo cadastrado: {name} ({(indoor ? "dentro de casa" : "fora")}, chave {key})");
@@ -117,7 +121,7 @@ public sealed partial class Plugin
 
     // O plot regado é o objeto selecionado no momento da mensagem. A chave junta a casa, o quarto e a posição dele,
     // que só muda se alguém mover o plot. Sem um alvo da casa, a rega vai para o plot geral.
-    private unsafe void WaterTargetedPlot(string source)
+    private unsafe string WaterTargetedPlot(string source)
     {
         // Se o alvo já sumiu quando a mensagem chega, vale o último objeto da casa cujo menu foi aberto há pouco.
         // O menu também dá o nome do canteiro ("2nd Patch"), que o alvo não tem.
@@ -158,8 +162,10 @@ public sealed partial class Plugin
         plot.Indoor = indoor;
         plot.WateredAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         SaveConfig();
+        ApplyPendingLink(key, plot);
         Diagnostics.Write($"Rega registrada em {plot.Name} ({source}, {(indoor ? "dentro de casa" : "fora")}, chave {key})");
         QueueLogUpload();
+        return key;
     }
 
     // Chave, nome e se está dentro de casa (sala ou quarto privado), ou null se o alvo não for um objeto da casa.
@@ -203,6 +209,9 @@ public sealed partial class Plugin
             var patch = PlotNames.FromMenu(texts);
             var label = patch ?? name;
             lastHousingObject = (key, label, indoor, DateTime.UtcNow);
+            lastBed = PlotNames.BedFromMenu(texts);
+            if (texts.Any(t => PlotNames.GardenMenu.IsMatch(t)))
+                LinkGardenObject(key, indoor, lastBed, texts.Any(t => PlotNames.HarvestMenu.IsMatch(t)));
 
             // Só de abrir o menu, um canteiro já conhecido com nome automático ganha o nome certo.
             if (patch != null && Config.Plots.TryGetValue(key, out var known) && known.Name != label && known.NamedAt == 0
@@ -224,7 +233,7 @@ public sealed partial class Plugin
         {
             Diagnostics.Write($"Mensagem do vaso {id}: {message.GameData.ValueNullable?.Text.ToString()}");
             if (characterEnabled && !currentOtherFc)
-                WaterTargetedPlot($"mensagem do jogo {id}");
+                TendBeds(WaterTargetedPlot($"mensagem do jogo {id}"), 0);
             return;
         }
 
@@ -233,8 +242,15 @@ public sealed partial class Plugin
             return;
 
         Diagnostics.Write($"Mensagem da horta {id}: {message.GameData.ValueNullable?.Text.ToString()}");
-        if (characterEnabled && !currentOtherFc && id is CropTendedMessage or SeedsPlantedMessage)
-            WaterTargetedPlot($"mensagem do jogo {id}");
+        if (!characterEnabled || currentOtherFc)
+            return;
+
+        if (id == CropTendedMessage)
+            TendBeds(WaterTargetedPlot($"mensagem do jogo {id}"), BedOfMessage());
+        else if (id == SeedsPlantedMessage)
+            MarkPlanted(WaterTargetedPlot($"mensagem do jogo {id}"), BedOfMessage());
+        else if (id == FertilizedMessage)
+            FertilizeBeds(BedOfMessage());
     }
 
 }

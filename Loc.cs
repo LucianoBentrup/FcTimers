@@ -211,6 +211,12 @@ public static class L
     public static string WaterNow(string time) => T($"pode regar. Morre em {time}", $"ready to water. Dies in {time}");
     public static string WaterLate => T("passou do prazo de rega", "past the watering deadline");
     public static string WaterReady => T("pode regar", "ready to water");
+    public static string ColHarvest => T("Colheita", "Harvest");
+    public static string Bed(int number) => $"Bed {number}";
+    public static string Pot => T("Vaso", "Pot");
+    public static string BedReady => T("pronta", "ready");
+    public static string BedGrowing => T("crescendo", "growing");
+    public static string ReadyCount(int count) => T(count == 1 ? "1 pronta" : $"{count} prontas", $"{count} ready");
 
     // Configurações
     public static string Language => T("Idioma", "Language");

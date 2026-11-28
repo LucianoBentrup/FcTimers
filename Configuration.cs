@@ -130,6 +130,14 @@ public class PlotRecord
     // Quando alguém deu o nome na janela. 0: nome automático, que o plugin pode corrigir sozinho.
     public long NamedAt { get; set; }
 
+    // Chave do objeto no mapa de objetos da casa (HousingObjectManager). 0: ainda sem ligação.
+    public ushort ObjectKey { get; set; }
+
+    // Vagas por número do Bed (o vaso usa a 1). Só as plantadas.
+    public Dictionary<int, BedRecord> Beds { get; set; } = [];
+    public long BedsReadAt { get; set; }
+    public List<BedEvent> History { get; set; } = [];
+
     public long NextWaterAt => WateredAt + WaterIntervalSeconds;
     public long DieAt => WateredAt + DieAfterSeconds;
 }

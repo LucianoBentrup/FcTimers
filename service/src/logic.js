@@ -13,6 +13,7 @@ const DEATH_WARNING_LATE = 1800;
 // Plot que morreu há mais de 2 dias some do painel e dos avisos.
 const PLOT_STALE = 2 * 86400;
 const MAX_PLOTS = 64;
+const HARVEST_LATE = 12 * 3600;
 const MAX_PLOT_LINES = 12;
 const MAX_FIELD_NAME = 40;
 // Remoções de campo ficam guardadas 7 dias, para uma rega antiga de outro PC não trazer o campo de volta.
@@ -106,6 +107,11 @@ export function pendingAlerts(state, now) {
       && p.nextWaterAt > now + REMINDER_MIN_LEFT && p.nextWaterAt <= now + REMINDER_LEAD + REMINDER_GROUP);
     alerts.push({ kind: 'plotReminder', plots: soon });
   }
+
+  // Colheita: um aviso por horário de pronta, sem repetir. Planta pronta parada é escolha de quem cuida.
+  const harvest = Object.entries(state.plots ?? {}).map(([key, plot]) => ({ key, ...plot }))
+    .filter((p) => p.readyAt > 0 && p.readyAt <= now && p.readyAt > (p.harvested ?? 0) && now - p.readyAt < HARVEST_LATE);
+  if (harvest.length > 0) alerts.push({ kind: 'plotHarvest', plots: harvest });
 
   const dying = plots.map((p) => ({ ...p, step: deathWarningDue(p, now) })).filter((p) => p.step);
   if (dying.length > 0) alerts.push({ kind: 'plotDying', plots: dying });
@@ -306,6 +312,7 @@ export function markSent(state, alert) {
     if (alert.kind === 'plotReminder' && plot.nextWaterAt === sent.nextWaterAt) plot.reminded = plot.nextWaterAt;
     if (alert.kind === 'plotDying' && plot.dieAt === sent.dieAt) plot.warned = sent.step;
     if (alert.kind === 'plotForgotten' && plot.nextWaterAt === sent.nextWaterAt) plot.forgotten = plot.nextWaterAt;
+    if (alert.kind === 'plotHarvest') plot.harvested = Math.max(plot.harvested ?? 0, sent.readyAt);
   }
   if (alert.kind === 'suppliesLow' && state.supplies) state.supplies.lowWarned = true;
   if (alert.notice) state.notices = (state.notices ?? []).filter((n) => n.id !== alert.notice.id);
@@ -331,6 +338,7 @@ export function alertPayload(alert, roleId) {
     subReminder: () => `Lembrete: Em 1 hora os submarinos estarão prontos para coleta (${joinNames(alert.subs)}).`,
     plotReady: () => `🌱 A plantação já pode ser regada${plotNames(alert.plots)}!`,
     plotReminder: () => `Lembrete: Em 1 hora a plantação estará disponível para regar${plotNames(alert.plots)}.`,
+    plotHarvest: () => `🌾 Pronto pra colher: ${joinNames(alert.plots)}.`,
     plotForgotten: () => `🌱 ${joinNames(alert.plots)} ${alert.plots.length > 1 ? 'ficaram' : 'ficou'} sem regar? Os outros vasos já foram regados.`,
     wheelReady: () => `⚙️ ${joinNames(alert.wheels)} ${alert.wheels.length > 1 ? 'estão prontos' : 'está pronto'}!`,
     airshipReady: () => `✈️ ${joinNames(alert.subs)} ${alert.subs.length > 1 ? 'voltaram' : 'voltou'}!`,
@@ -443,7 +451,8 @@ export function isValidUpdate(body) {
     && active.buffs.every((b) => b && isName(b.name) && (b.seconds === null || isTime(b.seconds))))) return false;
   const plots = body.plots ?? [];
   const isPlot = (p) => p && isAge(p.age) && isTime(p.nextWaterAt) && (p.dieAt == null || isTime(p.dieAt))
-    && (p.indoor == null || typeof p.indoor === 'boolean');
+    && (p.indoor == null || typeof p.indoor === 'boolean')
+    && (p.readyAt == null || isTime(p.readyAt)) && (p.ready == null || (Number.isInteger(p.ready) && p.ready >= 0 && p.ready <= 8));
   if (!Array.isArray(plots) || plots.length > MAX_PLOTS) return false;
   if (!plots.every((p) => isPlot(p) && isName(p.key) && isName(p.name))) return false;
   if (body.garden != null && !isPlot(body.garden)) return false;
@@ -566,6 +575,9 @@ export function applyUpdate(state, body, now) {
       warned: existing?.dieAt === dieAt ? existing.warned ?? 0 : 0,
       forgotten: same ? existing.forgotten ?? 0 : 0,
       indoor: update.indoor ?? existing?.indoor ?? false,
+      readyAt: update.readyAt ?? existing?.readyAt ?? 0,
+      ready: update.ready ?? existing?.ready ?? 0,
+      harvested: existing?.harvested ?? 0,
     };
   }
 

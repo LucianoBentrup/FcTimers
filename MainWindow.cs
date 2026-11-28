@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -17,6 +18,7 @@ public class MainWindow : ThemedWindow
     private const int MaxFieldName = 40;
 
     private readonly Plugin plugin;
+    private readonly HashSet<string> openPlots = [];
     private (string Key, bool Indoor)? newField;
     private string newFieldName = string.Empty;
     private bool manageLoaded;
@@ -341,17 +343,23 @@ public class MainWindow : ThemedWindow
         }
     }
 
-    private static void OverviewGarden(FcView view, long now)
+    private void OverviewGarden(FcView view, long now)
     {
-        var watered = view.Plots.Where(p => p.NextWaterAt != 0).ToList();
+        var watered = GardenPlots(view, now);
         if (watered.Count == 0)
         {
             UiKit.Empty(FontAwesomeIcon.InfoCircle, L.NoPlots);
             return;
         }
 
-        foreach (var plot in watered.Take(4))
+        foreach (var (plot, summary) in watered.Take(4))
         {
+            if (plot.NextWaterAt == 0)
+            {
+                UiKit.Text($"{plot.Name}: {L.ReadyCount(summary.Ready)}", UiKit.Muted);
+                continue;
+            }
+
             UiKit.Text($"{plot.Name}: {PlotState(plot, now)}", PlotColor(plot, now));
             UiKit.TimeTooltip(plot.NextWaterAt > now ? plot.NextWaterAt : plot.DieAt);
         }
@@ -715,27 +723,54 @@ public class MainWindow : ThemedWindow
     // Em cima, o estado da plantação. Embaixo, a seção Campos, que só cadastra, renomeia e remove.
     private void DrawGarden(Configuration config, FcView view, long now)
     {
-        var watered = view.Plots.Where(p => p.NextWaterAt != 0).ToList();
+        var watered = GardenPlots(view, now);
         if (watered.Count == 0)
         {
             UiKit.Empty(FontAwesomeIcon.InfoCircle, L.NoWaterYet);
         }
         else
         {
-            using var table = UiKit.Table("##garden", L.ColField, L.ColState, L.ColWater);
+            using var table = UiKit.Table("##garden", L.ColField, L.ColState, L.ColWater, L.ColHarvest);
             if (table != null)
             {
-                foreach (var plot in watered)
+                foreach (var (plot, summary) in watered)
                 {
+                    config.Plots.TryGetValue(plot.Key, out var record);
+                    var hasBeds = record?.Beds.Count > 0;
+                    ImGui.PushID(plot.Key);
                     ImGui.TableNextRow();
-                    UiKit.Cell(plot.Name);
-                    UiKit.Cell(PlotState(plot, now), PlotColor(plot, now));
-                    UiKit.TimeTooltip(plot.NextWaterAt > now ? plot.NextWaterAt : plot.DieAt);
-
-                    // Quanto do dia de rega já passou: cheia quando a planta já pode ser regada.
                     ImGui.TableNextColumn();
-                    var passed = 1f - ((plot.NextWaterAt - now) / (float)PlotRecord.WaterIntervalSeconds);
-                    UiKit.Bar(passed, string.Empty, PlotColor(plot, now) ?? UiKit.Muted);
+                    var open = hasBeds && openPlots.Contains(plot.Key);
+                    if (hasBeds && ImGui.ArrowButton("##beds", open ? ImGuiDir.Down : ImGuiDir.Right))
+                    {
+                        if (!openPlots.Remove(plot.Key))
+                            openPlots.Add(plot.Key);
+                    }
+
+                    if (hasBeds)
+                        ImGui.SameLine();
+                    ImGui.TextUnformatted(plot.Name);
+
+                    if (plot.NextWaterAt == 0)
+                    {
+                        ImGui.TableNextColumn();
+                        ImGui.TableNextColumn();
+                    }
+                    else
+                    {
+                        UiKit.Cell(PlotState(plot, now), PlotColor(plot, now));
+                        UiKit.TimeTooltip(plot.NextWaterAt > now ? plot.NextWaterAt : plot.DieAt);
+                        ImGui.TableNextColumn();
+                        WaterBar(plot, now);
+                    }
+
+                    UiKit.Cell(HarvestSummary(summary, now), UiKit.Muted);
+                    if (summary.NextReadyAt > now)
+                        UiKit.TimeTooltip(summary.NextReadyAt);
+
+                    if (open && record != null)
+                        DrawBeds(record, now);
+                    ImGui.PopID();
                 }
             }
         }
@@ -823,6 +858,81 @@ public class MainWindow : ThemedWindow
     {
         var parts = key.Split(':');
         return parts.Length >= 7 ? $"X {parts[^3]} · Z {parts[^1]}" : key;
+    }
+
+    // Campos com rega ou com Beds lidos.
+    private List<(PlotView Plot, BedSummary Summary)> GardenPlots(FcView view, long now)
+    {
+        var list = new List<(PlotView, BedSummary)>();
+        foreach (var plot in view.Plots)
+        {
+            if (plugin.Config.Plots.TryGetValue(plot.Key, out var record) && record.Beds.Count > 0)
+                list.Add((plot, Beds.Summarize(record, now)));
+            else if (plot.NextWaterAt != 0)
+            {
+                list.Add((plot, default));
+            }
+        }
+
+        return list;
+    }
+
+    private static void WaterBar(PlotView plot, long now)
+    {
+        // Quanto do dia de rega já passou: cheia quando a planta já pode ser regada.
+        var passed = 1f - ((plot.NextWaterAt - now) / (float)PlotRecord.WaterIntervalSeconds);
+        UiKit.Bar(passed, string.Empty, PlotColor(plot, now) ?? UiKit.Muted);
+    }
+
+    private static string HarvestSummary(BedSummary summary, long now)
+    {
+        var parts = new List<string>();
+        if (summary.Ready > 0)
+            parts.Add(L.ReadyCount(summary.Ready));
+        if (summary.NextReadyAt > now)
+            parts.Add(Plugin.FormatRemaining(summary.NextReadyAt - now));
+        return string.Join(" · ", parts);
+    }
+
+    private void DrawBeds(PlotRecord record, long now)
+    {
+        foreach (var (number, bed) in record.Beds.OrderBy(b => b.Key))
+        {
+            ImGui.TableNextRow();
+            UiKit.Cell($"   {(record.Indoor ? L.Pot : L.Bed(number))}", UiKit.Muted);
+            UiKit.Cell(plugin.SeedName(bed.Seed));
+
+            ImGui.TableNextColumn();
+            if (!Beds.IsReady(bed))
+            {
+                var care = Beds.LastCare(bed);
+                if (care > 0)
+                {
+                    var water = new PlotView(string.Empty, string.Empty, care + PlotRecord.WaterIntervalSeconds, care + Beds.DieAfterSeconds(bed.Seed));
+                    WaterBar(water, now);
+                    UiKit.Tooltip(PlotState(water, now));
+                }
+            }
+
+            ImGui.TableNextColumn();
+            if (Beds.IsReady(bed))
+            {
+                UiKit.Bar(1f, L.BedReady, UiKit.Muted);
+                continue;
+            }
+
+            var readyAt = Beds.EstimatedReadyAt(bed);
+            if (readyAt == 0)
+            {
+                UiKit.Bar(0f, L.BedGrowing, Theme.Current.Leaf);
+                continue;
+            }
+
+            var grown = (now - bed.PlantedAt) / (float)Math.Max(1, readyAt - bed.PlantedAt);
+            var left = readyAt > now ? Plugin.FormatRemaining(readyAt - now) : L.BedGrowing;
+            UiKit.Bar(grown, bed.PlantedApprox ? $"~{left}" : left, Theme.Current.Leaf);
+            UiKit.TimeTooltip(readyAt);
+        }
     }
 
     // Pronta para regar fica verde; perto de morrer (menos de 3 horas) ou já passada, vermelha.

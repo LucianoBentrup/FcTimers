@@ -32,6 +32,7 @@ public sealed partial class Plugin : IDalamudPlugin
     // e a 4015 ao plantar. Ainda falta confirmar no jogo que só aparecem nesses momentos.
     private const uint CropTendedMessage = 4017;
     private const uint SeedsPlantedMessage = 4015;
+    private const uint FertilizedMessage = 4016;
 
     // Nos vasos de dentro de casa, cuidar da planta mostra outra mensagem ("The crops appear to be healthy.").
     private const uint PotTendedMessage = 3450;
@@ -80,6 +81,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private string lastSelectedLoot = string.Empty;
     private string? lastIndoorHouse;
     private (string Key, string Name, bool Indoor, DateTime SeenAt)? lastHousingObject;
+    private int lastBed;
     private string lastEmptyPages = string.Empty;
     private RemoteState? appliedRemote;
     private string lastScan = string.Empty;
@@ -382,6 +384,7 @@ public sealed partial class Plugin : IDalamudPlugin
             ReadWheels(now);
             ReadActiveBuffs(now);
             ReadSupplies(now);
+            ReadBeds(now);
         }
 
         if (characterEnabled)
@@ -391,15 +394,16 @@ public sealed partial class Plugin : IDalamudPlugin
 
         Sync.ReportSupplies(Config.Supplies.Tanks, Config.Supplies.Kits, Config.Supplies.ChangedAt);
 
-        foreach (var (key, plot) in Config.Plots.Where(p => p.Value.WateredAt != 0))
+        foreach (var (key, plot) in Config.Plots.Where(p => p.Value.WateredAt != 0 || p.Value.Beds.Count > 0))
         {
-            Sync.ReportPlot(
-                key,
-                plot.Name,
-                plot.WateredAt,
-                plot.NextWaterAt,
-                plot.DieAt,
-                plot.Indoor);
+            if (plot.Beds.Count == 0)
+            {
+                Sync.ReportPlot(key, plot.Name, plot.WateredAt, plot.NextWaterAt, plot.DieAt, plot.Indoor);
+                continue;
+            }
+
+            var beds = Beds.Summarize(plot, now);
+            Sync.ReportPlot(key, plot.Name, Math.Max(plot.WateredAt, plot.BedsReadAt), beds.NextWaterAt, beds.DieAt, plot.Indoor, Beds.HarvestAlertAt(plot), beds.Ready);
         }
 
         if (DateTime.UtcNow >= autoLogAt && !Sync.SendingLog)

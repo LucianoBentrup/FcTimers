@@ -13,6 +13,10 @@ public static class PlotNames
 
     // Menu de canteiro ou vaso; só depois dele o log guarda as mensagens do sistema.
     public static readonly Regex GardenMenu = new(@"Crop|Seeds|Patch|Fertiliz", RegexOptions.Compiled);
+    public static readonly Regex BedPattern = new(@"(\d+)(?:st|nd|rd|th) Bed", RegexOptions.Compiled);
+
+    // Planta pronta: o menu só oferece colher.
+    public static readonly Regex HarvestMenu = new(@"^Harvest Crop$", RegexOptions.Compiled);
 
     // Nome vazio ou só um número, das versões que não sabiam o nome dos canteiros de fora.
     public static bool IsUnnamed(string name) => Clean(name).All(char.IsDigit);
@@ -29,5 +33,12 @@ public static class PlotNames
     {
         var patch = texts.Select(t => PatchPattern.Match(t)).FirstOrDefault(m => m.Success);
         return patch == null ? null : $"Canteiro {patch.Groups[1].Value}";
+    }
+
+    // Número do Bed no menu do canteiro de fora ("6th Bed, 2nd Patch" dá 6). 0 no vaso.
+    public static int BedFromMenu(System.Collections.Generic.IEnumerable<string> texts)
+    {
+        var bed = texts.Select(t => BedPattern.Match(t)).FirstOrDefault(m => m.Success);
+        return bed == null ? 0 : int.Parse(bed.Groups[1].Value, CultureInfo.InvariantCulture);
     }
 }

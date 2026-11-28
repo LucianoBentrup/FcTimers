@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../Configuration.cs" Link="Plugin/Configuration.cs" />
+    <Compile Include="../../Beds.cs" Link="Plugin/Beds.cs" />
     <Compile Include="../../ConfigMigration.cs" Link="Plugin/ConfigMigration.cs" />
     <Compile Include="../../PlotNames.cs" Link="Plugin/PlotNames.cs" />
     <Compile Include="../../Loot.cs" Link="Plugin/Loot.cs" />
