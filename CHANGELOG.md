@@ -12,6 +12,13 @@ Portuguese). Rules for every entry:
 - Same terms as the plugin: submarine, airship, field, watering, supplies, repair materials, FC house.
 - A big update gets `<!-- big -->` after its version, and its entries show as cards.
 
+## [0.10.7] - 2026-11-27
+
+### Added
+- **Garden:** each patch shows seed and phase of every bed.
+- **Watering:** deadlines come from the bed that needs it most.
+- **Discord:** one alert when a patch is ready to harvest.
+
 ## [0.10.6] - 2026-11-26
 
 ### Fixed

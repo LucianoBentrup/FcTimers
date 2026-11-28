@@ -8,6 +8,13 @@ e é o que a janela de novidades mostra quando o plugin está em português. Reg
 - Os mesmos termos do plugin: submarino, airship, campo, rega, estoque, materiais de reparo, casa da FC.
 - Update grande ganha `<!-- big -->` depois da versão, e os itens dele viram cards.
 
+## [0.10.7] - 2026-11-27
+
+### Added
+- **Plantação:** cada canteiro mostra semente e fase de cada Bed.
+- **Rega:** o prazo vem do Bed mais atrasado.
+- **Discord:** um aviso quando o canteiro fica pronto pra colher.
+
 ## [0.10.6] - 2026-11-26
 
 ### Fixed
